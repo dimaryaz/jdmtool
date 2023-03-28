@@ -60,7 +60,7 @@ Done
 ```
 $ jdmtool read-database db.bin
 Found device: Bus 001 Device 044: ID 0e39:1250
-Reading the database...
+Reading the database: 100%|█████████████████████████████████████████████████████████████████████████████| 8.59M/8.59M [01:33<00:00, 91.6KB/s]
 Truncating the file...
 Done
 ```
@@ -79,8 +79,8 @@ This will do some sanity checks to make sure the file is in fact a Garmin databa
 ```
 $ jdmtool write-database dgrw72_2303_eceb0273.bin
 Found device: Bus 001 Device 045: ID 0e39:1250
-Erasing the database...
-Writing the database...
+Erasing the database: 100%|█████████████████████████████████████████████████████████████████████████████| 8.59M/8.59M [02:15<00:00, 63.1KB/s]
+Writing the database: 100%|█████████████████████████████████████████████████████████████████████████████| 8.59M/8.59M [04:14<00:00, 40.5KB/s]
 Done
 ```
 
