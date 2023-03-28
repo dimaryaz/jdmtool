@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 
 import argparse 
+from functools import wraps
+from getpass import getpass
 import os
 import tqdm
 import usb1
@@ -8,6 +10,7 @@ import sys
 
 
 from .device import GarminProgrammerDevice, GarminProgrammerException
+from .downloader import Downloader, DownloaderException
 
 
 DB_MAGIC = (
@@ -18,6 +21,112 @@ DB_MAGIC = (
 DB_SIZE = len(GarminProgrammerDevice.DATA_PAGES) * 16 * 0x1000
 
 
+def with_usb(f):
+    @wraps(f)
+    def wrapper(*args, **kwargs):
+        with usb1.USBContext() as usbcontext:
+            try:
+                usbdev = usbcontext.getByVendorIDAndProductID(GarminProgrammerDevice.VID, GarminProgrammerDevice.PID)
+                if usbdev is None:
+                    raise GarminProgrammerException("Device not found")
+
+                print(f"Found device: {usbdev}")
+                handle = usbdev.open()
+            except usb1.USBError as ex:
+                raise GarminProgrammerException(f"Could not open: {ex}")
+
+            with handle.claimInterface(0):
+                handle.resetDevice()
+                dev = GarminProgrammerDevice(handle)
+                dev.init()
+                f(dev, *args, **kwargs)
+
+    return wrapper
+
+
+def cmd_login() -> None:
+    downloader = Downloader()
+
+    username = input("Username: ")
+    password = getpass("Password: ")
+
+    downloader.login(username, password)
+    print("Logged in successfully")
+
+def cmd_refresh() -> None:
+    downloader = Downloader()
+    downloader.refresh()
+    print("Success")
+
+def cmd_list_downloads() -> None:
+    downloader = Downloader()
+    services = downloader.get_services()
+
+    downloads_dir = downloader.get_downloads_dir()
+
+    row_format = "{:>2}  {:<70}  {:>5}  {:<10}  {:<10}  {:<10}"
+
+    print(row_format.format("ID", "Name", "Cycle", "Start Date", "End Date", "Downloaded"))
+    for idx, service in enumerate(services):
+        name: str = service.find('./short_desc').text
+        cycle: str = service.find('./version').text
+        start_date: str = service.find('./version_start_date').text.split()[0]
+        end_date: str = service.find('./version_end_date').text.split()[0]
+        filename: str = service.find('./filename').text
+
+        downloaded = (downloads_dir / filename).exists()
+
+        print(row_format.format(idx, name, cycle, start_date, end_date, 'Y' if downloaded else ''))
+
+def cmd_download(id) -> None:
+    downloader = Downloader()
+
+    services = downloader.get_services()
+    if id < 0 or id >= len(services):
+        raise DownloaderException("Invalid download ID")
+
+    service = services[id]
+
+    size = int(service.find('./file_size').text)
+
+    with tqdm.tqdm(desc="Downloading", total=size, unit='B', unit_scale=True) as t:
+        path = downloader.download(service, t.update)
+
+    print(f"Downloaded to {path}")
+
+@with_usb
+def cmd_transfer(dev, id) -> None:
+    downloader = Downloader()
+
+    services = downloader.get_services()
+    if id < 0 or id >= len(services):
+        raise DownloaderException("Invalid download ID")
+
+    service = services[id]
+
+    filename: str = service.find('./filename').text
+    version = service.find('./version').text
+    unique_service_id = service.find('./unique_service_id').text
+
+    path = downloader.get_downloads_dir() / filename
+    if not path.exists():
+        raise DownloaderException("Need to download it first")
+
+    new_metadata = f'{version}~{unique_service_id}'
+
+    prompt = input(f"Transfer {path} to the data card? (y/n) ")
+    if prompt.lower() != 'y':
+        raise DownloaderException("Cancelled")
+
+    _clear_metadata(dev)
+    _write_database(dev, path)
+
+    print(f"Writing new metadata: {new_metadata}")
+    _write_metadata(dev, new_metadata)
+
+    print("Done")
+
+@with_usb
 def cmd_detect(dev: GarminProgrammerDevice) -> None:
     version = dev.get_version()
     print(f"Firmware version: {version}")
@@ -30,6 +139,7 @@ def cmd_detect(dev: GarminProgrammerDevice) -> None:
     else:
         print("No card")
 
+@with_usb
 def cmd_read_metadata(dev: GarminProgrammerDevice) -> None:
     dev.write(b'\x40')  # TODO: Is this needed?
     dev.select_page(GarminProgrammerDevice.METADATA_PAGE)
@@ -41,7 +151,12 @@ def cmd_read_metadata(dev: GarminProgrammerDevice) -> None:
     value = b''.join(blocks).rstrip(b"\xFF").decode()
     print(f"Database metadata: {value}")
 
-def cmd_write_metadata(dev: GarminProgrammerDevice, metadata: str) -> None:
+def _clear_metadata(dev: GarminProgrammerDevice) -> None:
+    dev.write(b'\x42')  # TODO: Is this needed?
+    dev.select_page(GarminProgrammerDevice.METADATA_PAGE)
+    dev.erase_page()
+
+def _write_metadata(dev: GarminProgrammerDevice, metadata: str) -> None:
     dev.write(b'\x42')  # TODO: Is this needed?
     page = metadata.encode().ljust(0x10000, b'\xFF')
 
@@ -59,8 +174,12 @@ def cmd_write_metadata(dev: GarminProgrammerDevice, metadata: str) -> None:
         dev.check_card()
         dev.write_block(block)
 
+@with_usb
+def cmd_write_metadata(dev: GarminProgrammerDevice, metadata: str) -> None:
+    _write_metadata(dev, metadata)
     print("Done")
 
+@with_usb
 def cmd_read_database(dev: GarminProgrammerDevice, path: str) -> None:
     with open(path, 'w+b') as fd:
         with tqdm.tqdm(desc="Reading the database", total=DB_SIZE, unit='B', unit_scale=True) as t:
@@ -92,7 +211,7 @@ def cmd_read_database(dev: GarminProgrammerDevice, path: str) -> None:
 
     print("Done")
 
-def cmd_write_database(dev: GarminProgrammerDevice, path: str) -> None:
+def _write_database(dev: GarminProgrammerDevice, path: str) -> None:
     with open(path, 'rb') as fd:
         size = os.fstat(fd.fileno()).st_size
 
@@ -132,6 +251,17 @@ def cmd_write_database(dev: GarminProgrammerDevice, path: str) -> None:
                 dev.write_block(chunk)
                 t.update(len(chunk))
 
+@with_usb
+def cmd_write_database(dev: GarminProgrammerDevice, path: str) -> None:
+    prompt = input(f"Transfer {path} to the data card? (y/n) ")
+    if prompt.lower() != 'y':
+        raise DownloaderException("Cancelled")
+
+    try:
+        _write_database(dev, path)
+    except IOError as ex:
+        raise GarminProgrammerException(f"Could not read the database file: {ex}")
+
     print("Done")
 
 def main():
@@ -139,6 +269,46 @@ def main():
 
     subparsers = parser.add_subparsers(metavar="<command>")
     subparsers.required = True
+
+    login_p = subparsers.add_parser(
+        "login",
+        help="Log into Jeppesen",
+    )
+    login_p.set_defaults(func=cmd_login)
+
+    refresh_p = subparsers.add_parser(
+        "refresh",
+        help="Refresh the list available downloads",
+    )
+    refresh_p.set_defaults(func=cmd_refresh)
+
+    list_downloads_p = subparsers.add_parser(
+        "list-downloads",
+        help="Show the (cached) list of available downloads",
+    )
+    list_downloads_p.set_defaults(func=cmd_list_downloads)
+
+    download_p = subparsers.add_parser(
+        "download",
+        help="Download the data",
+    )
+    download_p.add_argument(
+        "id",
+        help="ID of the download",
+        type=int,
+    )
+    download_p.set_defaults(func=cmd_download)
+
+    transfer_p = subparsers.add_parser(
+        "transfer",
+        help="Transfer the downloaded database to the data card",
+    )
+    transfer_p.add_argument(
+        "id",
+        help="ID of the download",
+        type=int,
+    )
+    transfer_p.set_defaults(func=cmd_transfer)
 
     detect_p = subparsers.add_parser(
         "detect",
@@ -187,28 +357,14 @@ def main():
     kwargs = vars(args)
     func = kwargs.pop('func')
 
-    with usb1.USBContext() as usbcontext:
-        try:
-            usbdev = usbcontext.getByVendorIDAndProductID(GarminProgrammerDevice.VID, GarminProgrammerDevice.PID)
-            if usbdev is None:
-                print("Device not found")
-                return 1
-
-            print(f"Found device: {usbdev}")
-            handle = usbdev.open()
-        except usb1.USBError as ex:
-            print(f"Could not open: {ex}")
-            return 1
-
-        with handle.claimInterface(0):
-            handle.resetDevice()
-            try:
-                dev = GarminProgrammerDevice(handle)
-                dev.init()
-                func(dev, **kwargs)
-            except GarminProgrammerException as ex:
-                print(ex)
-                return 1
+    try:
+        func(**kwargs)
+    except DownloaderException as ex:
+        print(ex)
+        return 1
+    except GarminProgrammerException as ex:
+        print(ex)
+        return 1
 
     return 0
 

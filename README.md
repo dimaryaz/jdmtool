@@ -1,8 +1,9 @@
 # JdmTool
 
-A command-line tool for programming Garmin aviation data cards aiming to be compatible with [Jeppesen DistributionManager](https://ww2.jeppesen.com/data-solutions/jeppesen-distribution-manager/).
+A command-line tool for downloading Jeppesen databases and programming Garmin aviation data cards aiming to be compatible with [Jeppesen Distribution Manager](https://ww2.jeppesen.com/data-solutions/jeppesen-distribution-manager/).
 
 It requires:
+- Jeppesen subscription
 - A GNS 430/530 data card programmer (USB ID `0e39:1250`)
 - A 16MB data card
 
@@ -22,7 +23,53 @@ pip3 install .
 
 Make sure you have access to the USB device. On Linux, you should copy `udev/50-garmin.rules` to `/etc/udev/rules.d/`.
 
-## Usage
+## Basic Usage
+
+### Log in
+
+```
+$ jdmtool login
+Username: test@example.com
+Password: 
+Logged in successfully
+```
+
+### Refresh the list of available downloads
+
+```
+$ jdmtool refresh
+Success
+```
+
+### View available downloads
+
+```
+$ jdmtool list-downloads
+ID  Name                                                                    Cycle  Start Date  End Date    Downloaded
+ 0  NavData Coverage Garmin GNS 400/500 Series WAAS Americas                 2303  2023-03-23  2023-04-20            
+```
+
+### Download the database
+
+```
+$ jdmtool download 0
+Downloading: 100%|█████████████████████████████████████████████████| 8.44M/8.44M [00:03<00:00, 2.15MB/s]
+Downloaded to /home/user/.local/share/jdmtool/downloads/dgrw72_2303_eceb0273.bin
+```
+
+### Transfer the database to the data card
+
+```
+$ jdmtool transfer 0
+Found device: Bus 001 Device 052: ID 0e39:1250
+Transfer /home/user/.local/share/jdmtool/downloads/dgrw72_2303_eceb0273.bin to the data card? (y/n) y
+Erasing the database: 100%|████████████████████████████████████████| 8.59M/8.59M [02:15<00:00, 63.1KB/s]
+Writing the database: 100%|████████████████████████████████████████| 8.59M/8.59M [04:14<00:00, 40.5KB/s]
+Writing new metadata: 2303~12345678
+Done
+```
+
+## Advanced Features
 
 ### Check that the tool can detect the device and the data card:
 
@@ -60,7 +107,7 @@ Done
 ```
 $ jdmtool read-database db.bin
 Found device: Bus 001 Device 044: ID 0e39:1250
-Reading the database: 100%|█████████████████████████████████████████████████████████████████████████████| 8.59M/8.59M [01:33<00:00, 91.6KB/s]
+Reading the database: 100%|████████████████████████████████████████| 8.59M/8.59M [01:33<00:00, 91.6KB/s]
 Truncating the file...
 Done
 ```
@@ -79,8 +126,9 @@ This will do some sanity checks to make sure the file is in fact a Garmin databa
 ```
 $ jdmtool write-database dgrw72_2303_eceb0273.bin
 Found device: Bus 001 Device 045: ID 0e39:1250
-Erasing the database: 100%|█████████████████████████████████████████████████████████████████████████████| 8.59M/8.59M [02:15<00:00, 63.1KB/s]
-Writing the database: 100%|█████████████████████████████████████████████████████████████████████████████| 8.59M/8.59M [04:14<00:00, 40.5KB/s]
+Transfer dgrw72_2303_eceb0273.bin to the data card? (y/n) y
+Erasing the database: 100%|████████████████████████████████████████| 8.59M/8.59M [02:15<00:00, 63.1KB/s]
+Writing the database: 100%|████████████████████████████████████████| 8.59M/8.59M [04:14<00:00, 40.5KB/s]
 Done
 ```
 

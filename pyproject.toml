@@ -6,7 +6,9 @@ build-backend = "setuptools.build_meta"
 name = "jdmtool"
 version = "0.0.1"
 dependencies = [
-    'libusb1>=3.0.0',
+    'libusb1>=2.0.1',
+    'platformdirs>=2.6.2',
+    'requests>=2.26.0',
     'tqdm>=4.1.0',
 ]
 
