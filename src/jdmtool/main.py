@@ -44,6 +44,13 @@ def with_usb(f):
     return wrapper
 
 
+def _loop_helper(dev, i):
+    dev.set_led(i % 2 == 0)
+    if not dev.has_card():
+        dev.set_led(False)
+        raise GarminProgrammerException("Card not found!")
+
+
 def cmd_login() -> None:
     downloader = Downloader()
 
@@ -141,23 +148,22 @@ def cmd_detect(dev: GarminProgrammerDevice) -> None:
 
 @with_usb
 def cmd_read_metadata(dev: GarminProgrammerDevice) -> None:
-    dev.write(b'\x40')  # TODO: Is this needed?
+    dev.before_read()
     dev.select_page(GarminProgrammerDevice.METADATA_PAGE)
     blocks = []
     for i in range(16):
-        dev.set_led(i % 2 == 0)
-        dev.check_card()
+        _loop_helper(dev, i)
         blocks.append(dev.read_block())
     value = b''.join(blocks).rstrip(b"\xFF").decode()
     print(f"Database metadata: {value}")
 
 def _clear_metadata(dev: GarminProgrammerDevice) -> None:
-    dev.write(b'\x42')  # TODO: Is this needed?
+    dev.before_write()
     dev.select_page(GarminProgrammerDevice.METADATA_PAGE)
     dev.erase_page()
 
 def _write_metadata(dev: GarminProgrammerDevice, metadata: str) -> None:
-    dev.write(b'\x42')  # TODO: Is this needed?
+    dev.before_write()
     page = metadata.encode().ljust(0x10000, b'\xFF')
 
     dev.select_page(GarminProgrammerDevice.METADATA_PAGE)
@@ -167,11 +173,10 @@ def _write_metadata(dev: GarminProgrammerDevice, metadata: str) -> None:
     dev.erase_page()
 
     for i in range(16):
-        dev.set_led(i % 2 == 0)
+        _loop_helper(dev, i)
 
         block = page[i*0x1000:(i+1)*0x1000]
 
-        dev.check_card()
         dev.write_block(block)
 
 @with_usb
@@ -183,11 +188,9 @@ def cmd_write_metadata(dev: GarminProgrammerDevice, metadata: str) -> None:
 def cmd_read_database(dev: GarminProgrammerDevice, path: str) -> None:
     with open(path, 'w+b') as fd:
         with tqdm.tqdm(desc="Reading the database", total=DB_SIZE, unit='B', unit_scale=True) as t:
-            dev.write(b'\x40')  # TODO: Is this needed?
+            dev.before_read()
             for i in range(len(GarminProgrammerDevice.DATA_PAGES) * 16):
-                dev.set_led(i % 2 == 0)
-
-                dev.check_card()
+                _loop_helper(dev, i)
 
                 if i % 256 == 0:
                     dev.select_page(GarminProgrammerDevice.DATA_PAGES[i // 16])
@@ -224,14 +227,13 @@ def _write_database(dev: GarminProgrammerDevice, path: str) -> None:
 
         fd.seek(0)
 
-        dev.write(b'\x42')  # TODO: Is this needed?
+        dev.before_write()
 
         # Data card can only write by changing 1s to 0s (effectively doing a bit-wise AND with
         # the existing contents), so all data needs to be "erased" first to reset everything to 1s.
         with tqdm.tqdm(desc="Erasing the database", total=DB_SIZE, unit='B', unit_scale=True) as t:
             for i, page_id in enumerate(GarminProgrammerDevice.DATA_PAGES):
-                dev.set_led(i % 2 == 0)
-                dev.check_card()
+                _loop_helper(dev, i)
                 dev.select_page(page_id)
                 dev.erase_page()
                 t.update(16 * 0x1000)
@@ -240,9 +242,7 @@ def _write_database(dev: GarminProgrammerDevice, path: str) -> None:
             for i in range(len(GarminProgrammerDevice.DATA_PAGES) * 16):
                 block = fd.read(0x1000).ljust(0x1000, b'\xFF')
 
-                dev.set_led(i % 2 == 0)
-
-                dev.check_card()
+                _loop_helper(dev, i)
 
                 if i % 256 == 0:
                     dev.select_page(GarminProgrammerDevice.DATA_PAGES[i // 16])
@@ -253,13 +253,11 @@ def _write_database(dev: GarminProgrammerDevice, path: str) -> None:
         fd.seek(0)
 
         with tqdm.tqdm(desc="Verifying the database", total=DB_SIZE, unit='B', unit_scale=True) as t:
-            dev.write(b'\x40')  # TODO: Is this needed?
+            dev.before_read()
             for i in range(len(GarminProgrammerDevice.DATA_PAGES) * 16):
                 file_block = fd.read(0x1000).ljust(0x1000, b'\xFF')
 
-                dev.set_led(i % 2 == 0)
-
-                dev.check_card()
+                _loop_helper(dev, i)
 
                 if i % 256 == 0:
                     dev.select_page(GarminProgrammerDevice.DATA_PAGES[i // 16])

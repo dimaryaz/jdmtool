@@ -109,3 +109,12 @@ class GarminProgrammerDevice():
         buf = self.read(0x0040)
         if buf != b"\x04":
             raise GarminProgrammerException(f"Unexpected response: {buf}")
+
+    def before_read(self):
+        # It's not clear that this does anything, but JDM seems to send it
+        # before reading anything, so do the same thing.
+        self.write(b"\x40")
+
+    def before_write(self):
+        # Same as above.
+        self.write(b"\x42")
