@@ -238,8 +238,7 @@ def _write_database(dev: GarminProgrammerDevice, path: str) -> None:
 
         with tqdm.tqdm(desc="Writing the database", total=DB_SIZE, unit='B', unit_scale=True) as t:
             for i in range(len(GarminProgrammerDevice.DATA_PAGES) * 16):
-                chunk = fd.read(0x1000)
-                chunk = chunk.ljust(0x1000, b'\xFF')
+                block = fd.read(0x1000).ljust(0x1000, b'\xFF')
 
                 dev.set_led(i % 2 == 0)
 
@@ -248,8 +247,29 @@ def _write_database(dev: GarminProgrammerDevice, path: str) -> None:
                 if i % 256 == 0:
                     dev.select_page(GarminProgrammerDevice.DATA_PAGES[i // 16])
 
-                dev.write_block(chunk)
-                t.update(len(chunk))
+                dev.write_block(block)
+                t.update(len(block))
+
+        fd.seek(0)
+
+        with tqdm.tqdm(desc="Verifying the database", total=DB_SIZE, unit='B', unit_scale=True) as t:
+            dev.write(b'\x40')  # TODO: Is this needed?
+            for i in range(len(GarminProgrammerDevice.DATA_PAGES) * 16):
+                file_block = fd.read(0x1000).ljust(0x1000, b'\xFF')
+
+                dev.set_led(i % 2 == 0)
+
+                dev.check_card()
+
+                if i % 256 == 0:
+                    dev.select_page(GarminProgrammerDevice.DATA_PAGES[i // 16])
+
+                card_block = dev.read_block()
+
+                if card_block != file_block:
+                    raise GarminProgrammerException(f"Verification failed! Block {i} is incorrect.")
+
+                t.update(len(file_block))
 
 @with_usb
 def cmd_write_database(dev: GarminProgrammerDevice, path: str) -> None:
