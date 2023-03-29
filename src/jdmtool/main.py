@@ -18,7 +18,7 @@ DB_MAGIC = (
     b'\x00\x00\x00\x00\x00\x00)\x02\x11\x00\x00GARMIN AT  FAT16   \x00\x00'
 )
 
-DB_SIZE = len(GarminProgrammerDevice.DATA_PAGES) * 16 * 0x1000
+MAX_SIZE = len(GarminProgrammerDevice.DATA_PAGES) * 16 * 0x1000
 
 
 def with_usb(f):
@@ -187,7 +187,7 @@ def cmd_write_metadata(dev: GarminProgrammerDevice, metadata: str) -> None:
 @with_usb
 def cmd_read_database(dev: GarminProgrammerDevice, path: str) -> None:
     with open(path, 'w+b') as fd:
-        with tqdm.tqdm(desc="Reading the database", total=DB_SIZE, unit='B', unit_scale=True) as t:
+        with tqdm.tqdm(desc="Reading the database", total=MAX_SIZE, unit='B', unit_scale=True) as t:
             dev.before_read()
             for i in range(len(GarminProgrammerDevice.DATA_PAGES) * 16):
                 _loop_helper(dev, i)
@@ -196,6 +196,10 @@ def cmd_read_database(dev: GarminProgrammerDevice, path: str) -> None:
                     dev.select_page(GarminProgrammerDevice.DATA_PAGES[i // 16])
 
                 block = dev.read_block()
+
+                if block == b'\xFF' * 0x1000:
+                    break
+
                 fd.write(block)
                 t.update(len(block))
 
@@ -218,8 +222,12 @@ def _write_database(dev: GarminProgrammerDevice, path: str) -> None:
     with open(path, 'rb') as fd:
         size = os.fstat(fd.fileno()).st_size
 
-        if size > DB_SIZE:
-            raise GarminProgrammerException(f"Database file is too big! The maximum size is {DB_SIZE}.")
+        if size > MAX_SIZE:
+            raise GarminProgrammerException(f"Database file is too big! The maximum size is {MAX_SIZE}.")
+
+        pages_required = min(size // 16 // 0x1000 + 3, len(GarminProgrammerDevice.DATA_PAGES))
+        page_ids = GarminProgrammerDevice.DATA_PAGES[:pages_required]
+        total_size = pages_required * 16 * 0x1000
 
         magic = fd.read(64)
         if magic != DB_MAGIC:
@@ -231,36 +239,36 @@ def _write_database(dev: GarminProgrammerDevice, path: str) -> None:
 
         # Data card can only write by changing 1s to 0s (effectively doing a bit-wise AND with
         # the existing contents), so all data needs to be "erased" first to reset everything to 1s.
-        with tqdm.tqdm(desc="Erasing the database", total=DB_SIZE, unit='B', unit_scale=True) as t:
-            for i, page_id in enumerate(GarminProgrammerDevice.DATA_PAGES):
+        with tqdm.tqdm(desc="Erasing the database", total=total_size, unit='B', unit_scale=True) as t:
+            for i, page_id in enumerate(page_ids):
                 _loop_helper(dev, i)
                 dev.select_page(page_id)
                 dev.erase_page()
                 t.update(16 * 0x1000)
 
-        with tqdm.tqdm(desc="Writing the database", total=DB_SIZE, unit='B', unit_scale=True) as t:
-            for i in range(len(GarminProgrammerDevice.DATA_PAGES) * 16):
+        with tqdm.tqdm(desc="Writing the database", total=total_size, unit='B', unit_scale=True) as t:
+            for i in range(pages_required * 16):
                 block = fd.read(0x1000).ljust(0x1000, b'\xFF')
 
                 _loop_helper(dev, i)
 
                 if i % 256 == 0:
-                    dev.select_page(GarminProgrammerDevice.DATA_PAGES[i // 16])
+                    dev.select_page(page_ids[i // 16])
 
                 dev.write_block(block)
                 t.update(len(block))
 
         fd.seek(0)
 
-        with tqdm.tqdm(desc="Verifying the database", total=DB_SIZE, unit='B', unit_scale=True) as t:
+        with tqdm.tqdm(desc="Verifying the database", total=total_size, unit='B', unit_scale=True) as t:
             dev.before_read()
-            for i in range(len(GarminProgrammerDevice.DATA_PAGES) * 16):
+            for i in range(pages_required * 16):
                 file_block = fd.read(0x1000).ljust(0x1000, b'\xFF')
 
                 _loop_helper(dev, i)
 
                 if i % 256 == 0:
-                    dev.select_page(GarminProgrammerDevice.DATA_PAGES[i // 16])
+                    dev.select_page(page_ids[i // 16])
 
                 card_block = dev.read_block()
 

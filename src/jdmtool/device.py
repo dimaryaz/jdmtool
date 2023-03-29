@@ -21,7 +21,10 @@ class GarminProgrammerDevice():
         list(range(0x02E0, 0x0300)) +
         list(range(0x0160, 0x0180)) +
         list(range(0x0360, 0x0380)) +
-        [0x01A0, 0x01A1, 0x01A2]
+        list(range(0x01A0, 0x01C0)) +
+        list(range(0x03A0, 0x03C0)) +
+        list(range(0x01C0, 0x01E0)) +
+        list(range(0x03C0, 0x03E0))
     )
 
     def __init__(self, handle: usb1.USBDeviceHandle) -> None:
