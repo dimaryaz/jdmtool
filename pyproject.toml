@@ -5,12 +5,27 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "jdmtool"
 version = "0.0.1"
+authors = [
+  { name="Dima Ryazanov", email="dima@gmail.com" },
+]
+description = "Tool for downloading Jeppesen databases and programming Garmin aviation data cards"
+readme = "README.md"
+requires-python = ">=3.7"
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: Apache Software License",
+    "Operating System :: OS Independent",
+]
 dependencies = [
     'libusb1>=2.0.1',
     'platformdirs>=2.6.2',
     'requests>=2.26.0',
     'tqdm>=4.1.0',
 ]
+
+[project.urls]
+"Homepage" = "https://github.com/dimaryaz/jdmtool"
+"Bug Tracker" = "https://github.com/dimaryaz/jdmtool/issues"
 
 [project.scripts]
 jdmtool = "jdmtool.main:main"

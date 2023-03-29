@@ -13,12 +13,16 @@ Currently, it has only been tested on Linux with GNS 430 and a Jeppesen NavData 
 
 You may want to create a Python virtual environment using e.g. [virtualenvwrapper](https://pypi.org/project/virtualenvwrapper/).
 
-Install `jdmtool`:
+Install the latest `jdmtool` release:
 
 ```
-git clone https://github.com/dimaryaz/jdmtool
-cd jdmtool
-pip3 install .
+pip3 install jdmtool
+```
+
+Or install the latest code from GitHub:
+
+```
+pip3 install "git+https://github.com/dimaryaz/jdmtool.git#egg=jdmtool"
 ```
 
 Make sure you have access to the USB device. On Linux, you should copy `udev/50-garmin.rules` to `/etc/udev/rules.d/`.
