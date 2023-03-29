@@ -91,7 +91,7 @@ def cmd_refresh() -> None:
     downloader.refresh()
     print("Success")
 
-def cmd_list_downloads() -> None:
+def cmd_list() -> None:
     downloader = Downloader()
     services = downloader.get_services()
 
@@ -350,11 +350,11 @@ def main():
     )
     refresh_p.set_defaults(func=cmd_refresh)
 
-    list_downloads_p = subparsers.add_parser(
-        "list-downloads",
+    list_p = subparsers.add_parser(
+        "list",
         help="Show the (cached) list of available downloads",
     )
-    list_downloads_p.set_defaults(func=cmd_list_downloads)
+    list_p.set_defaults(func=cmd_list)
 
     info_p = subparsers.add_parser(
         "info",

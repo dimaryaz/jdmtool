@@ -44,7 +44,7 @@ Success
 ### View available downloads
 
 ```
-$ jdmtool list-downloads
+$ jdmtool list
 ID  Name                                                                    Cycle  Start Date  End Date    Downloaded
  0  NavData Coverage Garmin GNS 400/500 Series WAAS Americas                 2303  2023-03-23  2023-04-20            
 ```
