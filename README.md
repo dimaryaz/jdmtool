@@ -94,7 +94,7 @@ Transfer /home/user/.local/share/jdmtool/downloads/dgrw72_2303_eceb0273.bin to t
 Erasing the database: 100%|████████████████████████████████████████| 8.59M/8.59M [02:15<00:00, 63.1KB/s]
 Writing the database: 100%|████████████████████████████████████████| 8.59M/8.59M [04:14<00:00, 40.5KB/s]
 Verifying the database: 100%|██████████████████████████████████████| 8.59M/8.59M [01:32<00:00, 92.5KB/s]
-Writing new metadata: 2303~12345678
+Writing new metadata: {2303~12345678}
 Done
 ```
 

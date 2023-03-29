@@ -161,7 +161,7 @@ def cmd_transfer(dev, id) -> None:
     if not path.exists():
         raise DownloaderException("Need to download it first")
 
-    new_metadata = f'{version}~{unique_service_id}'
+    new_metadata = f'{{{version}~{unique_service_id}}}'  # E.g. {2303~12345678}
 
     prompt = input(f"Transfer {path} to the data card? (y/n) ")
     if prompt.lower() != 'y':
