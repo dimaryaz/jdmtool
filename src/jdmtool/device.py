@@ -69,10 +69,6 @@ class GarminProgrammerDevice():
         else:
             raise GarminProgrammerException(f"Unexpected response: {buf}")
 
-    def check_card(self):
-        if not self.has_card():
-            raise GarminProgrammerException("Card not found!")
-
     def get_version(self):
         self.write(b"\x60")
         return self.read(0x0040).decode()
