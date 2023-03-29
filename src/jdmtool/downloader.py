@@ -63,7 +63,7 @@ class Downloader:
 
         root = ET.fromstring(resp.text)
 
-        login_valid = root.find('./login_valid').text
+        login_valid = root.findtext('./login_valid')
         if login_valid != 'TRUE':
             raise DownloaderException("Invalid login")
 
@@ -91,9 +91,9 @@ class Downloader:
 
         root = ET.fromstring(resp.text)
 
-        response_code = root.find('./response_code').text
+        response_code = root.findtext('./response_code')
         if response_code != '0x0':
-            response_text = root.find('./response_text').text
+            response_text = root.findtext('./response_text')
             raise DownloaderException(response_text)
 
 
@@ -113,11 +113,11 @@ class Downloader:
         service: ET.Element,
         progress_cb: T.Callable[[int], None],
     ) -> None:
-        filename = service.find('./filename').text
+        filename = service.findtext('./filename')
         assert '/' not in filename, filename
         assert '\\' not in filename, filename
 
-        expected_crc = int(service.find('./file_crc').text, 16)
+        expected_crc = int(service.findtext('./file_crc'), 16)
 
         auth = self.get_auth()
 
@@ -127,9 +127,9 @@ class Downloader:
             params={
                 'jdam_version': self.JDAM_VERSION,
                 'client_type': self.CLIENT_TYPE,
-                'unique_service_id': service.find('./unique_service_id').text,
-                'service_code': service.find('./service_code').text,
-                'version': service.find('./version').text,
+                'unique_service_id': service.findtext('./unique_service_id'),
+                'service_code': service.findtext('./service_code'),
+                'version': service.findtext('./version'),
                 **auth,
             },
         ) as resp:

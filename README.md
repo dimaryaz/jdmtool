@@ -49,6 +49,34 @@ ID  Name                                                                    Cycl
  0  NavData Coverage Garmin GNS 400/500 Series WAAS Americas                 2303  2023-03-23  2023-04-20            
 ```
 
+### View detailed info
+
+```
+$ jdmtool info 0
+Aircraft Manufacturer:        LOCKHEED
+Aircraft Model:               SR-71
+Aircraft Tail Number:         N12345
+
+Avionics:                     Garmin GNS 400/500 Series WAAS
+Coverage:                     Americas
+Service Type:                 NavData
+Service Code:                 DGRW7253
+Service ID:                   12345678
+Service Renewal Date:         2024-01-01 00:00:00
+
+Version:                      2303
+Version Start Date:           2023-03-23 06:00:00
+Version End Date:             2023-04-20 06:00:00
+
+Next Version:                 2304
+Next Version Available Date:  2023-04-10 06:00:00
+Next Version Start Date:      2023-04-20 06:00:00
+
+File Name:                    dgrw72_2303_eceb0273.bin
+File Size:                    8443904
+File CRC32:                   eceb0273
+```
+
 ### Download the database
 
 ```

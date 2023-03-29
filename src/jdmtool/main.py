@@ -21,6 +21,32 @@ DB_MAGIC = (
 MAX_SIZE = len(GarminProgrammerDevice.DATA_PAGES) * 16 * 0x1000
 
 
+DETAILED_INFO_MAP = [
+    ("Aircraft Manufacturer", "./oracle_aircraft_manufacturer"),
+    ("Aircraft Model", "./oracle_aircraft_model"),
+    ("Aircraft Tail Number", "./oracle_aircraft_tail_number"),
+    (None, None),
+    ("Avionics", "./avionics"),
+    ("Coverage", "./coverage_desc"),
+    ("Service Type", "./service_type"),
+    ("Service Code", "./service_code"),
+    ("Service ID", "./unique_service_id"),
+    ("Service Renewal Date", "./service_renewal_date"),
+    (None, None),
+    ("Version", "./display_version"),
+    ("Version Start Date", "./version_start_date"),
+    ("Version End Date", "./version_end_date"),
+    (None, None),
+    ("Next Version", "./next_display_version"),
+    ("Next Version Available Date", "./next_version_avail_date"),
+    ("Next Version Start Date", "./next_version_start_date"),
+    (None, None),
+    ("File Name", "./filename"),
+    ("File Size", "./file_size"),
+    ("File CRC32", "./file_crc"),
+]
+
+
 def with_usb(f):
     @wraps(f)
     def wrapper(*args, **kwargs):
@@ -75,15 +101,31 @@ def cmd_list_downloads() -> None:
 
     print(row_format.format("ID", "Name", "Cycle", "Start Date", "End Date", "Downloaded"))
     for idx, service in enumerate(services):
-        name: str = service.find('./short_desc').text
-        cycle: str = service.find('./version').text
-        start_date: str = service.find('./version_start_date').text.split()[0]
-        end_date: str = service.find('./version_end_date').text.split()[0]
-        filename: str = service.find('./filename').text
+        name: str = service.findtext('./short_desc')
+        cycle: str = service.findtext('./version')
+        start_date: str = service.findtext('./version_start_date').split()[0]
+        end_date: str = service.findtext('./version_end_date').split()[0]
+        filename: str = service.findtext('./filename')
 
         downloaded = (downloads_dir / filename).exists()
 
         print(row_format.format(idx, name, cycle, start_date, end_date, 'Y' if downloaded else ''))
+
+def cmd_info(id) -> None:
+    downloader = Downloader()
+
+    services = downloader.get_services()
+    if id < 0 or id >= len(services):
+        raise DownloaderException("Invalid download ID")
+
+    service = services[id]
+
+    for desc, path in DETAILED_INFO_MAP:
+        if desc is None:
+            print()
+        else:
+            value = service.findtext(path)
+            print(f'{desc+":":<30}{value}')
 
 def cmd_download(id) -> None:
     downloader = Downloader()
@@ -94,7 +136,7 @@ def cmd_download(id) -> None:
 
     service = services[id]
 
-    size = int(service.find('./file_size').text)
+    size = int(service.findtext('./file_size'))
 
     with tqdm.tqdm(desc="Downloading", total=size, unit='B', unit_scale=True) as t:
         path = downloader.download(service, t.update)
@@ -111,9 +153,9 @@ def cmd_transfer(dev, id) -> None:
 
     service = services[id]
 
-    filename: str = service.find('./filename').text
-    version = service.find('./version').text
-    unique_service_id = service.find('./unique_service_id').text
+    filename: str = service.findtext('./filename')
+    version = service.findtext('./version')
+    unique_service_id = service.findtext('./unique_service_id')
 
     path = downloader.get_downloads_dir() / filename
     if not path.exists():
@@ -313,6 +355,17 @@ def main():
         help="Show the (cached) list of available downloads",
     )
     list_downloads_p.set_defaults(func=cmd_list_downloads)
+
+    info_p = subparsers.add_parser(
+        "info",
+        help="Show detailed info about the download",
+    )
+    info_p.add_argument(
+        "id",
+        help="ID of the download",
+        type=int,
+    )
+    info_p.set_defaults(func=cmd_info)
 
     download_p = subparsers.add_parser(
         "download",
