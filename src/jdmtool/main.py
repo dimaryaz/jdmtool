@@ -124,7 +124,7 @@ def cmd_info(id) -> None:
         if desc is None:
             print()
         else:
-            value = service.findtext(path)
+            value = service.findtext(path) or ''
             print(f'{desc+":":<30}{value}')
 
 def cmd_download(id) -> None:

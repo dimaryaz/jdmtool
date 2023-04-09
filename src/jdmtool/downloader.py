@@ -117,8 +117,6 @@ class Downloader:
         assert '/' not in filename, filename
         assert '\\' not in filename, filename
 
-        expected_crc = int(service.findtext('./file_crc'), 16)
-
         auth = self.get_auth()
 
         with self.session.get(
@@ -147,8 +145,11 @@ class Downloader:
                     crc = binascii.crc32(chunk, crc)
                     progress_cb(len(chunk))
 
+        expected_crc_str = service.findtext('./file_crc')
+        if expected_crc_str:
+            expected_crc = int(expected_crc_str, 16)
             if crc != expected_crc:
                 raise DownloaderException(f"Invalid checksum: expected {expected_crc:08x}, got {crc:08x}")
 
-            download_path.rename(final_path)
-            return final_path
+        download_path.rename(final_path)
+        return final_path
