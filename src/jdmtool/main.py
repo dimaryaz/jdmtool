@@ -44,6 +44,8 @@ DETAILED_INFO_MAP = [
     ("File Name", "./filename"),
     ("File Size", "./file_size"),
     ("File CRC32", "./file_crc"),
+    ("Serial Number", "./serial_number"),
+    ("System ID", "./avionics_id"),
 ]
 
 
@@ -97,19 +99,19 @@ def cmd_list() -> None:
 
     downloads_dir = downloader.get_downloads_dir()
 
-    row_format = "{:>2}  {:<70}  {:>5}  {:<10}  {:<10}  {:<10}"
+    row_format = "{:>2}  {:<70}  {:<8}  {:<10}  {:<10}  {:<10}"
 
-    print(row_format.format("ID", "Name", "Cycle", "Start Date", "End Date", "Downloaded"))
+    print(row_format.format("ID", "Name", "Version", "Start Date", "End Date", "Downloaded"))
     for idx, service in enumerate(services):
         name: str = service.findtext('./short_desc')
-        cycle: str = service.findtext('./version')
+        version: str = service.findtext('./display_version')
         start_date: str = service.findtext('./version_start_date').split()[0]
         end_date: str = service.findtext('./version_end_date').split()[0]
         filename: str = service.findtext('./filename')
 
         downloaded = (downloads_dir / filename).exists()
 
-        print(row_format.format(idx, name, cycle, start_date, end_date, 'Y' if downloaded else ''))
+        print(row_format.format(idx, name, version, start_date, end_date, 'Y' if downloaded else ''))
 
 def cmd_info(id) -> None:
     downloader = Downloader()

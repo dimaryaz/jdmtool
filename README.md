@@ -49,8 +49,9 @@ Success
 
 ```
 $ jdmtool list
-ID  Name                                                                    Cycle  Start Date  End Date    Downloaded
- 0  NavData Coverage Garmin GNS 400/500 Series WAAS Americas                 2303  2023-03-23  2023-04-20            
+ID  Name                                                                    Version   Start Date  End Date    Downloaded
+ 0  NavData Coverage Garmin GNS 400/500 Series WAAS Americas                2303      2023-03-23  2023-04-20  Y         
+ 1  NavData Coverage Garmin GNS 400/500 Series WAAS Americas                2304      2023-04-20  2023-05-18            
 ```
 
 ### View detailed info
@@ -79,6 +80,8 @@ Next Version Start Date:      2023-04-20 06:00:00
 File Name:                    dgrw72_2303_eceb0273.bin
 File Size:                    8443904
 File CRC32:                   eceb0273
+Serial Number:                
+System ID:                    
 ```
 
 ### Download the database
