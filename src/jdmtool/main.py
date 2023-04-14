@@ -2,15 +2,19 @@ import argparse
 from functools import wraps
 from getpass import getpass
 import os
-import sys
-import xml.etree.ElementTree as ET
+import pathlib
+import typing as T
 
 import tqdm
 import usb1
 
 from .device import GarminProgrammerDevice, GarminProgrammerException
 from .downloader import Downloader, DownloaderException
+from .service import Service, ServiceException, load_services
 
+
+CARD_TYPE_SD = 2
+CARD_TYPE_GARMIN = 7
 
 DB_MAGIC = (
     b'\xeb<\x90GARMIN10\x00\x02\x08\x01\x00\x01\x00\x02\x00\x80\xf0\x10\x00?\x00\xff\x00?\x00\x00\x00'
@@ -21,31 +25,27 @@ MAX_SIZE = len(GarminProgrammerDevice.DATA_PAGES) * 16 * 0x1000
 
 
 DETAILED_INFO_MAP = [
-    ("Aircraft Manufacturer", "./oracle_aircraft_manufacturer"),
-    ("Aircraft Model", "./oracle_aircraft_model"),
-    ("Aircraft Tail Number", "./oracle_aircraft_tail_number"),
+    ("Aircraft Manufacturer", "oracle_aircraft_manufacturer"),
+    ("Aircraft Model", "oracle_aircraft_model"),
+    ("Aircraft Tail Number", "oracle_aircraft_tail_number"),
     (None, None),
-    ("Avionics", "./avionics"),
-    ("Coverage", "./coverage_desc"),
-    ("Service Type", "./service_type"),
-    ("Service Code", "./service_code"),
-    ("Service ID", "./unique_service_id"),
-    ("Service Renewal Date", "./service_renewal_date"),
+    ("Avionics", "avionics"),
+    ("Service Type", "service_type"),
+    ("Coverage", "coverage_desc"),
+    ("Service Renewal Date", "service_renewal_date"),
     (None, None),
-    ("Version", "./display_version"),
-    ("Version Start Date", "./version_start_date"),
-    ("Version End Date", "./version_end_date"),
+    ("Service Code", "service_code"),
+    ("Service ID", "unique_service_id"),
+    ("Serial Number", "serial_number"),
+    ("System ID", "avionics_id"),
     (None, None),
-    ("Next Version", "./next_display_version"),
-    ("Next Version Available Date", "./next_version_avail_date"),
-    ("Next Version Start Date", "./next_version_start_date"),
+    ("Version", "display_version"),
+    ("Version Start Date", "version_start_date"),
+    ("Version End Date", "version_end_date"),
     (None, None),
-    ("File Name", "./filename"),
-    ("File Size", "./file_size"),
-    ("File CRC32", "./file_crc"),
-    ("SFF File Names", "./oem_garmin_sff_filenames"),
-    ("Serial Number", "./serial_number"),
-    ("System ID", "./avionics_id"),
+    ("Next Version", "next_display_version"),
+    ("Next Version Available Date", "next_version_avail_date"),
+    ("Next Version Start Date", "next_version_start_date"),
 ]
 
 
@@ -97,38 +97,29 @@ def cmd_refresh() -> None:
     print("Success")
 
 def cmd_list() -> None:
-    downloader = Downloader()
-    services = downloader.get_services()
+    services = load_services()
 
-    downloads_dir = downloader.get_downloads_dir()
-
-    row_format = "{:>2}  {:<70}  {:<20}  {:<8}  {:<10}  {:<10}  {:<10}"
+    row_format = "{:>2}  {:<70}  {:<25}  {:<8}  {:<10}  {:<10}  {:<10}"
 
     header = row_format.format("ID", "Name", "Coverage", "Version", "Start Date", "End Date", "Downloaded")
     print(f'\033[1m{header}\033[0m')
     for idx, service in enumerate(services):
-        avionics: str = service.findtext('./avionics', '')
-        service_type: str = service.findtext('./service_type', '')
+        avionics: str = service.get_property('avionics')
+        service_type: str = service.get_property('service_type')
         name = f'{avionics} - {service_type}'
-        coverage: str = service.findtext('./coverage_desc', '')
-        if len(coverage) > 20:
-            coverage = coverage[:19] + '…'
-        version: str = service.findtext('./display_version', '')
-        start_date: str = service.findtext('./version_start_date', '').split()[0]
-        end_date: str = service.findtext('./version_end_date', '').split()[0]
+        coverage: str = service.get_property('coverage_desc')
+        if len(coverage) > 25:
+            coverage = coverage[:24] + '…'
+        version: str = service.get_property('display_version')
+        start_date: str = service.get_property('version_start_date').split()[0]
+        end_date: str = service.get_property('version_end_date').split()[0]
 
-        filename = downloader.get_database_filename(service)
-        sff_filenames = downloader.get_sff_filenames(service)
-
-        sff_dir = downloader.get_sff_dir(service)
-        downloaded = (downloads_dir / filename).exists() and all((sff_dir / f).exists() for f in sff_filenames)
+        downloaded = all(f.exists() for f in service.get_download_paths())
 
         print(row_format.format(idx, name, coverage, version, start_date, end_date, 'Y' if downloaded else ''))
 
-def cmd_info(id) -> None:
-    downloader = Downloader()
-
-    services = downloader.get_services()
+def cmd_info(id: int) -> None:
+    services = load_services()
     if id < 0 or id >= len(services):
         raise DownloaderException("Invalid download ID")
 
@@ -138,64 +129,78 @@ def cmd_info(id) -> None:
         if desc is None:
             print()
         else:
-            value = service.findtext(path) or ''
+            value = service.get_optional_property(path) or ''
             print(f'{desc+":":<30}{value}')
 
-    downloads_dir = downloader.get_downloads_dir()
-    sff_dir = downloader.get_sff_dir(service)
-    db_name = downloader.get_database_filename(service)
-    sff_names = downloader.get_sff_filenames(service)
-    files = [downloads_dir / db_name] + [sff_dir / name for name in sff_names]
+    download_paths = service.get_download_paths()
 
     print()
     print("Downloads:")
-    for f in files:
+    for f in download_paths:
         status = '' if f.exists() else '  (missing)'
         print(f'  {f}{status}')
 
-def cmd_download(id) -> None:
+def cmd_download(id: int) -> None:
     downloader = Downloader()
 
-    services = downloader.get_services()
+    services = load_services()
     if id < 0 or id >= len(services):
         raise DownloaderException("Invalid download ID")
 
     service = services[id]
 
-    size = int(service.findtext('./file_size'))
+    databases = service.get_databases()
+    sffs = service.get_sffs()
+    oems = service.get_oems()
 
-    with tqdm.tqdm(desc="Downloading database", total=size, unit='B', unit_scale=True) as t:
-        def _update(n: int) -> None:
-            t.update(n)
+    for database in databases:
+        if database.dest_path.exists():
+            print(f"Skipping {database.dest_path}: already exists")
+            continue
 
-        path = downloader.download_database(service, _update)
+        database.dest_path.parent.mkdir(parents=True, exist_ok=True)
 
-    print(f"Downloaded to {path}")
+        with tqdm.tqdm(desc=f"Downloading {database.dest_path.name}", total=database.size, unit='B', unit_scale=True) as t:
+            def _update(n: int) -> None:
+                t.update(n)
 
-    sff_filenames = downloader.get_sff_filenames(service)
-    for sff_filename in sff_filenames:
-        print(f'Downloading {sff_filename}...')
-        sff_path = downloader.download_sff(service, sff_filename)
-        print(f"Downloaded to {sff_path}")
+            downloader.download_database(database.params, database.dest_path, database.crc32, _update)
 
-@with_usb
-def cmd_transfer(dev, id) -> None:
-    downloader = Downloader()
+        print(f"Downloaded to {database.dest_path}")
 
-    services = downloader.get_services()
-    if id < 0 or id >= len(services):
-        raise DownloaderException("Invalid download ID")
+    for sff in sffs:
+        if sff.dest_path.exists():
+            print(f"Skipping {sff.dest_path}: already exists")
+            continue
 
-    service: ET.Element = services[id]
+        sff.dest_path.parent.mkdir(parents=True, exist_ok=True)
 
-    filename: str = service.findtext('./filename', '')
-    if not filename:
-        raise DownloaderException("Missing filename")
+        print(f'Downloading {sff.dest_path.name}...')
+        downloader.download_sff(sff.params, sff.dest_path)
+        print(f"Downloaded to {sff.dest_path}")
 
-    version = service.findtext('./version')
-    unique_service_id = service.findtext('./unique_service_id')
+    for oem in oems:
+        if oem.dest_path.exists():
+            print(f"Skipping {oem.dest_path}: already exists")
+            continue
 
-    path = downloader.get_downloads_dir() / filename
+        oem.dest_path.parent.mkdir(parents=True, exist_ok=True)
+
+        print(f'Downloading {oem.dest_path.name}...')
+        downloader.download_oem(oem.params, oem.dest_path)
+        print(f"Downloaded to {oem.dest_path}")
+
+def _transfer_sd_card(service: Service, path: pathlib.Path) -> None:
+    raise DownloaderException("Not yet implemented")
+
+def _transfer_garmin_impl(dev: GarminProgrammerDevice, service: Service) -> None:
+    databases = service.get_databases()
+    assert len(databases) == 1, databases
+
+    version = service.get_property('version')
+    unique_service_id = service.get_property('unique_service_id')
+
+    path = databases[0].dest_path
     if not path.exists():
         raise DownloaderException("Need to download it first")
 
@@ -206,10 +211,34 @@ def cmd_transfer(dev, id) -> None:
         raise DownloaderException("Cancelled")
 
     _clear_metadata(dev)
-    _write_database(dev, path)
+    _write_database(dev, str(path))
 
     print(f"Writing new metadata: {new_metadata}")
     _write_metadata(dev, new_metadata)
+
+# Pylance workaround
+_transfer_garmin = with_usb(_transfer_garmin_impl)
+
+
+def cmd_transfer(id: int, device: T.Optional[str]) -> None:
+    services = load_services()
+    if id < 0 or id >= len(services):
+        raise DownloaderException("Invalid download ID")
+
+    service = services[id]
+
+    card_type = int(service.get_property('media/card_type'))
+
+    if card_type == CARD_TYPE_SD:
+        if not device:
+            raise DownloaderException("This database requires a path to an SD card")
+
+        _transfer_sd_card(service, pathlib.Path(device))
+    elif card_type == CARD_TYPE_GARMIN:
+        if device:
+            raise DownloaderException("This database requires a programmer device and does not support paths")
+
+        _transfer_garmin(service)
 
     print("Done")
 
@@ -418,12 +447,18 @@ def main():
 
     transfer_p = subparsers.add_parser(
         "transfer",
-        help="Transfer the downloaded database to the data card",
+        help="Transfer the downloaded database to an SD card or a Garmin data card",
     )
     transfer_p.add_argument(
         "id",
         help="ID of the download",
         type=int,
+    )
+    transfer_p.add_argument(
+        "device",
+        help="SD card directory (for Avidyne/G1000 databases)",
+        type=str,
+        nargs='?',
     )
     transfer_p.set_defaults(func=cmd_transfer)
 
@@ -477,6 +512,9 @@ def main():
     try:
         func(**kwargs)
     except DownloaderException as ex:
+        print(ex)
+        return 1
+    except ServiceException as ex:
         print(ex)
         return 1
     except GarminProgrammerException as ex:
