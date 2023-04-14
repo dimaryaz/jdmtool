@@ -2,8 +2,11 @@ import argparse
 from functools import wraps
 from getpass import getpass
 import os
+import pathlib
+import shutil
 import sys
 import xml.etree.ElementTree as ET
+import zipfile
 
 import tqdm
 import usb1
@@ -11,6 +14,13 @@ import usb1
 from .device import GarminProgrammerDevice, GarminProgrammerException
 from .downloader import Downloader, DownloaderException
 
+
+CARD_TYPE_SD = 2
+CARD_TYPE_GARMIN = 7
+
+LDR_SYS = 'ldr_sys'
+GRM_FEAT_KEY = 'grm_feat_key.zip'
+FEAT_UNLK = 'feat_unlk.dat'
 
 DB_MAGIC = (
     b'\xeb<\x90GARMIN10\x00\x02\x08\x01\x00\x01\x00\x02\x00\x80\xf0\x10\x00?\x00\xff\x00?\x00\x00\x00'
@@ -178,22 +188,67 @@ def cmd_download(id) -> None:
         sff_path = downloader.download_sff(service, sff_filename)
         print(f"Downloaded to {sff_path}")
 
-@with_usb
-def cmd_transfer(dev, id) -> None:
-    downloader = Downloader()
+def _transfer_sd_card(downloader: Downloader, service: ET.Element, path: pathlib.Path):
+    database_filename = downloader.get_database_filename(service)
+    sff_filenames = downloader.get_sff_filenames(service)
 
-    services = downloader.get_services()
-    if id < 0 or id >= len(services):
-        raise DownloaderException("Invalid download ID")
+    downloads_dir = downloader.get_downloads_dir()
+    if not all((downloads_dir / f).exists() for f in [database_filename] + sff_filenames):
+        raise DownloaderException("Need to download it first")
 
-    service: ET.Element = services[id]
+    if path.is_block_device():
+        raise DownloaderException(f"{path} is a device file; need the directory where the SD card is mounted")
 
-    filename: str = service.findtext('./filename', '')
-    if not filename:
-        raise DownloaderException("Missing filename")
+    if not path.is_dir():
+        raise DownloaderException(f"{path} is not a directory")
 
-    version = service.findtext('./version')
-    unique_service_id = service.findtext('./unique_service_id')
+    if not path.is_mount():
+        print(f"WARNING: {path} appears to be a normal directory, not a device.")
+
+    need_key = False
+
+    media_list = service.findall('./media')
+    for media in media_list:
+        assert int(media.findtext('./card_type', '')) == CARD_TYPE_SD
+
+        filename = media.findtext('./filename')
+
+        if filename == FEAT_UNLK:
+            need_key = True
+            if not (path / FEAT_UNLK).exists():
+                print(f"WARNING: {path} is missing {FEAT_UNLK}; the database will likely not be usable!")
+
+    prompt = input(f"Transfer databases to {path}? (y/n) ")
+    if prompt.lower() != 'y':
+        raise DownloaderException("Cancelled")
+
+    database_path = downloads_dir / database_filename
+    with zipfile.ZipFile(database_path) as database_zip:
+        infolist = database_zip.infolist()
+        for info in infolist:
+            info.filename = info.filename.replace('\\', '/')  # 🤦‍
+            target = path / info.filename
+            print(f"Copying {database_path}!{info.orig_filename} to {target}...")
+            database_zip.extract(info, path)
+
+    for sff_filename in sff_filenames:
+        sff_source = downloads_dir / sff_filename
+        sff_target = path / sff_filename
+        print(f"Copying {sff_source} to {sff_target}...")
+        shutil.copy(sff_source, sff_target)
+
+    if need_key:
+        keychain_source = downloader.get_data_dir() / GRM_FEAT_KEY
+        (path / LDR_SYS).mkdir(exist_ok=True)
+        keychain_target = path / LDR_SYS / GRM_FEAT_KEY
+        print(f"Copying {keychain_source} to {keychain_target}...")
+        shutil.copy(keychain_source, keychain_target)
+
+def _transfer_garmin_impl(dev: GarminProgrammerDevice, downloader: Downloader, service: ET.Element):
+    filename = downloader.get_database_filename(service)
+
+    version = service.findtext('./version', '')
+    unique_service_id = service.findtext('./unique_service_id', '')
 
     path = downloader.get_downloads_dir() / filename
     if not path.exists():
@@ -206,10 +261,36 @@ def cmd_transfer(dev, id) -> None:
         raise DownloaderException("Cancelled")
 
     _clear_metadata(dev)
-    _write_database(dev, path)
+    _write_database(dev, str(path))
 
     print(f"Writing new metadata: {new_metadata}")
     _write_metadata(dev, new_metadata)
+
+# Pylance workaround
+_transfer_garmin = with_usb(_transfer_garmin_impl)
+
+
+def cmd_transfer(id, device) -> None:
+    downloader = Downloader()
+
+    services = downloader.get_services()
+    if id < 0 or id >= len(services):
+        raise DownloaderException("Invalid download ID")
+
+    service: ET.Element = services[id]
+
+    card_type = int(service.findtext('./media/card_type', '0'))
+
+    if card_type == CARD_TYPE_SD:
+        if not device:
+            raise DownloaderException("This database requires a path to an SD card")
+
+        _transfer_sd_card(downloader, service, pathlib.Path(device))
+    elif card_type == CARD_TYPE_GARMIN:
+        if device:
+            raise DownloaderException("This database requires a programmer device and does not support paths")
+
+        _transfer_garmin(downloader, service)
 
     print("Done")
 
@@ -418,12 +499,18 @@ def main():
 
     transfer_p = subparsers.add_parser(
         "transfer",
-        help="Transfer the downloaded database to the data card",
+        help="Transfer the downloaded database to an SD card or a Garmin data card",
     )
     transfer_p.add_argument(
         "id",
         help="ID of the download",
         type=int,
+    )
+    transfer_p.add_argument(
+        "device",
+        help="SD card directory (only for G1000 databases)",
+        type=str,
+        nargs='?',
     )
     transfer_p.set_defaults(func=cmd_transfer)
 
