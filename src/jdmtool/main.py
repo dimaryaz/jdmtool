@@ -215,8 +215,7 @@ def _transfer_sd_card(downloader: Downloader, service: ET.Element, path: pathlib
 
         if filename == FEAT_UNLK:
             need_key = True
-            if not (path / FEAT_UNLK).exists():
-                print(f"WARNING: {path} is missing {FEAT_UNLK}; the database will likely not be usable!")
+            print(f"WARNING: this database requires {FEAT_UNLK}, and will likely not work!")
 
     prompt = input(f"Transfer databases to {path}? (y/n) ")
     if prompt.lower() != 'y':
