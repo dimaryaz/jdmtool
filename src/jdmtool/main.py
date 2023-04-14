@@ -91,7 +91,10 @@ def cmd_login() -> None:
 
 def cmd_refresh() -> None:
     downloader = Downloader()
+    print("Downloading services...")
     downloader.refresh()
+    print("Downloading keychain...")
+    downloader.refresh_keychain()
     print("Success")
 
 def cmd_list() -> None:

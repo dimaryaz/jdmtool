@@ -42,6 +42,8 @@ Logged in successfully
 
 ```
 $ jdmtool refresh
+Downloading services...
+Downloading keychain...
 Success
 ```
 

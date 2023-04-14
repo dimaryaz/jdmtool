@@ -99,6 +99,23 @@ class Downloader:
 
         (self.get_data_dir() / 'services.xml').write_text(resp.text)
 
+    def refresh_keychain(self) -> None:
+        auth = self.get_auth()
+
+        resp = self.session.get(
+            f'{self.JSUM_URL}/downloadgarminkeychainfile',
+            params={
+                'jdam_version': self.JDAM_VERSION,
+                'client_type': self.CLIENT_TYPE,
+                **auth,
+            },
+        )
+
+        if not resp.ok:
+            raise DownloaderException(f"Unexpected response: {resp}")
+
+        (self.get_data_dir() / 'grm_feat_key.zip').write_bytes(resp.content)
+
     def get_services(self) -> T.List[ET.Element]:
         try:
             root = ET.parse(self.get_data_dir() / 'services.xml')
