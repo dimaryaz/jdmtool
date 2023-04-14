@@ -193,7 +193,8 @@ def _transfer_sd_card(downloader: Downloader, service: ET.Element, path: pathlib
     sff_filenames = downloader.get_sff_filenames(service)
 
     downloads_dir = downloader.get_downloads_dir()
-    if not all((downloads_dir / f).exists() for f in [database_filename] + sff_filenames):
+    sff_dir = downloader.get_sff_dir(service)
+    if not (downloads_dir / database_filename).exists() or not all((sff_dir / f).exists() for f in sff_filenames):
         raise DownloaderException("Need to download it first")
 
     if path.is_block_device():
@@ -231,7 +232,7 @@ def _transfer_sd_card(downloader: Downloader, service: ET.Element, path: pathlib
             database_zip.extract(info, path)
 
     for sff_filename in sff_filenames:
-        sff_source = downloads_dir / sff_filename
+        sff_source = sff_dir / sff_filename
         sff_target = path / sff_filename
         print(f"Copying {sff_source} to {sff_target}...")
         shutil.copy(sff_source, sff_target)
