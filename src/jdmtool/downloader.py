@@ -22,7 +22,7 @@ class Downloader:
 
     def __init__(self) -> None:
         self.session = requests.Session()
-        self.session.headers['User-Agent'] = None
+        self.session.headers['User-Agent'] = None  # type: ignore
 
     @classmethod
     def get_data_dir(cls) -> pathlib.Path:
@@ -112,8 +112,11 @@ class Downloader:
         self,
         service: ET.Element,
         progress_cb: T.Callable[[int], None],
-    ) -> None:
-        filename = service.findtext('./filename')
+    ) -> pathlib.Path:
+        filename = service.findtext('./filename', '')
+        if not filename:
+            raise DownloaderException("Missing filename")
+
         assert '/' not in filename, filename
         assert '\\' not in filename, filename
 

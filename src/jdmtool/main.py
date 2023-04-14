@@ -4,10 +4,11 @@ import argparse
 from functools import wraps
 from getpass import getpass
 import os
+import sys
+import xml.etree.ElementTree as ET
+
 import tqdm
 import usb1
-import sys
-
 
 from .device import GarminProgrammerDevice, GarminProgrammerException
 from .downloader import Downloader, DownloaderException
@@ -103,11 +104,11 @@ def cmd_list() -> None:
 
     print(row_format.format("ID", "Name", "Version", "Start Date", "End Date", "Downloaded"))
     for idx, service in enumerate(services):
-        name: str = service.findtext('./short_desc')
-        version: str = service.findtext('./display_version')
-        start_date: str = service.findtext('./version_start_date').split()[0]
-        end_date: str = service.findtext('./version_end_date').split()[0]
-        filename: str = service.findtext('./filename')
+        name: str = service.findtext('./short_desc', '')
+        version: str = service.findtext('./display_version', '')
+        start_date: str = service.findtext('./version_start_date', '').split()[0]
+        end_date: str = service.findtext('./version_end_date', '').split()[0]
+        filename: str = service.findtext('./filename', '')
 
         downloaded = (downloads_dir / filename).exists()
 
@@ -141,7 +142,10 @@ def cmd_download(id) -> None:
     size = int(service.findtext('./file_size'))
 
     with tqdm.tqdm(desc="Downloading", total=size, unit='B', unit_scale=True) as t:
-        path = downloader.download(service, t.update)
+        def _update(n: int) -> None:
+            t.update(n)
+
+        path = downloader.download(service, _update)
 
     print(f"Downloaded to {path}")
 
@@ -153,9 +157,12 @@ def cmd_transfer(dev, id) -> None:
     if id < 0 or id >= len(services):
         raise DownloaderException("Invalid download ID")
 
-    service = services[id]
+    service: ET.Element = services[id]
 
-    filename: str = service.findtext('./filename')
+    filename: str = service.findtext('./filename', '')
+    if not filename:
+        raise DownloaderException("Missing filename")
+
     version = service.findtext('./version')
     unique_service_id = service.findtext('./unique_service_id')
 
