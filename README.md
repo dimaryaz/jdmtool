@@ -49,9 +49,9 @@ Success
 
 ```
 $ jdmtool list
-ID  Name                                                                    Version   Start Date  End Date    Downloaded
- 0  NavData Coverage Garmin GNS 400/500 Series WAAS Americas                2303      2023-03-23  2023-04-20  Y         
- 1  NavData Coverage Garmin GNS 400/500 Series WAAS Americas                2304      2023-04-20  2023-05-18            
+ID  Name                                                                    Coverage              Version   Start Date  End Date    Downloaded
+ 0  Garmin GNS 400/500 Series WAAS - NavData                                Americas              2303      2023-03-23  2023-04-20  Y         
+ 1  Garmin GNS 400/500 Series WAAS - NavData                                Americas              2304      2023-04-20  2023-05-18  Y         
 ```
 
 ### View detailed info

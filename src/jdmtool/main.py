@@ -100,11 +100,17 @@ def cmd_list() -> None:
 
     downloads_dir = downloader.get_downloads_dir()
 
-    row_format = "{:>2}  {:<70}  {:<8}  {:<10}  {:<10}  {:<10}"
+    row_format = "{:>2}  {:<70}  {:<20}  {:<8}  {:<10}  {:<10}  {:<10}"
 
-    print(row_format.format("ID", "Name", "Version", "Start Date", "End Date", "Downloaded"))
+    header = row_format.format("ID", "Name", "Coverage", "Version", "Start Date", "End Date", "Downloaded")
+    print(f'\033[1m{header}\033[0m')
     for idx, service in enumerate(services):
-        name: str = service.findtext('./short_desc', '')
+        avionics: str = service.findtext('./avionics', '')
+        service_type: str = service.findtext('./service_type', '')
+        name = f'{avionics} - {service_type}'
+        coverage: str = service.findtext('./coverage_desc', '')
+        if len(coverage) > 20:
+            coverage = coverage[:19] + '…'
         version: str = service.findtext('./display_version', '')
         start_date: str = service.findtext('./version_start_date', '').split()[0]
         end_date: str = service.findtext('./version_end_date', '').split()[0]
@@ -112,7 +118,7 @@ def cmd_list() -> None:
 
         downloaded = (downloads_dir / filename).exists()
 
-        print(row_format.format(idx, name, version, start_date, end_date, 'Y' if downloaded else ''))
+        print(row_format.format(idx, name, coverage, version, start_date, end_date, 'Y' if downloaded else ''))
 
 def cmd_info(id) -> None:
     downloader = Downloader()
