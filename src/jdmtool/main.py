@@ -45,6 +45,7 @@ DETAILED_INFO_MAP = [
     ("File Name", "./filename"),
     ("File Size", "./file_size"),
     ("File CRC32", "./file_crc"),
+    ("SFF File Names", "./oem_garmin_sff_filenames"),
     ("Serial Number", "./serial_number"),
     ("System ID", "./avionics_id"),
 ]
@@ -117,9 +118,11 @@ def cmd_list() -> None:
         version: str = service.findtext('./display_version', '')
         start_date: str = service.findtext('./version_start_date', '').split()[0]
         end_date: str = service.findtext('./version_end_date', '').split()[0]
-        filename: str = service.findtext('./filename', '')
 
-        downloaded = (downloads_dir / filename).exists()
+        filename = downloader.get_database_filename(service)
+        sff_filenames = downloader.get_sff_filenames(service)
+
+        downloaded = all((downloads_dir / f).exists() for f in [filename] + sff_filenames)
 
         print(row_format.format(idx, name, coverage, version, start_date, end_date, 'Y' if downloaded else ''))
 
@@ -139,6 +142,17 @@ def cmd_info(id) -> None:
             value = service.findtext(path) or ''
             print(f'{desc+":":<30}{value}')
 
+    downloads_dir = downloader.get_downloads_dir()
+    db_name = downloader.get_database_filename(service)
+    sff_names = downloader.get_sff_filenames(service)
+    files = [downloads_dir / name for name in [db_name] + sff_names]
+
+    print()
+    print("Downloads:")
+    for f in files:
+        status = '' if f.exists() else '  (missing)'
+        print(f'  {f}{status}')
+
 def cmd_download(id) -> None:
     downloader = Downloader()
 
@@ -150,13 +164,19 @@ def cmd_download(id) -> None:
 
     size = int(service.findtext('./file_size'))
 
-    with tqdm.tqdm(desc="Downloading", total=size, unit='B', unit_scale=True) as t:
+    with tqdm.tqdm(desc="Downloading database", total=size, unit='B', unit_scale=True) as t:
         def _update(n: int) -> None:
             t.update(n)
 
-        path = downloader.download(service, _update)
+        path = downloader.download_database(service, _update)
 
     print(f"Downloaded to {path}")
+
+    sff_filenames = downloader.get_sff_filenames(service)
+    for sff_filename in sff_filenames:
+        print(f'Downloading {sff_filename}...')
+        sff_path = downloader.download_sff(service, sff_filename)
+        print(f"Downloaded to {sff_path}")
 
 @with_usb
 def cmd_transfer(dev, id) -> None:

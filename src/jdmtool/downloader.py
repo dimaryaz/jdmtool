@@ -125,17 +125,34 @@ class Downloader:
         services = root.findall('./service')
         return services
 
-    def download(
-        self,
-        service: ET.Element,
-        progress_cb: T.Callable[[int], None],
-    ) -> pathlib.Path:
+    def get_database_filename(self, service: ET.Element) -> str:
         filename = service.findtext('./filename', '')
         if not filename:
             raise DownloaderException("Missing filename")
 
-        assert '/' not in filename, filename
-        assert '\\' not in filename, filename
+        if '/' in filename or '\\' in filename:
+            raise DownloaderException(f"Bad filename: {filename!r}")
+
+        return filename
+
+    def get_sff_filenames(self, service: ET.Element) -> T.List[str]:
+        sff_filenames_str = service.findtext("./oem_garmin_sff_filenames", '')
+        if not sff_filenames_str:
+            return []
+
+        sff_filenames = sff_filenames_str.split(',')
+        for sff_filename in sff_filenames:
+            if '/' in sff_filename or '\\' in sff_filename:
+                raise DownloaderException(f"Bad filename: {sff_filename!r}")
+
+        return sff_filenames
+
+    def download_database(
+        self,
+        service: ET.Element,
+        progress_cb: T.Callable[[int], None],
+    ) -> pathlib.Path:
+        filename = self.get_database_filename(service)
 
         auth = self.get_auth()
 
@@ -170,6 +187,40 @@ class Downloader:
             expected_crc = int(expected_crc_str, 16)
             if crc != expected_crc:
                 raise DownloaderException(f"Invalid checksum: expected {expected_crc:08x}, got {crc:08x}")
+
+        download_path.rename(final_path)
+        return final_path
+
+    def download_sff(
+        self,
+        service: ET.Element,
+        filename: str,
+    ) -> pathlib.Path:
+        auth = self.get_auth()
+
+        with self.session.get(
+            f'{self.JSUM_URL}/downloadsff',
+            params={
+                'jdam_version': self.JDAM_VERSION,
+                'client_type': self.CLIENT_TYPE,
+                'unique_service_id': service.findtext('./unique_service_id'),
+                'service_code': service.findtext('./service_code'),
+                'version': service.findtext('./version'),
+                'type': service.findtext('oem_garmin_sff_db_type'),
+                'garmin_sec_id': service.findtext('garmin_sec_id'),
+                'avionics_id': service.findtext('avionics_id'),
+                'filename': filename,
+                **auth,
+            },
+        ) as resp:
+            if not resp.ok:
+                raise DownloaderException(f"Unexpected response: {resp}")
+
+            download_dir = self.get_downloads_dir()
+            download_path = download_dir / f'{filename}.download'
+            final_path = download_dir / filename
+
+            download_path.write_bytes(resp.content)
 
         download_path.rename(final_path)
         return final_path

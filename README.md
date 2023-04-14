@@ -84,6 +84,9 @@ File Size:                    8443904
 File CRC32:                   eceb0273
 Serial Number:                
 System ID:                    
+
+Downloads:
+  /home/user/.local/share/jdmtool/downloads/dgrw72_2303_eceb0273.bin  (missing)
 ```
 
 ### Download the database
