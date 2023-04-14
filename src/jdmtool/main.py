@@ -122,7 +122,8 @@ def cmd_list() -> None:
         filename = downloader.get_database_filename(service)
         sff_filenames = downloader.get_sff_filenames(service)
 
-        downloaded = all((downloads_dir / f).exists() for f in [filename] + sff_filenames)
+        sff_dir = downloader.get_sff_dir(service)
+        downloaded = (downloads_dir / filename).exists() and all((sff_dir / f).exists() for f in sff_filenames)
 
         print(row_format.format(idx, name, coverage, version, start_date, end_date, 'Y' if downloaded else ''))
 
@@ -143,9 +144,10 @@ def cmd_info(id) -> None:
             print(f'{desc+":":<30}{value}')
 
     downloads_dir = downloader.get_downloads_dir()
+    sff_dir = downloader.get_sff_dir(service)
     db_name = downloader.get_database_filename(service)
     sff_names = downloader.get_sff_filenames(service)
-    files = [downloads_dir / name for name in [db_name] + sff_names]
+    files = [downloads_dir / db_name] + [sff_dir / name for name in sff_names]
 
     print()
     print("Downloads:")
