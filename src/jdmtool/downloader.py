@@ -135,6 +135,16 @@ class Downloader:
 
         return filename
 
+    def get_sff_dir(self, service: ET.Element) -> pathlib.Path:
+        service_id = service.findtext('./unique_service_id', '')
+        version = service.findtext('./version', '')
+
+        download_dir = self.get_downloads_dir()
+        sff_dir = download_dir / 'sff' / f'{service_id}_{version}'
+        sff_dir.mkdir(parents=True, exist_ok=True)
+
+        return sff_dir
+
     def get_sff_filenames(self, service: ET.Element) -> T.List[str]:
         sff_filenames_str = service.findtext("./oem_garmin_sff_filenames", '')
         if not sff_filenames_str:
@@ -216,9 +226,9 @@ class Downloader:
             if not resp.ok:
                 raise DownloaderException(f"Unexpected response: {resp}")
 
-            download_dir = self.get_downloads_dir()
-            download_path = download_dir / f'{filename}.download'
-            final_path = download_dir / filename
+            sff_dir = self.get_sff_dir(service)
+            download_path = sff_dir / f'{filename}.download'
+            final_path = sff_dir / filename
 
             download_path.write_bytes(resp.content)
 
