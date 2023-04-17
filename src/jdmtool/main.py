@@ -206,8 +206,6 @@ def _transfer_sd_card(downloader: Downloader, service: ET.Element, path: pathlib
     if not path.is_mount():
         print(f"WARNING: {path} appears to be a normal directory, not a device.")
 
-    need_key = False
-
     media_list = service.findall('./media')
     for media in media_list:
         assert int(media.findtext('./card_type', '')) == CARD_TYPE_SD
@@ -215,7 +213,6 @@ def _transfer_sd_card(downloader: Downloader, service: ET.Element, path: pathlib
         filename = media.findtext('./filename')
 
         if filename == FEAT_UNLK:
-            need_key = True
             print(f"WARNING: this database requires {FEAT_UNLK}, and will likely not work!")
 
     prompt = input(f"Transfer databases to {path}? (y/n) ")
@@ -237,7 +234,7 @@ def _transfer_sd_card(downloader: Downloader, service: ET.Element, path: pathlib
         print(f"Copying {sff_source} to {sff_target}...")
         shutil.copy(sff_source, sff_target)
 
-    if need_key:
+    if sff_filenames:
         keychain_source = downloader.get_data_dir() / GRM_FEAT_KEY
         (path / LDR_SYS).mkdir(exist_ok=True)
         keychain_target = path / LDR_SYS / GRM_FEAT_KEY
