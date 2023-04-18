@@ -22,7 +22,7 @@ class GPlugin:
         self.path = path
         self.serial = None
         self.g_plugin_path = None
-        self.wine_drive = None
+        self.prefix = None
         self.process = None
         self.session = requests.Session()
 
@@ -56,38 +56,48 @@ class GPlugin:
 
             print(f"Getting Windows drive for {self.path}...")
             try:
-                self.wine_drive = subprocess.check_output(
+                wine_drive = subprocess.check_output(
                     ['winepath', '-w', self.path], stderr=subprocess.DEVNULL
                 ).decode().rstrip().rstrip('\\')
             except FileNotFoundError as ex:
                 raise GPluginException(f"Could not run winepath: {ex}") from ex
 
-            if len(self.wine_drive) == 2:
-                print(f"Found {self.wine_drive}")
+            if len(wine_drive) == 2:
+                print(f"Found {wine_drive}")
             else:
                 raise GPluginException(
-                    f"Unexpected windows path: {self.wine_drive}; needs to be a drive letter!"
+                    f"Unexpected windows path: {wine_drive}; needs to be a drive letter!"
                 )
+            self.prefix = wine_drive
+        else:
+            self.prefix = str(self.path)
 
-            self.g_plugin_path = os.getenv("G_PLUGIN_PATH")
-            if self.g_plugin_path is not None:
-                if pathlib.Path(self.g_plugin_path).exists():
-                    print(f"Using {self.g_plugin_path}")
-                else:
-                    raise GPluginException(f"{self.g_plugin_path!r} does not exist - check G_PLUGIN_PATH")
+        self.g_plugin_path = os.getenv("G_PLUGIN_PATH")
+        if self.g_plugin_path is not None:
+            if pathlib.Path(self.g_plugin_path).exists():
+                print(f"Using {self.g_plugin_path}")
             else:
+                raise GPluginException(f"{self.g_plugin_path!r} does not exist - check G_PLUGIN_PATH")
+        else:
+            if psutil.LINUX:
                 program_files = subprocess.check_output(
                     ['wine', 'cmd', '/c', 'echo %ProgramFiles%'], stderr=subprocess.DEVNULL
                 ).decode().rstrip()
                 self.g_plugin_path = subprocess.check_output(
                     ['winepath', '-u', program_files + '/' + WIN_G_PLUGIN_PATH], stderr=subprocess.DEVNULL
                 ).decode().rstrip()
-                if pathlib.Path(self.g_plugin_path).exists():
-                    print(f"Found g_plugin at {self.g_plugin_path!r}")
-                else:
-                    raise GPluginException(f"Could not find the plugin at {self.g_plugin_path!r}!")
+            elif psutil.WINDOWS:
+                program_files = os.getenv("ProgramFiles")
+                if not program_files:
+                    raise GPluginException("Couldn't find Program Files!")
+                self.g_plugin_path = str(pathlib.Path(program_files) / WIN_G_PLUGIN_PATH)
+            else:
+                raise GPluginException("Sorry, OS not supported yet.")
+
+        if pathlib.Path(self.g_plugin_path).exists():
+            print(f"Found g_plugin at {self.g_plugin_path!r}")
         else:
-            raise GPluginException("Sorry, g_plugin is only supported on Linux at the moment")
+            raise GPluginException(f"Could not find the plugin at {self.g_plugin_path!r}!")
 
     def start(self):
         assert self.process is None
@@ -99,7 +109,9 @@ class GPlugin:
         except requests.ConnectionError:
             pass
 
-        self.process = subprocess.Popen(['wine', self.g_plugin_path], stderr=subprocess.DEVNULL)
+        cmd = ['wine', self.g_plugin_path] if psutil.LINUX else [self.g_plugin_path]
+
+        self.process = subprocess.Popen(cmd, stderr=subprocess.DEVNULL)
 
         for _ in range(5):
             time.sleep(1)
@@ -124,8 +136,8 @@ class GPlugin:
                     "jsonrpc": "2.0",
                     "method": "program",
                     "params": {
-                        "datafile": f'{self.wine_drive}/{datafile}',
-                        "featunlk": f'{self.wine_drive}/{featunlk}',
+                        "datafile": f'{self.prefix}/{datafile}',
+                        "featunlk": f'{self.prefix}/{featunlk}',
                         "garmin_sec_id": int(garmin_sec_id),
                         "numaircraft": 0,
                         "sysid": f'0x{int(garmin_system_id, 16):08X}',
@@ -145,9 +157,10 @@ class GPlugin:
             else:
                 raise GPluginException(f"Got an error: {error}")
 
-            serial = self._extract_serial(self.path / featunlk)
-            if serial != self.serial:
-                raise GPluginException(f"Wrote the wrong serial number! Expected {self.serial:08X}, got {serial:08X}")
+            if self.serial is not None:
+                serial = self._extract_serial(self.path / featunlk)
+                if serial != self.serial:
+                    raise GPluginException(f"Wrote the wrong serial number! Expected {self.serial:08X}, got {serial:08X}")
         except requests.ConnectionError as ex:
             raise GPluginException("Could not connect to g_plugin") from ex
 
