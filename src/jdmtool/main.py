@@ -13,6 +13,7 @@ import usb1
 
 from .device import GarminProgrammerDevice, GarminProgrammerException
 from .downloader import Downloader, DownloaderException
+from .gplugin import GPlugin, GPluginException
 
 
 CARD_TYPE_SD = 2
@@ -206,6 +207,8 @@ def _transfer_sd_card(downloader: Downloader, service: ET.Element, path: pathlib
     if not path.is_mount():
         print(f"WARNING: {path} appears to be a normal directory, not a device.")
 
+    feat_unlk = False
+
     media_list = service.findall('./media')
     for media in media_list:
         assert int(media.findtext('./card_type', '')) == CARD_TYPE_SD
@@ -213,20 +216,50 @@ def _transfer_sd_card(downloader: Downloader, service: ET.Element, path: pathlib
         filename = media.findtext('./filename')
 
         if filename == FEAT_UNLK:
-            print(f"WARNING: this database requires {FEAT_UNLK}, and will likely not work!")
+            feat_unlk = True
+
+    if feat_unlk:
+        print(f"NOTE: this database requires {FEAT_UNLK}; will need to run g_plugin from JDM!")
 
     prompt = input(f"Transfer databases to {path}? (y/n) ")
     if prompt.lower() != 'y':
         raise DownloaderException("Cancelled")
 
+    g_plugin = None
+    if feat_unlk:
+        g_plugin = GPlugin(path)
+        g_plugin.init()
+
+    target_filenames = []
     database_path = downloads_dir / database_filename
     with zipfile.ZipFile(database_path) as database_zip:
         infolist = database_zip.infolist()
         for info in infolist:
             info.filename = info.filename.replace('\\', '/')  # 🤦‍
             target = path / info.filename
+            target_filenames.append(info.filename)
             print(f"Copying {database_path}!{info.orig_filename} to {target}...")
             database_zip.extract(info, path)
+
+    if feat_unlk:
+        garmin_sec_id = service.findtext('garmin_sec_id', '')
+        garmin_system_ids = service.findtext('garmin_system_ids', '')
+        unique_service_id = service.findtext('unique_service_id', '')
+        version = service.findtext('version', '')
+
+        assert g_plugin
+        try:
+            print("Starting g_plugin...")
+            g_plugin.start()
+
+            for target in target_filenames:
+                print(f"Updating {FEAT_UNLK} for {target}...")
+                g_plugin.run(
+                    target, FEAT_UNLK, garmin_sec_id, garmin_system_ids, unique_service_id, version
+                )
+        finally:
+            print("Shutting down g_plugin.")
+            g_plugin.stop()
 
     for sff_filename in sff_filenames:
         sff_source = sff_dir / sff_filename
@@ -561,6 +594,9 @@ def main():
     try:
         func(**kwargs)
     except DownloaderException as ex:
+        print(ex)
+        return 1
+    except GPluginException as ex:
         print(ex)
         return 1
     except GarminProgrammerException as ex:
