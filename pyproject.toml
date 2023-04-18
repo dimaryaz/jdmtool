@@ -19,6 +19,7 @@ classifiers = [
 dependencies = [
     'libusb1>=2.0.1',
     'platformdirs>=2.6.2',
+    'psutil>=5.9.4',
     'requests>=2.26.0',
     'tqdm>=4.1.0',
 ]
