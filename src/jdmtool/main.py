@@ -204,8 +204,14 @@ def _transfer_sd_card(downloader: Downloader, service: ET.Element, path: pathlib
     if not path.is_dir():
         raise DownloaderException(f"{path} is not a directory")
 
-    if not path.is_mount():
-        print(f"WARNING: {path} appears to be a normal directory, not a device.")
+    if isinstance(path, pathlib.PosixPath):
+        if not path.is_mount():
+            print(f"WARNING: {path} appears to be a normal directory, not a device.")
+    else:
+        if path.parent != path:
+            print(f"WARNING: {path} appears to be a directory, not a drive.")
+        elif not path.root:
+            path = path / '/'
 
     feat_unlk = False
 
