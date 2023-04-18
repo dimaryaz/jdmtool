@@ -137,7 +137,13 @@ class GPlugin:
             if resp.status_code != 200:
                 raise GPluginException(f"Got an error: {resp.json()}")
 
-            print(f"Got response: {resp.json()}")
+            data = resp.json()
+            result = data.get('result')
+            error = data.get('error')
+            if result:
+                print(f"Got response: {result}")
+            else:
+                raise GPluginException(f"Got an error: {error}")
 
             serial = self._extract_serial(self.path / featunlk)
             if serial != self.serial:
