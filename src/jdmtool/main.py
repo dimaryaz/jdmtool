@@ -11,10 +11,11 @@ import zipfile
 import tqdm
 import usb1
 
+from .chartview import ChartView
 from .device import GarminProgrammerDevice, GarminProgrammerException
 from .downloader import Downloader, DownloaderException
 from .gplugin import GPlugin, GPluginException
-from .service import Service, SimpleService, ServiceException, get_data_dir, load_services
+from .service import ChartViewService, Service, SimpleService, ServiceException, get_data_dir, load_services
 
 
 CARD_TYPE_SD = 2
@@ -199,17 +200,11 @@ def cmd_download(id: int) -> None:
         print(f"Downloaded to {oem.dest_path}")
 
 def _transfer_sd_card(service: Service, path: pathlib.Path):
-    if not isinstance(service, SimpleService):
-        raise DownloaderException("Not supported yet")
-
     if not all(f.exists() for f in service.get_download_paths()):
         raise DownloaderException("Need to download it first")
 
     databases = service.get_databases()
     sffs = service.get_sffs()
-
-    assert len(databases) == 1, databases
-    database_path = databases[0].dest_path
 
     if path.is_block_device():
         raise DownloaderException(f"{path} is a device file; need the directory where the SD card is mounted")
@@ -244,40 +239,55 @@ def _transfer_sd_card(service: Service, path: pathlib.Path):
     if prompt.lower() != 'y':
         raise DownloaderException("Cancelled")
 
-    g_plugin = None
-    if feat_unlk:
-        g_plugin = GPlugin(path)
-        g_plugin.init()
+    if isinstance(service, SimpleService):
+        assert len(databases) == 1, databases
+        database_path = databases[0].dest_path
 
-    target_filenames = []
-    with zipfile.ZipFile(database_path) as database_zip:
-        infolist = database_zip.infolist()
-        for info in infolist:
-            info.filename = info.filename.replace('\\', '/')  # 🤦‍
-            target = path / info.filename
-            target_filenames.append(info.filename)
-            print(f"Copying {database_path}!{info.orig_filename} to {target}...")
-            database_zip.extract(info, path)
+        g_plugin = None
+        if feat_unlk:
+            g_plugin = GPlugin(path)
+            g_plugin.init()
 
-    if feat_unlk:
-        garmin_sec_id = service.get_property('garmin_sec_id')
-        garmin_system_ids = service.get_property('garmin_system_ids')
-        unique_service_id = service.get_property('unique_service_id')
-        version = service.get_property('version')
+        target_filenames = []
+        with zipfile.ZipFile(database_path) as database_zip:
+            infolist = database_zip.infolist()
+            for info in infolist:
+                info.filename = info.filename.replace('\\', '/')  # 🤦‍
+                target = path / info.filename
+                target_filenames.append(info.filename)
+                print(f"Copying {database_path}!{info.orig_filename} to {target}...")
+                database_zip.extract(info, path)
 
-        assert g_plugin
+        if feat_unlk:
+            garmin_sec_id = service.get_property('garmin_sec_id')
+            garmin_system_ids = service.get_property('garmin_system_ids')
+            unique_service_id = service.get_property('unique_service_id')
+            version = service.get_property('version')
+
+            assert g_plugin
+            try:
+                print("Starting g_plugin...")
+                g_plugin.start()
+
+                for target in target_filenames:
+                    print(f"Updating {FEAT_UNLK} for {target}...")
+                    g_plugin.run(
+                        target, FEAT_UNLK, garmin_sec_id, garmin_system_ids, unique_service_id, version
+                    )
+            finally:
+                print("Shutting down g_plugin.")
+                g_plugin.stop()
+    elif isinstance(service, ChartViewService):
+        if feat_unlk:
+            raise DownloaderException(f"{FEAT_UNLK} not supported for ChartView!")
+
+        chartview = ChartView([cfg.dest_path for cfg in service.get_databases()])
         try:
-            print("Starting g_plugin...")
-            g_plugin.start()
-
-            for target in target_filenames:
-                print(f"Updating {FEAT_UNLK} for {target}...")
-                g_plugin.run(
-                    target, FEAT_UNLK, garmin_sec_id, garmin_system_ids, unique_service_id, version
-                )
+            chartview.transfer(path)
         finally:
-            print("Shutting down g_plugin.")
-            g_plugin.stop()
+            chartview.close()
+
+        assert False
 
     for sff in sffs:
         sff_target = path / sff.dest_path.name
