@@ -24,6 +24,7 @@ class Downloader:
 
     def __init__(self) -> None:
         self.session = requests.Session()
+        self.session.verify = False  # !!!
         self.session.headers['User-Agent'] = None  # type: ignore
 
     @classmethod
