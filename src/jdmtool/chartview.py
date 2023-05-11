@@ -2,6 +2,7 @@ import argparse
 import binascii
 import configparser
 from dataclasses import dataclass
+import datetime
 import pathlib
 import struct
 import typing as T
@@ -65,7 +66,53 @@ class ChartSource:
     entry_map: T.Dict[str, zipfile.ZipInfo]
 
 
+@dataclass
+class DbfHeader:
+    SIZE = 32
+    VERSION = 3
+
+    last_update: datetime.date
+    num_records: int
+    header_bytes: int
+    record_bytes: int
+
+    @classmethod
+    def from_bytes(cls, data: bytes):
+        version, year, month, day, num_records, header_bytes, record_bytes = struct.unpack('<4BIHH20x', data)
+        if version != cls.VERSION:
+            raise ValueError(f"Unsupported DBF version: {version}")
+
+        return cls(datetime.date(year + 1900, month, day), num_records, header_bytes, record_bytes)
+
+    def to_bytes(self):
+        return struct.pack(
+            '<4BIHH20x',
+            self.VERSION, self.last_update.year - 1900, self.last_update.month, self.last_update.day,
+            self.num_records, self.header_bytes, self.record_bytes
+        )
+
+
+@dataclass
+class DbfField:
+    SIZE = 32
+
+    name: str
+    type: str
+    length: int
+
+    @classmethod
+    def from_bytes(cls, data: bytes):
+        name, typ, length = struct.unpack('<11sc4xB15x', data)
+        return cls(name.decode(), typ.decode(), length)
+
+    def to_bytes(self):
+        return struct.pack('<11sc4xB15x', self.name.encode(), self.type.encode(), self.length)
+
+
 class ChartView:
+    CHARTS_INI = 'charts.ini'
+    CHARTLINK = 'chrtlink.dbf'
+
     def __init__(self, zip_list: T.List[pathlib.Path]) -> None:
         self._sources: T.List[ChartSource] = []
         for path in zip_list:
@@ -90,9 +137,21 @@ class ChartView:
     # def verify(self):
 
     def transfer(self, dest_path: pathlib.Path) -> None:
-        config_bytes = self._sources[0].handle.read(self._sources[0].entry_map['charts.ini'])
+        cfg = self._process_charts_ini(dest_path)
+        filenames = self._process_charts_bin(cfg, dest_path)
+        filename_set = set(filename.lower()[:-4] for filename in filenames)
+        self._process_chartlink(filename_set, dest_path)
+
+
+    def _process_charts_ini(self, dest_path: pathlib.Path) -> configparser.ConfigParser:
+        config_bytes = self._sources[0].handle.read(self._sources[0].entry_map[self.CHARTS_INI])
         cfg = configparser.ConfigParser()
         cfg.read_string(config_bytes.decode())
+        (dest_path / self.CHARTS_INI).write_bytes(config_bytes)
+
+        return cfg
+
+    def _process_charts_bin(self, cfg, dest_path: pathlib.Path) -> T.List[str]:
         db_begin_date = cfg['CHARTS']['Database_Begin_Date']
 
         charts_bin_dest = dest_path / 'charts.bin'
@@ -151,10 +210,71 @@ class ChartView:
 
                 charts_bin_fd.seek(0)
                 charts_bin_fd.write(crc32q.to_bytes(4, 'little'))
-
             finally:
                 for chart_fd in chart_fds:
                     chart_fd.close()
+
+        return [record.name for record in all_records]
+
+    @classmethod
+    def _read_dbf_header(cls, fd: T.IO[bytes]) -> T.Tuple[DbfHeader, T.List[DbfField]]:
+        header = DbfHeader.from_bytes(fd.read(DbfHeader.SIZE))
+        num_fields = (header.header_bytes - 33) // 32
+        fields = [DbfField.from_bytes(fd.read(DbfField.SIZE)) for _ in range(num_fields)]
+        if fd.read(1) != b'\x0D':
+            raise ValueError("Missing array terminator")
+        return header, fields
+
+    @classmethod
+    def _write_dbf_header(cls, fd: T.IO[bytes], header: DbfHeader, fields: T.List[DbfField]) -> None:
+        header.header_bytes = len(fields) * 32 + 33
+        fd.write(header.to_bytes())
+        for field in fields:
+            fd.write(field.to_bytes())
+        fd.write(b'\x0D')
+
+    @classmethod
+    def _read_dbf_record(cls, fd: T.IO[bytes], fields: T.List[DbfField]) -> T.List[T.Any]:
+        del_marker = fd.read(1).decode()
+        if del_marker != ' ':
+            raise ValueError("Deleted field?")
+        values = []
+        for field in fields:
+            data = fd.read(field.length)
+            if field.type == 'C':
+                values.append(data.decode('latin-1').rstrip(' '))
+            elif field.type == 'N':
+                values.append(int(data))
+            else:
+                raise ValueError(f"Unsupported field: {field.type}")
+        return values
+
+    @classmethod
+    def _write_dbf_record(cls, fd: T.IO[bytes], fields: T.List[DbfField], values: T.List[T.Any]) -> None:
+        fd.write(b' ')
+        for field, value in zip(fields, values):
+            if field.type == 'C':
+                fd.write(value.encode('latin-1').ljust(field.length, b' '))
+            elif field.type == 'N':
+                fd.write(str(value).encode('latin-1').rjust(field.length, b' '))
+            else:
+                raise ValueError(f"Unsupported field: {field.type}")
+
+    def _process_chartlink(self, filenames: T.Set[str], dest_path: pathlib.Path):
+        with self._sources[0].handle.open(self._sources[0].entry_map[self.CHARTLINK]) as fd:
+            header, fields = self._read_dbf_header(fd)
+            records = []
+            for _ in range(header.num_records):
+                record = self._read_dbf_record(fd, fields)
+                if record[3].lower() in filenames or record[4].lower() in filenames:
+                    records.append(record)
+
+        header.num_records = len(records)
+
+        with open(dest_path / self.CHARTLINK, 'wb') as fd:
+            self._write_dbf_header(fd, header, fields)
+            for record in records:
+                self._write_dbf_record(fd, fields, record)
 
 
 def main() -> int:
