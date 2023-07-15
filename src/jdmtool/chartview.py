@@ -12,6 +12,21 @@ import zlib
 import libscrc
 
 
+# http://www.ifrsupplies.com/it/ifr/480-abbonamento-ifr-digitale-europa-per-mfd-eur.html
+
+
+# MFEUR143 -> 73311856
+# MFVEU643 -> 73307503
+
+
+# IFR regions.dat: 'c8cccccecec7cac9ffffffffffffffffffffffffffffffffffffffffffffffffb2b9baaaadceba8a8d908f9affffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff'
+# VFR regions.dat: 'c8cccccfc8cacfccffffffffffffffffffffffffffffffffffffffffffffffffb2b9a9baaac9a9b9addfd2dfba8a8d908f9affffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff'
+
+
+# IFR hack:        'c8cccccecec7cac9ffffffffffffffffffffffffffffffffffffffffffffffffb2b9baaaadceffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff'
+# IFR hack2:       'c8cccccecec7cac9ffffffffffffffffffffffffffffffffffffffffffffffffb2b9baaaffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff'
+# VFR hack:        'c8cccccfc8cacfccffffffffffffffffffffffffffffffffffffffffffffffffb2b9a9baaac9a9b9addfd2dfffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff'
+
 @dataclass
 class ChartHeader:
     SIZE = 27
@@ -140,7 +155,8 @@ class ChartView:
         cfg = self._process_charts_ini(dest_path)
         filenames = self._process_charts_bin(cfg, dest_path)
         filename_set = set(filename.lower()[:-4] for filename in filenames)
-        self._process_chartlink(filename_set, dest_path)
+        self._process_charts(filename_set, dest_path)
+        # self._process_chartlink(filename_set, dest_path)
 
 
     def _process_charts_ini(self, dest_path: pathlib.Path) -> configparser.ConfigParser:
@@ -240,9 +256,11 @@ class ChartView:
             raise ValueError("Deleted field?")
         values = []
         for field in fields:
-            data = fd.read(field.length)
+            data = fd.read(field.length).decode('latin-1')
             if field.type == 'C':
-                values.append(data.decode('latin-1').rstrip(' '))
+                values.append(data.rstrip(' '))
+            elif field.type == 'D':
+                values.append(data)
             elif field.type == 'N':
                 values.append(int(data))
             else:
@@ -253,28 +271,57 @@ class ChartView:
     def _write_dbf_record(cls, fd: T.IO[bytes], fields: T.List[DbfField], values: T.List[T.Any]) -> None:
         fd.write(b' ')
         for field, value in zip(fields, values):
+            data = None
             if field.type == 'C':
-                fd.write(value.encode('latin-1').ljust(field.length, b' '))
+                data = value.ljust(field.length, ' ')
+            elif field.type == 'D':
+                data = value
             elif field.type == 'N':
-                fd.write(str(value).encode('latin-1').rjust(field.length, b' '))
+                data = str(value).rjust(field.length, ' ')
             else:
                 raise ValueError(f"Unsupported field: {field.type}")
+            fd.write(data.encode('latin-1'))
 
-    def _process_chartlink(self, filenames: T.Set[str], dest_path: pathlib.Path):
-        with self._sources[0].handle.open(self._sources[0].entry_map[self.CHARTLINK]) as fd:
-            header, fields = self._read_dbf_header(fd)
-            records = []
-            for _ in range(header.num_records):
-                record = self._read_dbf_record(fd, fields)
-                if record[3].lower() in filenames or record[4].lower() in filenames:
-                    records.append(record)
+    def _process_charts(self, filenames: T.Set[str], dest_path: pathlib.Path):
+        records = []
+        header: T.Optional[DbfHeader] = None
+        fields: T.Optional[T.List[DbfField]] = None
+        for name in ['charts.dbf', 'vfrchrts.dbf']:
+            with self._sources[0].handle.open(self._sources[0].entry_map[name]) as fd:
+                header, fields = self._read_dbf_header(fd)
+                for _ in range(header.num_records):
+                    record = self._read_dbf_record(fd, fields)
+                    if record[1].lower() in filenames:
+                        records.append(record)
+
+        assert header is not None
+        assert fields is not None
 
         header.num_records = len(records)
 
-        with open(dest_path / self.CHARTLINK, 'wb') as fd:
+        with open(dest_path / 'charts.dbf', 'wb') as fd:
             self._write_dbf_header(fd, header, fields)
             for record in records:
                 self._write_dbf_record(fd, fields, record)
+
+    # def _process_chartlink(self, filenames: T.Set[str], dest_path: pathlib.Path):
+    #     with self._sources[0].handle.open(self._sources[0].entry_map[self.CHARTLINK]) as fd:
+    #         header, fields = self._read_dbf_header(fd)
+    #         records = []
+    #         for _ in range(header.num_records):
+    #             record = self._read_dbf_record(fd, fields)
+    #             if record[3].lower() in filenames or record[4].lower() in filenames:
+    #                 records.append(record)
+    #                 print("Adding", record)
+    #             else:
+    #                 print("Skipping", record)
+
+    #     header.num_records = len(records)
+
+    #     with open(dest_path / self.CHARTLINK, 'wb') as fd:
+    #         self._write_dbf_header(fd, header, fields)
+    #         for record in records:
+    #             self._write_dbf_record(fd, fields, record)
 
 
 def main() -> int:
