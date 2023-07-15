@@ -201,7 +201,7 @@ def load_services() -> T.List[Service]:
 
     for xml_service in xml_services:
         category = xml_service.findtext('./category', '')
-        if category == '10':
+        if category in ('1', '10'):
             services.append(SimpleService(xml_service))
         elif category == '8':
             serial_number = xml_service.findtext('./serial_number', '')
