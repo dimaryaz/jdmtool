@@ -29,3 +29,4 @@ dependencies = [
 
 [project.scripts]
 jdmtool = "jdmtool.main:main"
+chartview = "jdmtool.chartview:main"
