@@ -1,5 +1,3 @@
-#!/usr/bin/env python3
-
 import argparse 
 from functools import wraps
 from getpass import getpass
@@ -486,6 +484,3 @@ def main():
         return 1
 
     return 0
-
-if __name__ == "__main__":
-    sys.exit(main())
