@@ -1,6 +1,7 @@
 
 import base64
 import binascii
+import datetime
 import hashlib
 import json
 import pathlib
@@ -19,6 +20,7 @@ class Downloader:
     JSUM_URL = 'https://jsum.jeppesen.com/jsum'
     JDAM_VERSION = '3.14.0.60'
     CLIENT_TYPE = 'jdmx_win'
+    COV_CHECK_MAGIC = 'L15ak3y'  # Hard-coded in jdm.exe
 
     def __init__(self) -> None:
         self.session = requests.Session()
@@ -37,6 +39,26 @@ class Downloader:
         return path
 
     @classmethod
+    def get_cov_check(cls) -> T.Tuple[str, str]:
+        now = datetime.datetime.now(datetime.UTC)
+        date_str = now.strftime('%a %b %d %H:%M:%S %Y')
+        cov_check = hashlib.md5((date_str + cls.COV_CHECK_MAGIC).encode()).hexdigest()
+        return date_str, cov_check
+
+    @classmethod
+    def get_common_headers_params(cls) -> T.Tuple[T.Dict[str, str], T.Dict[str, str]]:
+        date_str, cov_check = cls.get_cov_check()
+        headers = {
+            'Date': date_str,
+        }
+        params = {
+            'jdam_version': cls.JDAM_VERSION,
+            'client_type': cls.CLIENT_TYPE,
+            'cov_check': cov_check,
+        }
+        return headers, params
+
+    @classmethod
     def get_auth(cls) -> dict:
         auth_file = cls.get_data_dir() / 'auth.json'
         try:
@@ -47,14 +69,15 @@ class Downloader:
 
     def login(self, username: str, password: str) -> None:
         pwhash = base64.b64encode(hashlib.md5(password.encode()).digest()).decode()
+        headers, params = self.get_common_headers_params()
 
         resp = self.session.get(
             f'{self.JSUM_URL}/verifylogin.php',
+            headers=headers,
             params={
                 'username': username,
                 'pwhash': pwhash,
-                'jdam_version': self.JDAM_VERSION,
-                'client_type': self.CLIENT_TYPE,
+                **params,
             },
         )
 
@@ -76,13 +99,14 @@ class Downloader:
 
     def refresh(self) -> None:
         auth = self.get_auth()
+        headers, params = self.get_common_headers_params()
 
         resp = self.session.get(
             f'{self.JSUM_URL}/getserviceslist.php',
+            headers=headers,
             params={
-                'jdam_version': self.JDAM_VERSION,
-                'client_type': self.CLIENT_TYPE,
                 **auth,
+                **params,
             },
         )
 
@@ -101,13 +125,14 @@ class Downloader:
 
     def refresh_keychain(self) -> None:
         auth = self.get_auth()
+        headers, params = self.get_common_headers_params()
 
         resp = self.session.get(
             f'{self.JSUM_URL}/downloadgarminkeychainfile',
+            headers=headers,
             params={
-                'jdam_version': self.JDAM_VERSION,
-                'client_type': self.CLIENT_TYPE,
                 **auth,
+                **params,
             },
         )
 
@@ -165,17 +190,18 @@ class Downloader:
         filename = self.get_database_filename(service)
 
         auth = self.get_auth()
+        headers, params = self.get_common_headers_params()
 
         with self.session.get(
             f'{self.JSUM_URL}/DownloadJDMService',
             stream=True,
+            headers=headers,
             params={
-                'jdam_version': self.JDAM_VERSION,
-                'client_type': self.CLIENT_TYPE,
                 'unique_service_id': service.findtext('./unique_service_id'),
                 'service_code': service.findtext('./service_code'),
                 'version': service.findtext('./version'),
                 **auth,
+                **params,
             },
         ) as resp:
             if not resp.ok:
@@ -207,12 +233,12 @@ class Downloader:
         filename: str,
     ) -> pathlib.Path:
         auth = self.get_auth()
+        headers, params = self.get_common_headers_params()
 
         with self.session.get(
             f'{self.JSUM_URL}/downloadsff',
+            headers=headers,
             params={
-                'jdam_version': self.JDAM_VERSION,
-                'client_type': self.CLIENT_TYPE,
                 'unique_service_id': service.findtext('./unique_service_id'),
                 'service_code': service.findtext('./service_code'),
                 'version': service.findtext('./version'),
@@ -221,6 +247,7 @@ class Downloader:
                 'avionics_id': service.findtext('avionics_id'),
                 'filename': filename,
                 **auth,
+                **params,
             },
         ) as resp:
             if not resp.ok:
