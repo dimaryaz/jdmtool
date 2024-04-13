@@ -40,7 +40,7 @@ class Downloader:
 
     @classmethod
     def get_cov_check(cls) -> T.Tuple[str, str]:
-        now = datetime.datetime.now(datetime.UTC)
+        now = datetime.datetime.now(datetime.timezone.utc)
         date_str = now.strftime('%a %b %d %H:%M:%S %Y')
         cov_check = hashlib.md5((date_str + cls.COV_CHECK_MAGIC).encode()).hexdigest()
         return date_str, cov_check
