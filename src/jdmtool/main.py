@@ -1,16 +1,22 @@
 import argparse 
 from functools import wraps
 from getpass import getpass
+from io import TextIOWrapper
+import json
 import os
 import pathlib
 import typing as T
+import zipfile
 
+import libscrc
+import psutil
 import tqdm
 import usb1
 
+from .avidyne import SFXFile, SecurityContext
 from .device import GarminProgrammerDevice, GarminProgrammerException
 from .downloader import Downloader, DownloaderException
-from .service import Service, ServiceException, load_services
+from .service import Service, ServiceException, SimpleService, load_services
 
 
 CARD_TYPE_SD = 2
@@ -22,6 +28,8 @@ DB_MAGIC = (
 )
 
 MAX_SIZE = len(GarminProgrammerDevice.DATA_PAGES) * 16 * 0x1000
+
+DOT_JDM = '.jdm'
 
 
 DETAILED_INFO_MAP = [
@@ -190,8 +198,191 @@ def cmd_download(id: int) -> None:
         downloader.download_oem(oem.params, oem.dest_path)
         print(f"Downloaded to {oem.dest_path}")
 
-def _transfer_sd_card(service: Service, path: pathlib.Path) -> None:
-    raise DownloaderException("Not yet implemented")
+
+def update_dot_jdm(service: Service, path: pathlib.Path, files: T.List[T.Dict[str, T.Any]]) -> None:
+    try:
+        with open(path / DOT_JDM) as fd:
+            data = json.load(fd)
+    except Exception as e:
+        data = {}
+
+    gsi = service.get_optional_property('garmin_sec_id')
+
+    ss = [s for s in data.get('ss') or [] if s['u'] != service.get_property('unique_service_id')]
+    ss.append({
+        "a": service.get_property('avionics'),
+        "c": service.get_property('customer_number'),
+        "cd": service.get_property('coverage_desc'),
+        "date_label_override": service.get_property('date_label_override'),
+        "dv": service.get_property('display_version'),
+        "f": files,
+        "fid": "",
+        "filter_applied": "no",
+        "gsi": f"0x{gsi}" if gsi else "",
+        "jvsn": "",
+        "ndv": service.get_property('next_display_version'),
+        "nvad": service.get_property('next_version_avail_date'),
+        "nvsd": service.get_property('next_version_start_date'),
+        "oatn": service.get_property('oracle_aircraft_tail_number'),
+        "pi": service.get_property('product_item'),
+        "s": service.get_property('service_type'),  # ?
+        "sc": service.get_property('coverage_desc'),
+        "u": service.get_property('unique_service_id'),
+        "uv": service.get_property('unique_service_id') + '_' + service.get_property('version'),
+        "v": service.get_property('version'),
+        "ved": service.get_property('version_end_date'),
+        "vsd": service.get_property('version_start_date'),
+    })
+
+    data = {
+        "ss": ss,
+        "ver": "1.1",
+        "z": "DEADBEEF",
+    }
+
+    data_str = json.dumps(data, separators=(',', ':'), sort_keys=True)
+    z = libscrc.crc32_q(data_str.encode())
+    data["z"] = f"{z:08x}"
+
+    with open(path / DOT_JDM, 'w') as fd:
+        json.dump(data, fd, separators=(',', ':'), sort_keys=True)
+
+
+def get_device_volume_id(path: pathlib.Path) -> int:
+    partition = next((p for p in psutil.disk_partitions() if pathlib.Path(p.mountpoint) == path), None)
+    if partition is None:
+        raise DownloaderException(f"Could not find the device name for {path}")
+
+    if psutil.LINUX:
+        import pyudev
+
+        if partition.fstype != 'vfat':
+            raise DownloaderException(f"Wrong filesystem: {partition.fstype}")
+
+        ctx = pyudev.Context()
+        devices = list(ctx.list_devices(subsystem='block', DEVNAME=partition.device))
+        if not devices:
+            raise DownloaderException(f"Could not find the device for {partition.device}")
+
+        volume_id_str = devices[0]['ID_FS_UUID'].replace('-', '')
+        if len(volume_id_str) != 8:
+            raise DownloaderException(f"Unexpected volume ID: {volume_id_str}")
+
+        return int(volume_id_str, 16)
+    elif psutil.WINDOWS:
+        import win32api
+
+        if partition.fstype != 'FAT32':
+            raise DownloaderException(f"Wrong filesystem: {partition.fstype}")
+
+        return win32api.GetVolumeInformation(str(path))[1]
+    elif psutil.MACOS:
+        raise DownloaderException("Volume IDs not yet supported; enter it manually using --vol-id")
+    else:
+        raise DownloaderException("OS not supported")
+
+
+def _transfer_sd_card(service: Service, path: pathlib.Path, vol_id_override: T.Optional[str]) -> None:
+    is_avidyne = service.get_optional_property("oem_avidyne_e2") == '1'
+    if not is_avidyne:
+        raise DownloaderException("Only Avidyne supported at the moment")
+
+    if not isinstance(service, SimpleService):
+        raise DownloaderException("Unexpected service")
+
+    if not all(f.exists() for f in service.get_download_paths()):
+        raise DownloaderException("Need to download it first")
+
+    databases = service.get_databases()
+    sffs = service.get_sffs()
+
+    if path.is_block_device():
+        raise DownloaderException(f"{path} is a device file; need the directory where the SD card is mounted")
+
+    if not path.is_dir():
+        raise DownloaderException(f"{path} is not a directory")
+
+    if isinstance(path, pathlib.PosixPath):
+        if not path.is_mount():
+            print(f"WARNING: {path} appears to be a normal directory, not a device.")
+    else:
+        if path.parent != path:
+            print(f"WARNING: {path} appears to be a directory, not a drive.")
+        elif not path.root:
+            path = path / '/'
+
+    prompt = input(f"Transfer databases to {path}? (y/n) ")
+    if prompt.lower() != 'y':
+        raise DownloaderException("Cancelled")
+
+    file_info = []
+
+    if is_avidyne:
+        if len(databases) != 1:
+            raise DownloaderException("Expected one database")
+        if sffs:
+            raise DownloaderException("Unexpected .sff files")
+
+        if vol_id_override:
+            try:
+                volume_id = int(vol_id_override.replace('-', ''), 16)
+            except ValueError:
+                raise DownloaderException(f"Invalid volume ID: {vol_id_override}")
+            print(f"Using a manually-provided volume ID: {volume_id:08x}")
+        else:
+            volume_id = get_device_volume_id(path)
+            print(f"Found volume ID: {volume_id:08x}")
+
+        database_path = databases[0].dest_path
+
+        with zipfile.ZipFile(database_path) as database_zip:
+            # Look for files ending with dsf.txt, even not preceeded by a dot, or anything at all.
+            dsf_txt_files = [f for f in database_zip.infolist() if '/' not in f.filename and f.filename.endswith('dsf.txt')]
+            if not dsf_txt_files:
+                raise DownloaderException("Did not find a dsf.txt file")
+            if len(dsf_txt_files) > 1:
+                raise DownloaderException(f"Found multiple dsf.txt files: {dsf_txt_files}")
+            dsf_txt_file = dsf_txt_files[0]
+
+            with database_zip.open(dsf_txt_file, ) as dsf_bytes:
+                with TextIOWrapper(dsf_bytes) as dsf_txt:
+                    script = SFXFile.parse_script(dsf_txt)
+
+            dsf_name = dsf_txt_file.filename[:-4].lower()
+            if not dsf_name.endswith('.dsf'):
+                dsf_name += '.dsf'
+
+            ctx = SecurityContext(service.get_property('display_version'), volume_id, 2)
+
+            dest = path / dsf_name
+            print(f"Writing to {dest}...")
+            with open(dest, 'wb') as dsf_fd:
+                script.run(dsf_fd, database_zip, ctx)
+
+            # TODO: Make more efficient
+            print("Calculating hashes...")
+            with open(dest, 'rb') as dsf_fd:
+                sh = libscrc.crc32_q(dsf_fd.read(0x8000))
+                fh = sh
+                while True:
+                    chunk = dsf_fd.read(0x8000)
+                    if not chunk:
+                        break
+                    fh = libscrc.crc32_q(chunk, fh)
+
+            file_info.append({
+                "fp": dsf_name,
+                "fs": dest.stat().st_size,
+                "sh": f"{sh:08x}",
+                "fh": f"{fh:08x}",
+            })
+    else:
+        # TODO
+        assert False
+
+    print("Updating .jdm...")
+    update_dot_jdm(service, path, file_info)
+
 
 def _transfer_garmin_impl(dev: GarminProgrammerDevice, service: Service) -> None:
     databases = service.get_databases()
@@ -220,7 +411,7 @@ def _transfer_garmin_impl(dev: GarminProgrammerDevice, service: Service) -> None
 _transfer_garmin = with_usb(_transfer_garmin_impl)
 
 
-def cmd_transfer(id: int, device: T.Optional[str]) -> None:
+def cmd_transfer(id: int, device: T.Optional[str], vol_id: T.Optional[str]) -> None:
     services = load_services()
     if id < 0 or id >= len(services):
         raise DownloaderException("Invalid download ID")
@@ -233,10 +424,13 @@ def cmd_transfer(id: int, device: T.Optional[str]) -> None:
         if not device:
             raise DownloaderException("This database requires a path to an SD card")
 
-        _transfer_sd_card(service, pathlib.Path(device))
+        _transfer_sd_card(service, pathlib.Path(device), vol_id)
     elif card_type == CARD_TYPE_GARMIN:
         if device:
             raise DownloaderException("This database requires a programmer device and does not support paths")
+
+        if vol_id:
+            raise DownloaderException("--vol-id only makes sense for SD cards / USB drives")
 
         _transfer_garmin(service)
 
@@ -448,6 +642,11 @@ def main():
     transfer_p = subparsers.add_parser(
         "transfer",
         help="Transfer the downloaded database to an SD card or a Garmin data card",
+    )
+    transfer_p.add_argument(
+        "--vol-id",
+        help="FAT32 Volume ID (e.g., 1234-ABCD)",
+        type=str,
     )
     transfer_p.add_argument(
         "id",

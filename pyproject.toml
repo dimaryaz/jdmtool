@@ -18,9 +18,14 @@ classifiers = [
 ]
 dependencies = [
     'libusb1>=2.0.1',
+    'libscrc>=1.8.0',
     'platformdirs>=2.6.2',
+    'psutil>=5.9.4',
+    'pyudev>=0.24.3; sys_platform == "linux"',
+    'pywin32>=306; sys_platform == "win32"',
     'requests>=2.26.0',
     'tqdm>=4.1.0',
+    'typing_extensions; python_version < "3.11"',
 ]
 
 [project.urls]
