@@ -5,7 +5,8 @@ A command-line tool for downloading Jeppesen databases and programming Garmin av
 It requires:
 - Jeppesen subscription
 - A GNS 430/530 data card programmer (USB ID `0e39:1250`)
-- A 16MB data card
+- A 16MB NavData WAAS data card
+  - Support for non-WAAS is being worked on
 
 Currently, it has only been tested on Linux with GNS 430 and a Jeppesen NavData database.
 
@@ -31,6 +32,8 @@ Make sure you have access to the USB device. On Linux, you should copy `udev/50-
 
 ### Log in
 
+You only need to run this once (unless you change your password).
+
 ```
 $ jdmtool login
 Username: test@example.com
@@ -39,6 +42,8 @@ Logged in successfully
 ```
 
 ### Refresh the list of available downloads
+
+Run this every time you want to download updates.
 
 ```
 $ jdmtool refresh
@@ -52,8 +57,8 @@ Success
 ```
 $ jdmtool list
 ID  Name                                                                    Coverage              Version   Start Date  End Date    Downloaded
- 0  Garmin GNS 400/500 Series WAAS - NavData                                Americas              2303      2023-03-23  2023-04-20  Y         
- 1  Garmin GNS 400/500 Series WAAS - NavData                                Americas              2304      2023-04-20  2023-05-18  Y         
+ 0  Garmin GNS 400/500 Series WAAS - NavData                                Americas              2303      2023-03-23  2023-04-20            
+ 1  Garmin GNS 400/500 Series WAAS - NavData                                Americas              2304      2023-04-20  2023-05-18            
 ```
 
 ### View detailed info
