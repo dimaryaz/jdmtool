@@ -71,6 +71,7 @@ def with_usb(f):
             except usb1.USBError as ex:
                 raise GarminProgrammerException(f"Could not open: {ex}")
 
+            handle.setAutoDetachKernelDriver(True)
             with handle.claimInterface(0):
                 handle.resetDevice()
                 dev = GarminProgrammerDevice(handle)
