@@ -514,8 +514,8 @@ def cmd_read_database(dev: SkyboundDevice, path: str) -> None:
             for i in range(len(SkyboundDevice.DATA_PAGES) * 16):
                 _loop_helper(dev, i)
 
-                if i % 256 == 0:
-                    dev.select_page(SkyboundDevice.DATA_PAGES[i // 16])
+                if i % 16 == 0:
+                    dev.select_page(i // 16)
 
                 block = dev.read_block()
 
@@ -548,7 +548,6 @@ def _write_database(dev: SkyboundDevice, path: str) -> None:
             raise SkyboundException(f"Database file is too big! The maximum size is {MAX_SIZE}.")
 
         pages_required = min(size // 16 // 0x1000 + 3, len(SkyboundDevice.DATA_PAGES))
-        page_ids = SkyboundDevice.DATA_PAGES[:pages_required]
         total_size = pages_required * 16 * 0x1000
 
         magic = fd.read(64)
@@ -562,9 +561,9 @@ def _write_database(dev: SkyboundDevice, path: str) -> None:
         # Data card can only write by changing 1s to 0s (effectively doing a bit-wise AND with
         # the existing contents), so all data needs to be "erased" first to reset everything to 1s.
         with tqdm.tqdm(desc="Erasing the database", total=total_size, unit='B', unit_scale=True) as t:
-            for i, page_id in enumerate(page_ids):
+            for i in range(pages_required):
                 _loop_helper(dev, i)
-                dev.select_page(page_id)
+                dev.select_page(i)
                 dev.erase_page()
                 t.update(16 * 0x1000)
 
@@ -574,8 +573,8 @@ def _write_database(dev: SkyboundDevice, path: str) -> None:
 
                 _loop_helper(dev, i)
 
-                if i % 256 == 0:
-                    dev.select_page(page_ids[i // 16])
+                if i % 16 == 0:
+                    dev.select_page(i // 16)
 
                 dev.write_block(block)
                 t.update(len(block))
@@ -589,8 +588,8 @@ def _write_database(dev: SkyboundDevice, path: str) -> None:
 
                 _loop_helper(dev, i)
 
-                if i % 256 == 0:
-                    dev.select_page(page_ids[i // 16])
+                if i % 16 == 0:
+                    dev.select_page(i // 16)
 
                 card_block = dev.read_block()
 

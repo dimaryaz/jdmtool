@@ -14,8 +14,6 @@ class SkyboundDevice():
 
     TIMEOUT = 3000
 
-    METADATA_PAGE = 0x03DF
-
     DATA_PAGES = (
         list(range(0x00E0, 0x0100)) +
         list(range(0x02E0, 0x0300)) +
@@ -26,6 +24,8 @@ class SkyboundDevice():
         list(range(0x01C0, 0x01E0)) +
         list(range(0x03C0, 0x03E0))
     )
+
+    METADATA_PAGE = len(DATA_PAGES) - 1
 
     def __init__(self, handle: usb1.USBDeviceHandle) -> None:
         self.handle = handle
@@ -98,10 +98,13 @@ class SkyboundDevice():
         if buf[0] != data[-1] or buf[1:] != b"\x00\x00\x00":
             raise SkyboundException(f"Unexpected response: {buf}")
 
-    def select_page(self, page_id: int) -> None:
+    def select_physical_page(self, page_id: int) -> None:
         if not (0x0000 <= page_id <= 0xFFFF):
             raise ValueError("Invalid page ID")
         self.write(b"\x30\x00\x00" + page_id.to_bytes(2, 'little'))
+
+    def select_page(self, page_id: int) -> None:
+        self.select_physical_page(self.DATA_PAGES[page_id])
 
     def erase_page(self) -> None:
         self.write(b"\x52\x04")
