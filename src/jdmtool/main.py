@@ -288,7 +288,7 @@ def get_device_volume_id(path: pathlib.Path) -> int:
         raise DownloaderException(f"Could not find the device name for {path}")
 
     if psutil.LINUX:
-        import pyudev
+        import pyudev  # type: ignore
 
         if partition.fstype != 'vfat':
             raise DownloaderException(f"Wrong filesystem: {partition.fstype}")
@@ -304,7 +304,7 @@ def get_device_volume_id(path: pathlib.Path) -> int:
 
         return int(volume_id_str, 16)
     elif psutil.WINDOWS:
-        import win32api
+        import win32api  # type: ignore
 
         if partition.fstype != 'FAT32':
             raise DownloaderException(f"Wrong filesystem: {partition.fstype}")
