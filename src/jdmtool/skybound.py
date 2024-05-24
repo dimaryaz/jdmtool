@@ -1,11 +1,11 @@
 import usb1
 
 
-class GarminProgrammerException(Exception):
+class SkyboundException(Exception):
     pass
 
 
-class GarminProgrammerDevice():
+class SkyboundDevice():
     VID = 0x0E39
     PID = 0x1250
 
@@ -42,16 +42,16 @@ class GarminProgrammerDevice():
     def init(self):
         buf = self.control_read(0x80, 0x06, 0x0100, 0x0000, 18)
         if buf != b"\x12\x01\x10\x01\xFF\x83\xFF\x40\x39\x0E\x50\x12\x00\x00\x00\x00\x00\x01":
-            raise GarminProgrammerException("Unexpected response")
+            raise SkyboundException("Unexpected response")
         buf = self.control_read(0x80, 0x06, 0x0200, 0x0000, 9)
         if buf != b"\x09\x02\x20\x00\x01\x01\x00\x80\x0F":
-            raise GarminProgrammerException("Unexpected response")
+            raise SkyboundException("Unexpected response")
         buf = self.control_read(0x80, 0x06, 0x0200, 0x0000, 32)
         if buf != (
             b"\x09\x02\x20\x00\x01\x01\x00\x80\x0F\x09\x04\x00\x00\x02\x00\x00"
             b"\x00\x00\x07\x05\x81\x02\x40\x00\x05\x07\x05\x02\x02\x40\x00\x05"
         ):
-            raise GarminProgrammerException("Unexpected response")
+            raise SkyboundException("Unexpected response")
 
     def set_led(self, on):
         if on:
@@ -67,7 +67,7 @@ class GarminProgrammerDevice():
         elif buf == b"\x01":
             return False
         else:
-            raise GarminProgrammerException(f"Unexpected response: {buf}")
+            raise SkyboundException(f"Unexpected response: {buf}")
 
     def get_version(self):
         self.write(b"\x60")
@@ -96,7 +96,7 @@ class GarminProgrammerDevice():
 
         buf = self.read(0x0040)
         if buf[0] != data[-1] or buf[1:] != b"\x00\x00\x00":
-            raise GarminProgrammerException(f"Unexpected response: {buf}")
+            raise SkyboundException(f"Unexpected response: {buf}")
 
     def select_page(self, page_id: int):
         if not (0x0000 <= page_id <= 0xFFFF):
@@ -107,7 +107,7 @@ class GarminProgrammerDevice():
         self.write(b"\x52\x04")
         buf = self.read(0x0040)
         if buf != b"\x04":
-            raise GarminProgrammerException(f"Unexpected response: {buf}")
+            raise SkyboundException(f"Unexpected response: {buf}")
 
     def before_read(self):
         # It's not clear that this does anything, but JDM seems to send it

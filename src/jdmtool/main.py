@@ -14,7 +14,7 @@ import tqdm
 import usb1
 
 from .avidyne import SFXFile, SecurityContext
-from .device import GarminProgrammerDevice, GarminProgrammerException
+from .skybound import SkyboundDevice, SkyboundException
 from .downloader import Downloader, DownloaderException
 from .service import Service, ServiceException, SimpleService, load_services
 
@@ -27,7 +27,7 @@ DB_MAGIC = (
     b'\x00\x00\x00\x00\x00\x00)\x02\x11\x00\x00GARMIN AT  FAT16   \x00\x00'
 )
 
-MAX_SIZE = len(GarminProgrammerDevice.DATA_PAGES) * 16 * 0x1000
+MAX_SIZE = len(SkyboundDevice.DATA_PAGES) * 16 * 0x1000
 
 DOT_JDM = '.jdm'
 
@@ -62,19 +62,19 @@ def with_usb(f):
     def wrapper(*args, **kwargs):
         with usb1.USBContext() as usbcontext:
             try:
-                usbdev = usbcontext.getByVendorIDAndProductID(GarminProgrammerDevice.VID, GarminProgrammerDevice.PID)
+                usbdev = usbcontext.getByVendorIDAndProductID(SkyboundDevice.VID, SkyboundDevice.PID)
                 if usbdev is None:
-                    raise GarminProgrammerException("Device not found")
+                    raise SkyboundException("Device not found")
 
                 print(f"Found device: {usbdev}")
                 handle = usbdev.open()
             except usb1.USBError as ex:
-                raise GarminProgrammerException(f"Could not open: {ex}")
+                raise SkyboundException(f"Could not open: {ex}")
 
             handle.setAutoDetachKernelDriver(True)
             with handle.claimInterface(0):
                 handle.resetDevice()
-                dev = GarminProgrammerDevice(handle)
+                dev = SkyboundDevice(handle)
                 dev.init()
                 try:
                     f(dev, *args, **kwargs)
@@ -87,7 +87,7 @@ def with_usb(f):
 def _loop_helper(dev, i):
     dev.set_led(i % 2 == 0)
     if not dev.has_card():
-        raise GarminProgrammerException("Card not found!")
+        raise SkyboundException("Card not found!")
 
 
 def cmd_login() -> None:
@@ -403,7 +403,7 @@ def _transfer_sd_card(service: Service, path: pathlib.Path, vol_id_override: T.O
     update_dot_jdm(service, path, files)
 
 
-def _transfer_garmin_impl(dev: GarminProgrammerDevice, service: Service) -> None:
+def _transfer_garmin_impl(dev: SkyboundDevice, service: Service) -> None:
     databases = service.get_databases()
     assert len(databases) == 1, databases
 
@@ -456,7 +456,7 @@ def cmd_transfer(id: int, device: T.Optional[str], vol_id: T.Optional[str]) -> N
     print("Done")
 
 @with_usb
-def cmd_detect(dev: GarminProgrammerDevice) -> None:
+def cmd_detect(dev: SkyboundDevice) -> None:
     version = dev.get_version()
     print(f"Firmware version: {version}")
     if dev.has_card():
@@ -469,9 +469,9 @@ def cmd_detect(dev: GarminProgrammerDevice) -> None:
         print("No card")
 
 @with_usb
-def cmd_read_metadata(dev: GarminProgrammerDevice) -> None:
+def cmd_read_metadata(dev: SkyboundDevice) -> None:
     dev.before_read()
-    dev.select_page(GarminProgrammerDevice.METADATA_PAGE)
+    dev.select_page(SkyboundDevice.METADATA_PAGE)
     blocks = []
     for i in range(16):
         _loop_helper(dev, i)
@@ -479,16 +479,16 @@ def cmd_read_metadata(dev: GarminProgrammerDevice) -> None:
     value = b''.join(blocks).rstrip(b"\xFF").decode()
     print(f"Database metadata: {value}")
 
-def _clear_metadata(dev: GarminProgrammerDevice) -> None:
+def _clear_metadata(dev: SkyboundDevice) -> None:
     dev.before_write()
-    dev.select_page(GarminProgrammerDevice.METADATA_PAGE)
+    dev.select_page(SkyboundDevice.METADATA_PAGE)
     dev.erase_page()
 
-def _write_metadata(dev: GarminProgrammerDevice, metadata: str) -> None:
+def _write_metadata(dev: SkyboundDevice, metadata: str) -> None:
     dev.before_write()
     page = metadata.encode().ljust(0x10000, b'\xFF')
 
-    dev.select_page(GarminProgrammerDevice.METADATA_PAGE)
+    dev.select_page(SkyboundDevice.METADATA_PAGE)
 
     # Data card can only write by changing 1s to 0s (effectively doing a bit-wise AND with
     # the existing contents), so all data needs to be "erased" first to reset everything to 1s.
@@ -502,20 +502,20 @@ def _write_metadata(dev: GarminProgrammerDevice, metadata: str) -> None:
         dev.write_block(block)
 
 @with_usb
-def cmd_write_metadata(dev: GarminProgrammerDevice, metadata: str) -> None:
+def cmd_write_metadata(dev: SkyboundDevice, metadata: str) -> None:
     _write_metadata(dev, metadata)
     print("Done")
 
 @with_usb
-def cmd_read_database(dev: GarminProgrammerDevice, path: str) -> None:
+def cmd_read_database(dev: SkyboundDevice, path: str) -> None:
     with open(path, 'w+b') as fd:
         with tqdm.tqdm(desc="Reading the database", total=MAX_SIZE, unit='B', unit_scale=True) as t:
             dev.before_read()
-            for i in range(len(GarminProgrammerDevice.DATA_PAGES) * 16):
+            for i in range(len(SkyboundDevice.DATA_PAGES) * 16):
                 _loop_helper(dev, i)
 
                 if i % 256 == 0:
-                    dev.select_page(GarminProgrammerDevice.DATA_PAGES[i // 16])
+                    dev.select_page(SkyboundDevice.DATA_PAGES[i // 16])
 
                 block = dev.read_block()
 
@@ -540,20 +540,20 @@ def cmd_read_database(dev: GarminProgrammerDevice, path: str) -> None:
 
     print("Done")
 
-def _write_database(dev: GarminProgrammerDevice, path: str) -> None:
+def _write_database(dev: SkyboundDevice, path: str) -> None:
     with open(path, 'rb') as fd:
         size = os.fstat(fd.fileno()).st_size
 
         if size > MAX_SIZE:
-            raise GarminProgrammerException(f"Database file is too big! The maximum size is {MAX_SIZE}.")
+            raise SkyboundException(f"Database file is too big! The maximum size is {MAX_SIZE}.")
 
-        pages_required = min(size // 16 // 0x1000 + 3, len(GarminProgrammerDevice.DATA_PAGES))
-        page_ids = GarminProgrammerDevice.DATA_PAGES[:pages_required]
+        pages_required = min(size // 16 // 0x1000 + 3, len(SkyboundDevice.DATA_PAGES))
+        page_ids = SkyboundDevice.DATA_PAGES[:pages_required]
         total_size = pages_required * 16 * 0x1000
 
         magic = fd.read(64)
         if magic != DB_MAGIC:
-            raise GarminProgrammerException(f"Does not look like a Garmin database file.")
+            raise SkyboundException(f"Does not look like a Garmin database file.")
 
         fd.seek(0)
 
@@ -595,12 +595,12 @@ def _write_database(dev: GarminProgrammerDevice, path: str) -> None:
                 card_block = dev.read_block()
 
                 if card_block != file_block:
-                    raise GarminProgrammerException(f"Verification failed! Block {i} is incorrect.")
+                    raise SkyboundException(f"Verification failed! Block {i} is incorrect.")
 
                 t.update(len(file_block))
 
 @with_usb
-def cmd_write_database(dev: GarminProgrammerDevice, path: str) -> None:
+def cmd_write_database(dev: SkyboundDevice, path: str) -> None:
     prompt = input(f"Transfer {path} to the data card? (y/n) ")
     if prompt.lower() != 'y':
         raise DownloaderException("Cancelled")
@@ -608,7 +608,7 @@ def cmd_write_database(dev: GarminProgrammerDevice, path: str) -> None:
     try:
         _write_database(dev, path)
     except IOError as ex:
-        raise GarminProgrammerException(f"Could not read the database file: {ex}")
+        raise SkyboundException(f"Could not read the database file: {ex}")
 
     print("Done")
 
@@ -735,7 +735,7 @@ def main():
     except ServiceException as ex:
         print(ex)
         return 1
-    except GarminProgrammerException as ex:
+    except SkyboundException as ex:
         print(ex)
         return 1
 
