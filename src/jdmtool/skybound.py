@@ -30,16 +30,16 @@ class SkyboundDevice():
     def __init__(self, handle: usb1.USBDeviceHandle) -> None:
         self.handle = handle
 
-    def write(self, data):
+    def write(self, data: bytes) -> None:
         self.handle.bulkWrite(self.WRITE_ENDPOINT, data, self.TIMEOUT)
 
-    def read(self, length):
+    def read(self, length: int) -> bytes:
         return self.handle.bulkRead(self.READ_ENDPOINT, length, self.TIMEOUT)
 
-    def control_read(self, bRequestType, bRequest, wValue, wIndex, wLength):
+    def control_read(self, bRequestType: int, bRequest: int, wValue: int, wIndex: int, wLength: int) -> bytes:
         return self.handle.controlRead(bRequestType, bRequest, wValue, wIndex, wLength, self.TIMEOUT)
 
-    def init(self):
+    def init(self) -> None:
         buf = self.control_read(0x80, 0x06, 0x0100, 0x0000, 18)
         if buf != b"\x12\x01\x10\x01\xFF\x83\xFF\x40\x39\x0E\x50\x12\x00\x00\x00\x00\x00\x01":
             raise SkyboundException("Unexpected response")
@@ -53,13 +53,13 @@ class SkyboundDevice():
         ):
             raise SkyboundException("Unexpected response")
 
-    def set_led(self, on):
+    def set_led(self, on: bool) -> None:
         if on:
             self.write(b'\x12')
         else:
             self.write(b'\x13')
 
-    def has_card(self):
+    def has_card(self) -> bool:
         self.write(b"\x18")
         buf = self.read(0x0040)
         if buf == b"\x00":
@@ -69,25 +69,25 @@ class SkyboundDevice():
         else:
             raise SkyboundException(f"Unexpected response: {buf}")
 
-    def get_version(self):
+    def get_version(self) -> str:
         self.write(b"\x60")
         return self.read(0x0040).decode()
 
-    def get_unknown(self): # TODO: what is this?
+    def get_unknown(self) -> int: # TODO: what is this?
         self.write(b"\x50\x03")
         buf = self.read(0x0040)
         return int.from_bytes(buf, 'little')
 
-    def get_iid(self):
+    def get_iid(self) -> int:
         self.write(b"\x50\x04")
         buf = self.read(0x0040)
         return int.from_bytes(buf, 'little')
 
-    def read_block(self):
+    def read_block(self) -> bytes:
         self.write(b"\x28")
         return self.read(0x1000)
 
-    def write_block(self, data: bytes):
+    def write_block(self, data: bytes) -> None:
         if len(data) != 0x1000:
             raise ValueError("Data must be 4096 bytes")
 
@@ -98,22 +98,22 @@ class SkyboundDevice():
         if buf[0] != data[-1] or buf[1:] != b"\x00\x00\x00":
             raise SkyboundException(f"Unexpected response: {buf}")
 
-    def select_page(self, page_id: int):
+    def select_page(self, page_id: int) -> None:
         if not (0x0000 <= page_id <= 0xFFFF):
             raise ValueError("Invalid page ID")
         self.write(b"\x30\x00\x00" + page_id.to_bytes(2, 'little'))
 
-    def erase_page(self):
+    def erase_page(self) -> None:
         self.write(b"\x52\x04")
         buf = self.read(0x0040)
         if buf != b"\x04":
             raise SkyboundException(f"Unexpected response: {buf}")
 
-    def before_read(self):
+    def before_read(self) -> None:
         # It's not clear that this does anything, but JDM seems to send it
         # before reading anything, so do the same thing.
         self.write(b"\x40")
 
-    def before_write(self):
+    def before_write(self) -> None:
         # Same as above.
         self.write(b"\x42")
