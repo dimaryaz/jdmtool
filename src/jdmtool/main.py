@@ -461,10 +461,12 @@ def cmd_detect(dev: SkyboundDevice) -> None:
     print(f"Firmware version: {version}")
     if dev.has_card():
         print("Card inserted:")
+        dev.select_page(0)
+        dev.before_read()
         iid = dev.get_iid()
-        print(f"  IID: 0x{iid:x}")
+        print(f"  IID: 0x{iid:08x}")
         unknown = dev.get_unknown()
-        print(f"  Unknown identifier: 0x{unknown:x}")
+        print(f"  Unknown identifier: 0x{unknown:08x}")
     else:
         print("No card")
 
