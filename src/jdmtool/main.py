@@ -389,9 +389,10 @@ def _transfer_sd_card(service: Service, path: pathlib.Path, vol_id_override: T.O
             ctx = SecurityContext(service.get_property('display_version'), volume_id, 2)
 
             dest = path / dsf_name
-            print(f"Writing to {dest}...")
-            with open(dest, 'wb') as dsf_fd:
-                script.run(dsf_fd, database_zip, ctx)
+            total = script.total_progress(database_zip)
+            with tqdm.tqdm(desc=f"Writing to {dest}", total=total, unit='B', unit_scale=True) as t:
+                with open(dest, 'wb') as dsf_fd:
+                    script.run(dsf_fd, database_zip, ctx, t.update)
 
             files.append(dest)
     else:

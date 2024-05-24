@@ -2,7 +2,7 @@ from abc import ABC, abstractmethod
 import binascii
 from dataclasses import dataclass
 import re
-from typing import BinaryIO, List, Mapping, Optional, TextIO
+from typing import BinaryIO, Callable, List, Mapping, Optional, TextIO
 try:
     from typing import Self
 except ImportError:
@@ -152,7 +152,11 @@ class SFXSection(ABC):
         ...
 
     @abstractmethod
-    def run(self, out: BinaryIO, zipfile: ZipFile, ctx: SecurityContext):
+    def total_progress(self, zipfile: ZipFile) -> int:
+        ...
+
+    @abstractmethod
+    def run(self, out: BinaryIO, zipfile: ZipFile, ctx: SecurityContext, progress_cb: Callable[[int], None]) -> None:
         ...
 
 
@@ -195,7 +199,10 @@ class SFXScriptSection(SFXSection):
         security = not next(fd).strip().startswith('0')
         return SFXScriptSection(ctx, start_message, security)
 
-    def run(self, out: BinaryIO, zipfile: ZipFile, ctx: SecurityContext):
+    def total_progress(self, zipfile: ZipFile) -> int:
+        return 0
+
+    def run(self, out: BinaryIO, zipfile: ZipFile, ctx: SecurityContext, progress_cb: Callable[[int], None]) -> None:
         write_string(out, self.start_message)
         out.write(self.security.to_bytes(1, 'big'))
 
@@ -254,7 +261,10 @@ class SFXCopySection(SFXSection):
 
         return SFXCopySection(ctx, mode, files)
 
-    def run(self, out: BinaryIO, zipfile: ZipFile, ctx: SecurityContext):
+    def total_progress(self, zipfile: ZipFile) -> int:
+        return sum(zipfile.getinfo(filename).file_size for filename in self.files)
+
+    def run(self, out: BinaryIO, zipfile: ZipFile, ctx: SecurityContext, progress_cb: Callable[[int], None]) -> None:
         write_u32(out, len(self.files))
         write_u32(out, self.mode)
 
@@ -271,6 +281,8 @@ class SFXCopySection(SFXSection):
 
             checksum = sfx_checksum(contents)
             write_u32(out, checksum)
+
+            progress_cb(len(contents))
 
 
 @dataclass
@@ -301,7 +313,10 @@ class SFXMessageBoxSection(SFXSection):
             message_parts.append(line)
         return SFXMessageBoxSection(ctx, has_proceed, has_cancel, ''.join(message_parts))
 
-    def run(self, out: BinaryIO, zipfile: ZipFile, ctx: SecurityContext):
+    def total_progress(self, zipfile: ZipFile) -> int:
+        return 0
+
+    def run(self, out: BinaryIO, zipfile: ZipFile, ctx: SecurityContext, progress_cb: Callable[[int], None]) -> None:
         out.write(self.has_proceed.to_bytes(1, 'big'))
         out.write(self.has_cancel.to_bytes(1, 'big'))
         write_string(out, self.message)
@@ -417,7 +432,10 @@ class SFXFile:
 
         return SFXFile(version, sections)
 
-    def run(self, out: BinaryIO, zipfile: ZipFile, ctx: SecurityContext):
+    def total_progress(self, zipfile: ZipFile) -> int:
+        return sum(section.total_progress(zipfile) for section in self.sections)
+
+    def run(self, out: BinaryIO, zipfile: ZipFile, ctx: SecurityContext, progress_cb: Callable[[int], None]) -> None:
         out.write(self.MAGIC_HEADER)
         out.write(self.version.encode())
 
@@ -438,7 +456,7 @@ class SFXFile:
             write_string(out, section.ctx.param)
             out.write(section.SECTION_ID.to_bytes(1, 'big'))
 
-            section.run(out, zipfile, ctx)
+            section.run(out, zipfile, ctx, progress_cb)
 
         write_u32(out, self.MAGIC_FOOTER)
 
