@@ -202,23 +202,54 @@ def cmd_download(id: int) -> None:
         print(f"Downloaded to {oem.dest_path}")
 
 
-def update_dot_jdm(service: Service, path: pathlib.Path, files: T.List[T.Dict[str, T.Any]]) -> None:
+def update_dot_jdm(service: Service, path: pathlib.Path, files: T.List[pathlib.Path]) -> None:
     try:
         with open(path / DOT_JDM) as fd:
             data = json.load(fd)
     except Exception as e:
         data = {}
 
-    gsi = service.get_optional_property('garmin_sec_id')
+    # Calculate new file hashes
+    file_info: T.List[T.Dict[str, T.Any]] = []
+    file_path_set: T.Set[str] = set()
 
-    ss = [s for s in data.get('ss') or [] if s['u'] != service.get_property('unique_service_id')]
+    for f in files:
+        with open(f, 'rb') as fd:
+            sh = libscrc.crc32_q(fd.read(0x8000))
+            fh = sh
+            while True:
+                chunk = fd.read(0x8000)
+                if not chunk:
+                    break
+                fh = libscrc.crc32_q(chunk, fh)
+
+        rel_file_path = str(f.relative_to(path))
+        file_info.append({
+            "fp": rel_file_path,
+            "fs": f.stat().st_size,
+            "sh": f"{sh:08x}",
+            "fh": f"{fh:08x}",
+        })
+        file_path_set.add(rel_file_path)
+
+    # Drop any services that have overlapping files
+    ss = []
+    for existing_service in data.get("ss") or []:
+        for f in existing_service["f"]:
+            if f["fp"] in file_path_set:
+                break
+        else:
+            ss.append(existing_service)
+
+    # Write the new .jdm
+    gsi = service.get_optional_property('garmin_sec_id')
     ss.append({
         "a": service.get_property('avionics'),
         "c": service.get_property('customer_number'),
         "cd": service.get_property('coverage_desc'),
         "date_label_override": service.get_property('date_label_override'),
         "dv": service.get_property('display_version'),
-        "f": files,
+        "f": file_info,
         "fid": "",
         "filter_applied": "no",
         "gsi": f"0x{gsi}" if gsi else "",
@@ -318,7 +349,7 @@ def _transfer_sd_card(service: Service, path: pathlib.Path, vol_id_override: T.O
     if prompt.lower() != 'y':
         raise DownloaderException("Cancelled")
 
-    file_info = []
+    files: T.List[pathlib.Path] = []
 
     if is_avidyne:
         if len(databases) != 1:
@@ -362,29 +393,13 @@ def _transfer_sd_card(service: Service, path: pathlib.Path, vol_id_override: T.O
             with open(dest, 'wb') as dsf_fd:
                 script.run(dsf_fd, database_zip, ctx)
 
-            # TODO: Make more efficient
-            print("Calculating hashes...")
-            with open(dest, 'rb') as dsf_fd:
-                sh = libscrc.crc32_q(dsf_fd.read(0x8000))
-                fh = sh
-                while True:
-                    chunk = dsf_fd.read(0x8000)
-                    if not chunk:
-                        break
-                    fh = libscrc.crc32_q(chunk, fh)
-
-            file_info.append({
-                "fp": dsf_name,
-                "fs": dest.stat().st_size,
-                "sh": f"{sh:08x}",
-                "fh": f"{fh:08x}",
-            })
+            files.append(dest)
     else:
         # TODO
         assert False
 
     print("Updating .jdm...")
-    update_dot_jdm(service, path, file_info)
+    update_dot_jdm(service, path, files)
 
 
 def _transfer_garmin_impl(dev: GarminProgrammerDevice, service: Service) -> None:
