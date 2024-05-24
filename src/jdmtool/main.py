@@ -76,7 +76,10 @@ def with_usb(f):
                 handle.resetDevice()
                 dev = GarminProgrammerDevice(handle)
                 dev.init()
-                f(dev, *args, **kwargs)
+                try:
+                    f(dev, *args, **kwargs)
+                finally:
+                    dev.set_led(False)
 
     return wrapper
 
@@ -84,7 +87,6 @@ def with_usb(f):
 def _loop_helper(dev, i):
     dev.set_led(i % 2 == 0)
     if not dev.has_card():
-        dev.set_led(False)
         raise GarminProgrammerException("Card not found!")
 
 
