@@ -368,6 +368,19 @@ def _transfer_sd_card(service: Service, path: pathlib.Path, vol_id_override: T.O
         elif not path.root:
             path = path / '/'
 
+    if vol_id_override is not None:
+        try:
+            vol_id_override = vol_id_override.replace('-', '')
+            if len(vol_id_override) != 8:
+                raise ValueError()
+            volume_id = int(vol_id_override, 16)
+        except ValueError:
+            raise DownloaderException(f"Volume ID must be 8 hex digits long")
+        print(f"Using a manually-provided volume ID: {volume_id:08x}")
+    else:
+        volume_id = get_device_volume_id(path)
+        print(f"Found volume ID: {volume_id:08x}")
+
     prompt = input(f"Transfer databases to {path}? (y/n) ")
     if prompt.lower() != 'y':
         raise DownloaderException("Cancelled")
@@ -379,16 +392,6 @@ def _transfer_sd_card(service: Service, path: pathlib.Path, vol_id_override: T.O
             raise DownloaderException("Expected one database")
         if sffs:
             raise DownloaderException("Unexpected .sff files")
-
-        if vol_id_override:
-            try:
-                volume_id = int(vol_id_override.replace('-', ''), 16)
-            except ValueError:
-                raise DownloaderException(f"Invalid volume ID: {vol_id_override}")
-            print(f"Using a manually-provided volume ID: {volume_id:08x}")
-        else:
-            volume_id = get_device_volume_id(path)
-            print(f"Found volume ID: {volume_id:08x}")
 
         database_path = databases[0].dest_path
 
