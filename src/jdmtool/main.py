@@ -22,11 +22,6 @@ from .service import Service, ServiceException, SimpleService, load_services
 CARD_TYPE_SD = 2
 CARD_TYPE_GARMIN = 7
 
-DB_MAGIC = (
-    b'\xeb<\x90GARMIN10\x00\x02\x08\x01\x00\x01\x00\x02\x00\x80\xf0\x10\x00?\x00\xff\x00?\x00\x00\x00'
-    b'\x00\x00\x00\x00\x00\x00)\x02\x11\x00\x00GARMIN AT  FAT16   \x00\x00'
-)
-
 DOT_JDM = '.jdm'
 
 
@@ -55,7 +50,7 @@ DETAILED_INFO_MAP = [
 ]
 
 
-def with_usb(f):
+def with_usb(f: T.Callable):
     @wraps(f)
     def wrapper(*args, **kwargs):
         with usb1.USBContext() as usbcontext:
@@ -82,10 +77,40 @@ def with_usb(f):
     return wrapper
 
 
+def with_data_card(f: T.Callable):
+    @wraps(f)
+    @with_usb
+    def wrapper(dev: SkyboundDevice, *args, **kwargs):
+        if not dev.has_card():
+            raise SkyboundException("Card is missing!")
+
+        dev.select_page(0)
+        dev.before_read()
+
+        # TODO: Figure out the actual meaning of the iid and the "unknown" value.
+        iid = dev.get_iid()
+        if iid == 0x01004100:
+            # 16MB WAAS card
+            print("Detected data card: 16MB WAAS")
+            dev.set_memory_layout(SkyboundDevice.MEMORY_LAYOUT_16MB)
+        elif iid == 0x0100ad00:
+            # 4MB non-WAAS card
+            print("Detected data card: 4MB non-WAAS")
+            dev.set_memory_layout(SkyboundDevice.MEMORY_LAYOUT_4MB)
+        else:
+            raise SkyboundException(
+                f"Unknown data card IID: 0x{iid:08x} (possibly 8MB non-WAAS?). Please file a bug!"
+            )
+
+        f(dev, *args, **kwargs)
+
+    return wrapper
+
+
 def _loop_helper(dev, i):
     dev.set_led(i % 2 == 0)
     if not dev.has_card():
-        raise SkyboundException("Card not found!")
+        raise SkyboundException("Data card has disappeared!")
 
 
 def cmd_login() -> None:
@@ -401,18 +426,29 @@ def _transfer_sd_card(service: Service, path: pathlib.Path, vol_id_override: T.O
     update_dot_jdm(service, path, files)
 
 
-def _transfer_garmin_impl(dev: SkyboundDevice, service: Service) -> None:
+@with_data_card
+def _transfer_garmin(dev: SkyboundDevice, service: Service) -> None:
     databases = service.get_databases()
     assert len(databases) == 1, databases
 
     version = service.get_property('version')
     unique_service_id = service.get_property('unique_service_id')
 
+    card_size_min = int(service.get_property('media/card_size_min'))
+    card_size_max = int(service.get_property('media/card_size_max'))
+
+    if not card_size_min <= dev.get_total_size() <= card_size_max:
+        print()
+        print(
+            f"WARNING: This service requires a data card between "
+            f"{card_size_min // 2**20}MB and {card_size_max // 2**20}MB, "
+            f"but yours is {dev.get_total_size() // 2**20}MB!"
+        )
+        print()
+
     path = databases[0].dest_path
     if not path.exists():
         raise DownloaderException("Need to download it first")
-
-    new_metadata = f'{{{version}~{unique_service_id}}}'  # E.g. {2303~12345678}
 
     prompt = input(f"Transfer {path} to the data card? (y/n) ")
     if prompt.lower() != 'y':
@@ -421,11 +457,11 @@ def _transfer_garmin_impl(dev: SkyboundDevice, service: Service) -> None:
     _clear_metadata(dev)
     _write_database(dev, str(path))
 
-    print(f"Writing new metadata: {new_metadata}")
-    _write_metadata(dev, new_metadata)
-
-# Pylance workaround
-_transfer_garmin = with_usb(_transfer_garmin_impl)
+    # TODO: 4MB cards don't seem to have metadata?
+    if dev.memory_layout == dev.MEMORY_LAYOUT_16MB:
+        new_metadata = f'{{{version}~{unique_service_id}}}'  # E.g. {2303~12345678}
+        print(f"Writing new metadata: {new_metadata}")
+        _write_metadata(dev, new_metadata)
 
 
 def cmd_transfer(id: int, device: T.Optional[str], vol_id: T.Optional[str]) -> None:
@@ -468,7 +504,7 @@ def cmd_detect(dev: SkyboundDevice) -> None:
     else:
         print("No card")
 
-@with_usb
+@with_data_card
 def cmd_read_metadata(dev: SkyboundDevice) -> None:
     dev.before_read()
     dev.select_page(dev.get_total_pages() - 1)
@@ -501,12 +537,12 @@ def _write_metadata(dev: SkyboundDevice, metadata: str) -> None:
 
         dev.write_block(block)
 
-@with_usb
+@with_data_card
 def cmd_write_metadata(dev: SkyboundDevice, metadata: str) -> None:
     _write_metadata(dev, metadata)
     print("Done")
 
-@with_usb
+@with_data_card
 def cmd_read_database(dev: SkyboundDevice, path: str) -> None:
     with open(path, 'w+b') as fd:
         with tqdm.tqdm(desc="Reading the database", total=dev.get_total_size(), unit='B', unit_scale=True) as t:
@@ -547,16 +583,10 @@ def _write_database(dev: SkyboundDevice, path: str) -> None:
         size = os.fstat(fd.fileno()).st_size
 
         if size > max_size:
-            raise SkyboundException(f"Database file is too big! The maximum size is {max_size}.")
+            raise SkyboundException(f"Database file is too big: {size}! The maximum size is {max_size}.")
 
         pages_required = min(size // SkyboundDevice.PAGE_SIZE + 3, dev.get_total_pages())
         total_size = pages_required * SkyboundDevice.PAGE_SIZE
-
-        magic = fd.read(64)
-        if magic != DB_MAGIC:
-            raise SkyboundException(f"Does not look like a Garmin database file.")
-
-        fd.seek(0)
 
         dev.before_write()
 
@@ -600,7 +630,7 @@ def _write_database(dev: SkyboundDevice, path: str) -> None:
 
                 t.update(len(file_block))
 
-@with_usb
+@with_data_card
 def cmd_write_database(dev: SkyboundDevice, path: str) -> None:
     prompt = input(f"Transfer {path} to the data card? (y/n) ")
     if prompt.lower() != 'y':

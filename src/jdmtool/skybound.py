@@ -1,3 +1,5 @@
+from typing import Iterable
+
 import usb1
 
 
@@ -18,19 +20,19 @@ class SkyboundDevice():
     BLOCKS_PER_PAGE = 0x10
     PAGE_SIZE = BLOCK_SIZE * BLOCKS_PER_PAGE
 
-    DATA_PAGES = (
-        list(range(0x00E0, 0x0100)) +
-        list(range(0x02E0, 0x0300)) +
-        list(range(0x0160, 0x0180)) +
-        list(range(0x0360, 0x0380)) +
-        list(range(0x01A0, 0x01C0)) +
-        list(range(0x03A0, 0x03C0)) +
-        list(range(0x01C0, 0x01E0)) +
-        list(range(0x03C0, 0x03E0))
-    )
+    MEMORY_OFFSETS = [0x00E0, 0x02E0, 0x0160, 0x0360, 0x01A0, 0x03A0, 0x01C0, 0x03C0]
+    PAGES_PER_OFFSET = 0x20
+
+    MEMORY_LAYOUT_UNKNOWN = [0]
+    MEMORY_LAYOUT_4MB = [0, 2]
+    MEMORY_LAYOUT_16MB = [0, 1, 2, 3, 4, 5, 6, 7]
 
     def __init__(self, handle: usb1.USBDeviceHandle) -> None:
         self.handle = handle
+        self.memory_layout = self.MEMORY_LAYOUT_UNKNOWN
+
+    def set_memory_layout(self, memory_layout: Iterable[int]) -> None:
+        self.memory_layout = list(memory_layout)
 
     def write(self, data: bytes) -> None:
         self.handle.bulkWrite(self.WRITE_ENDPOINT, data, self.TIMEOUT)
@@ -105,8 +107,12 @@ class SkyboundDevice():
             raise ValueError("Invalid page ID")
         self.write(b"\x30\x00\x00" + page_id.to_bytes(2, 'little'))
 
+    def translate_page(self, page_id: int) -> int:
+        offset_id = self.memory_layout[page_id // self.PAGES_PER_OFFSET]
+        return self.MEMORY_OFFSETS[offset_id] + page_id % self.PAGES_PER_OFFSET
+
     def select_page(self, page_id: int) -> None:
-        self.select_physical_page(self.DATA_PAGES[page_id])
+        self.select_physical_page(self.translate_page(page_id))
 
     def erase_page(self) -> None:
         self.write(b"\x52\x04")
@@ -124,7 +130,7 @@ class SkyboundDevice():
         self.write(b"\x42")
 
     def get_total_pages(self) -> int:
-        return len(self.DATA_PAGES)
+        return len(self.memory_layout) * self.PAGES_PER_OFFSET
 
     def get_total_size(self) -> int:
         return self.get_total_pages() * self.PAGE_SIZE
