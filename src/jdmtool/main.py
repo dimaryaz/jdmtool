@@ -342,7 +342,7 @@ def get_device_volume_id(path: pathlib.Path) -> int:
 def _transfer_sd_card(service: Service, path: pathlib.Path, vol_id_override: T.Optional[str]) -> None:
     is_avidyne = service.get_optional_property("oem_avidyne_e2") == '1'
     if not is_avidyne:
-        raise DownloaderException("Only Avidyne supported at the moment")
+        raise DownloaderException("Only Avidyne IFD 400 supported at the moment")
 
     if not isinstance(service, SimpleService):
         raise DownloaderException("Unexpected service")
