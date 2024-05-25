@@ -14,6 +14,10 @@ class SkyboundDevice():
 
     TIMEOUT = 3000
 
+    BLOCK_SIZE = 0x1000
+    BLOCKS_PER_PAGE = 0x10
+    PAGE_SIZE = BLOCK_SIZE * BLOCKS_PER_PAGE
+
     DATA_PAGES = (
         list(range(0x00E0, 0x0100)) +
         list(range(0x02E0, 0x0300)) +
@@ -24,8 +28,6 @@ class SkyboundDevice():
         list(range(0x01C0, 0x01E0)) +
         list(range(0x03C0, 0x03E0))
     )
-
-    METADATA_PAGE = len(DATA_PAGES) - 1
 
     def __init__(self, handle: usb1.USBDeviceHandle) -> None:
         self.handle = handle
@@ -120,3 +122,9 @@ class SkyboundDevice():
     def before_write(self) -> None:
         # Same as above.
         self.write(b"\x42")
+
+    def get_total_pages(self) -> int:
+        return len(self.DATA_PAGES)
+
+    def get_total_size(self) -> int:
+        return self.get_total_pages() * self.PAGE_SIZE

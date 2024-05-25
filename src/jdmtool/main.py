@@ -27,8 +27,6 @@ DB_MAGIC = (
     b'\x00\x00\x00\x00\x00\x00)\x02\x11\x00\x00GARMIN AT  FAT16   \x00\x00'
 )
 
-MAX_SIZE = len(SkyboundDevice.DATA_PAGES) * 16 * 0x1000
-
 DOT_JDM = '.jdm'
 
 
@@ -473,9 +471,9 @@ def cmd_detect(dev: SkyboundDevice) -> None:
 @with_usb
 def cmd_read_metadata(dev: SkyboundDevice) -> None:
     dev.before_read()
-    dev.select_page(SkyboundDevice.METADATA_PAGE)
+    dev.select_page(dev.get_total_pages() - 1)
     blocks = []
-    for i in range(16):
+    for i in range(SkyboundDevice.BLOCKS_PER_PAGE):
         _loop_helper(dev, i)
         blocks.append(dev.read_block())
     value = b''.join(blocks).rstrip(b"\xFF").decode()
@@ -483,23 +481,23 @@ def cmd_read_metadata(dev: SkyboundDevice) -> None:
 
 def _clear_metadata(dev: SkyboundDevice) -> None:
     dev.before_write()
-    dev.select_page(SkyboundDevice.METADATA_PAGE)
+    dev.select_page(dev.get_total_pages() - 1)
     dev.erase_page()
 
 def _write_metadata(dev: SkyboundDevice, metadata: str) -> None:
     dev.before_write()
-    page = metadata.encode().ljust(0x10000, b'\xFF')
+    page = metadata.encode().ljust(SkyboundDevice.PAGE_SIZE, b'\xFF')
 
-    dev.select_page(SkyboundDevice.METADATA_PAGE)
+    dev.select_page(dev.get_total_pages() - 1)
 
     # Data card can only write by changing 1s to 0s (effectively doing a bit-wise AND with
     # the existing contents), so all data needs to be "erased" first to reset everything to 1s.
     dev.erase_page()
 
-    for i in range(16):
+    for i in range(SkyboundDevice.BLOCKS_PER_PAGE):
         _loop_helper(dev, i)
 
-        block = page[i*0x1000:(i+1)*0x1000]
+        block = page[i*SkyboundDevice.BLOCK_SIZE:(i+1)*SkyboundDevice.BLOCK_SIZE]
 
         dev.write_block(block)
 
@@ -511,17 +509,17 @@ def cmd_write_metadata(dev: SkyboundDevice, metadata: str) -> None:
 @with_usb
 def cmd_read_database(dev: SkyboundDevice, path: str) -> None:
     with open(path, 'w+b') as fd:
-        with tqdm.tqdm(desc="Reading the database", total=MAX_SIZE, unit='B', unit_scale=True) as t:
+        with tqdm.tqdm(desc="Reading the database", total=dev.get_total_size(), unit='B', unit_scale=True) as t:
             dev.before_read()
-            for i in range(len(SkyboundDevice.DATA_PAGES) * 16):
+            for i in range(dev.get_total_pages() * SkyboundDevice.BLOCKS_PER_PAGE):
                 _loop_helper(dev, i)
 
-                if i % 16 == 0:
-                    dev.select_page(i // 16)
+                if i % SkyboundDevice.BLOCKS_PER_PAGE == 0:
+                    dev.select_page(i // SkyboundDevice.BLOCKS_PER_PAGE)
 
                 block = dev.read_block()
 
-                if block == b'\xFF' * 0x1000:
+                if block == b'\xFF' * SkyboundDevice.BLOCK_SIZE:
                     break
 
                 fd.write(block)
@@ -533,24 +531,26 @@ def cmd_read_database(dev: SkyboundDevice, path: str) -> None:
         fd.seek(0, os.SEEK_END)
         pos = fd.tell()
         while pos > 0:
-            pos -= 1024
+            pos -= SkyboundDevice.BLOCK_SIZE
             fd.seek(pos)
-            block = fd.read(1024)
-            if block != b'\xFF' * 1024:
+            block = fd.read(SkyboundDevice.BLOCK_SIZE)
+            if block != b'\xFF' * SkyboundDevice.BLOCK_SIZE:
                 break
         fd.truncate()
 
     print("Done")
 
 def _write_database(dev: SkyboundDevice, path: str) -> None:
+    max_size = dev.get_total_size()
+
     with open(path, 'rb') as fd:
         size = os.fstat(fd.fileno()).st_size
 
-        if size > MAX_SIZE:
-            raise SkyboundException(f"Database file is too big! The maximum size is {MAX_SIZE}.")
+        if size > max_size:
+            raise SkyboundException(f"Database file is too big! The maximum size is {max_size}.")
 
-        pages_required = min(size // 16 // 0x1000 + 3, len(SkyboundDevice.DATA_PAGES))
-        total_size = pages_required * 16 * 0x1000
+        pages_required = min(size // SkyboundDevice.PAGE_SIZE + 3, dev.get_total_pages())
+        total_size = pages_required * SkyboundDevice.PAGE_SIZE
 
         magic = fd.read(64)
         if magic != DB_MAGIC:
@@ -567,16 +567,16 @@ def _write_database(dev: SkyboundDevice, path: str) -> None:
                 _loop_helper(dev, i)
                 dev.select_page(i)
                 dev.erase_page()
-                t.update(16 * 0x1000)
+                t.update(SkyboundDevice.PAGE_SIZE)
 
         with tqdm.tqdm(desc="Writing the database", total=total_size, unit='B', unit_scale=True) as t:
-            for i in range(pages_required * 16):
-                block = fd.read(0x1000).ljust(0x1000, b'\xFF')
+            for i in range(pages_required * SkyboundDevice.BLOCKS_PER_PAGE):
+                block = fd.read(SkyboundDevice.BLOCK_SIZE).ljust(SkyboundDevice.BLOCK_SIZE, b'\xFF')
 
                 _loop_helper(dev, i)
 
-                if i % 16 == 0:
-                    dev.select_page(i // 16)
+                if i % SkyboundDevice.BLOCKS_PER_PAGE == 0:
+                    dev.select_page(i // SkyboundDevice.BLOCKS_PER_PAGE)
 
                 dev.write_block(block)
                 t.update(len(block))
@@ -585,13 +585,13 @@ def _write_database(dev: SkyboundDevice, path: str) -> None:
 
         with tqdm.tqdm(desc="Verifying the database", total=total_size, unit='B', unit_scale=True) as t:
             dev.before_read()
-            for i in range(pages_required * 16):
-                file_block = fd.read(0x1000).ljust(0x1000, b'\xFF')
+            for i in range(pages_required * SkyboundDevice.BLOCKS_PER_PAGE):
+                file_block = fd.read(SkyboundDevice.BLOCK_SIZE).ljust(SkyboundDevice.BLOCK_SIZE, b'\xFF')
 
                 _loop_helper(dev, i)
 
-                if i % 16 == 0:
-                    dev.select_page(i // 16)
+                if i % SkyboundDevice.BLOCKS_PER_PAGE == 0:
+                    dev.select_page(i // SkyboundDevice.BLOCKS_PER_PAGE)
 
                 card_block = dev.read_block()
 
