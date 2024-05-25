@@ -1,6 +1,6 @@
 # JdmTool
 
-A command-line tool for downloading Jeppesen databases and programming Garmin aviation data cards aiming to be compatible with [Jeppesen Distribution Manager](https://ww2.jeppesen.com/data-solutions/jeppesen-distribution-manager/).
+A command-line tool for downloading and transferring Jeppesen databases aiming to be compatible with [Jeppesen Distribution Manager](https://ww2.jeppesen.com/data-solutions/jeppesen-distribution-manager/).
 
 It requires a Jeppesen subscription, and currenty supports the following services:
 - NavData for Garmin GNS 400/500 Series

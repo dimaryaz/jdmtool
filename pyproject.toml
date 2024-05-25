@@ -4,11 +4,11 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "jdmtool"
-version = "0.0.4"
+version = "0.1"
 authors = [
   { name="Dima Ryazanov", email="dima@gmail.com" },
 ]
-description = "Tool for downloading Jeppesen databases and programming Garmin aviation data cards"
+description = "Tool for downloading and transferring Jeppesen databases"
 readme = "README.md"
 requires-python = ">=3.7"
 classifiers = [
