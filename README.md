@@ -119,7 +119,9 @@ Done
 
 ### Transfer the database to the USB drive (Avidyne IFD 440)
 
-Note: the final database file will contain the FAT32 volume ID of the USB drive - which means, it requires an actual FAT32-formatted device, not any random directory.
+Note: the final database file requires the FAT32 volume ID of the USB drive. `jdmtool` will attempt to find it automatically - which requires the destination to be an actual FAT32-formatted device, not any random directory. Alternatively, you may set the volume ID manually using the `--vol-id` parameter.
+
+> Getting the volume ID automatically is currently not supported on Mac OS, so you will need to use the `--vol-id` parameter. You can try [these instructions](https://apple.stackexchange.com/questions/408562/how-can-i-get-the-volume-serial-number-of-a-fat-volume) for finding the volume ID.
 
 ```
 $ jdmtool transfer 0 /run/media/user/USB/
