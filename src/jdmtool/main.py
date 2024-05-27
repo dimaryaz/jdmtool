@@ -1,10 +1,12 @@
 import argparse 
+from enum import Enum
 from functools import wraps
 from getpass import getpass
 from io import TextIOWrapper
 import json
 import os
 import pathlib
+import shutil
 import typing as T
 import zipfile
 
@@ -15,8 +17,8 @@ import usb1
 
 from .avidyne import SFXFile, SecurityContext
 from .skybound import SkyboundDevice, SkyboundException
-from .downloader import Downloader, DownloaderException
-from .service import Service, ServiceException, SimpleService, load_services
+from .downloader import Downloader, DownloaderException, GRM_FEAT_KEY
+from .service import Service, ServiceException, SimpleService, get_data_dir, load_services
 
 
 CARD_TYPE_SD = 2
@@ -24,6 +26,8 @@ CARD_TYPE_GARMIN = 7
 
 DOT_JDM = '.jdm'
 
+LDR_SYS = 'ldr_sys'
+FEAT_UNLK = 'feat_unlk.dat'
 
 DETAILED_INFO_MAP = [
     ("Aircraft Manufacturer", "oracle_aircraft_manufacturer"),
@@ -225,7 +229,7 @@ def cmd_download(id: int) -> None:
         print(f"Downloaded to {oem.dest_path}")
 
 
-def update_dot_jdm(service: Service, path: pathlib.Path, files: T.List[pathlib.Path]) -> None:
+def update_dot_jdm(service: Service, path: pathlib.Path, files: T.List[pathlib.Path], sh_size: int) -> None:
     try:
         with open(path / DOT_JDM) as fd:
             data = json.load(fd)
@@ -238,7 +242,7 @@ def update_dot_jdm(service: Service, path: pathlib.Path, files: T.List[pathlib.P
 
     for f in files:
         with open(f, 'rb') as fd:
-            sh = libscrc.crc32_q(fd.read(0x8000))
+            sh = libscrc.crc32_q(fd.read(sh_size))
             fh = sh
             while True:
                 chunk = fd.read(0x8000)
@@ -265,7 +269,7 @@ def update_dot_jdm(service: Service, path: pathlib.Path, files: T.List[pathlib.P
             ss.append(existing_service)
 
     # Write the new .jdm
-    gsi = service.get_optional_property('garmin_sec_id')
+    gsi = service.get_optional_property('garmin_system_ids')
     ss.append({
         "a": service.get_property('avionics'),
         "c": service.get_property('customer_number'),
@@ -273,7 +277,7 @@ def update_dot_jdm(service: Service, path: pathlib.Path, files: T.List[pathlib.P
         "date_label_override": service.get_property('date_label_override'),
         "dv": service.get_property('display_version'),
         "f": file_info,
-        "fid": "",
+        "fid": service.get_optional_property('fleet_ids'),
         "filter_applied": "no",
         "gsi": f"0x{gsi}" if gsi else "",
         "jvsn": "",
@@ -340,9 +344,26 @@ def get_device_volume_id(path: pathlib.Path) -> int:
 
 
 def _transfer_sd_card(service: Service, path: pathlib.Path, vol_id_override: T.Optional[str]) -> None:
-    is_avidyne = service.get_optional_property("oem_avidyne_e2") == '1'
-    if not is_avidyne:
-        raise DownloaderException("Only Avidyne IFD 400 supported at the moment")
+    class TransferType(Enum):
+        AVIDYNE = 1
+        GARMIN_BASIC = 2
+
+    requires_vol_id = False
+
+    if isinstance(service, SimpleService):
+        if service.get_optional_property("oem_avidyne_e2") == '1':
+            transfer_type = TransferType.AVIDYNE
+            requires_vol_id = True
+        elif service.get_optional_property("oem_garmin") == '1':
+            for media in service.get_media():
+                if media.findtext('./filename') == FEAT_UNLK:
+                    raise DownloaderException(f"This service uses {FEAT_UNLK} and is not yet supported")
+
+            transfer_type = TransferType.GARMIN_BASIC
+        else:
+            raise DownloaderException("This service is not yet supported")
+    else:
+        raise DownloaderException("Electronic Charts are not yet supported")
 
     if not isinstance(service, SimpleService):
         raise DownloaderException("Unexpected service")
@@ -351,7 +372,6 @@ def _transfer_sd_card(service: Service, path: pathlib.Path, vol_id_override: T.O
         raise DownloaderException("Need to download it first")
 
     databases = service.get_databases()
-    sffs = service.get_sffs()
 
     if path.is_block_device():
         raise DownloaderException(f"{path} is a device file; need the directory where the SD card is mounted")
@@ -368,32 +388,34 @@ def _transfer_sd_card(service: Service, path: pathlib.Path, vol_id_override: T.O
         elif not path.root:
             path = path / '/'
 
-    if vol_id_override is not None:
-        try:
-            vol_id_override = vol_id_override.replace('-', '')
-            if len(vol_id_override) != 8:
-                raise ValueError()
-            volume_id = int(vol_id_override, 16)
-        except ValueError:
-            raise DownloaderException(f"Volume ID must be 8 hex digits long")
-        print(f"Using a manually-provided volume ID: {volume_id:08x}")
+    if requires_vol_id:
+        if vol_id_override is not None:
+            try:
+                vol_id_override = vol_id_override.replace('-', '')
+                if len(vol_id_override) != 8:
+                    raise ValueError()
+                volume_id = int(vol_id_override, 16)
+            except ValueError:
+                raise DownloaderException(f"Volume ID must be 8 hex digits long")
+            print(f"Using a manually-provided volume ID: {volume_id:08x}")
+        else:
+            volume_id = get_device_volume_id(path)
+            print(f"Found volume ID: {volume_id:08x}")
     else:
-        volume_id = get_device_volume_id(path)
-        print(f"Found volume ID: {volume_id:08x}")
+        volume_id = None
 
     prompt = input(f"Transfer databases to {path}? (y/n) ")
     if prompt.lower() != 'y':
         raise DownloaderException("Cancelled")
 
-    files: T.List[pathlib.Path] = []
+    dot_jdm_files: T.List[pathlib.Path] = []
+    sh_size = 0
 
-    if is_avidyne:
-        if len(databases) != 1:
-            raise DownloaderException("Expected one database")
-        if sffs:
-            raise DownloaderException("Unexpected .sff files")
-
+    if transfer_type == TransferType.AVIDYNE:
+        assert len(databases) == 1
         database_path = databases[0].dest_path
+
+        sh_size = 0x8000
 
         with zipfile.ZipFile(database_path) as database_zip:
             # Look for files ending with dsf.txt, even not preceeded by a dot, or anything at all.
@@ -420,13 +442,42 @@ def _transfer_sd_card(service: Service, path: pathlib.Path, vol_id_override: T.O
                 with open(dest, 'wb') as dsf_fd:
                     script.run(dsf_fd, database_zip, ctx, t.update)
 
-            files.append(dest)
+            dot_jdm_files.append(dest)
+
+    elif transfer_type == TransferType.GARMIN_BASIC:
+        assert len(databases) == 1
+        database_path = databases[0].dest_path
+
+        sh_size = 0x2000
+
+        with zipfile.ZipFile(database_path) as database_zip:
+            infolist = database_zip.infolist()
+            for info in infolist:
+                info.filename = info.filename.replace('\\', '/')  # 🤦‍
+                target = path / info.filename
+                print(f"Copying {database_path}!{info.orig_filename} to {target}...")
+                database_zip.extract(info, path)
+                dot_jdm_files.append(target)
+
+        sffs = service.get_sffs()
+        for sff in sffs:
+            sff_target = path / sff.dest_path.name
+            print(f"Copying {sff.dest_path} to {sff_target}...")
+            shutil.copyfile(sff.dest_path, sff_target)
+
+        if sffs:
+            keychain_source = get_data_dir() / GRM_FEAT_KEY
+            (path / LDR_SYS).mkdir(exist_ok=True)
+            keychain_target = path / LDR_SYS / GRM_FEAT_KEY
+            print(f"Copying {keychain_source} to {keychain_target}...")
+            shutil.copyfile(keychain_source, keychain_target)
+
     else:
         # TODO
         assert False
 
     print("Updating .jdm...")
-    update_dot_jdm(service, path, files)
+    update_dot_jdm(service, path, dot_jdm_files, sh_size)
 
 
 @with_data_card
