@@ -163,7 +163,7 @@ def cmd_info(id: int) -> None:
         if desc is None:
             print()
         else:
-            value = service.get_optional_property(path) or ''
+            value = service.get_optional_property(path, "")
             print(f'{desc+":":<30}{value}')
 
     download_paths = service.get_download_paths()
@@ -265,7 +265,7 @@ def update_dot_jdm(service: Service, path: pathlib.Path, files: T.List[pathlib.P
             ss.append(existing_service)
 
     # Write the new .jdm
-    gsi = service.get_optional_property('garmin_sec_id')
+    gsi = service.get_optional_property('garmin_system_ids')
     ss.append({
         "a": service.get_property('avionics'),
         "c": service.get_property('customer_number'),
@@ -273,7 +273,7 @@ def update_dot_jdm(service: Service, path: pathlib.Path, files: T.List[pathlib.P
         "date_label_override": service.get_property('date_label_override'),
         "dv": service.get_property('display_version'),
         "f": file_info,
-        "fid": "",
+        "fid": service.get_optional_property('fleet_ids', ""),
         "filter_applied": "no",
         "gsi": f"0x{gsi}" if gsi else "",
         "jvsn": "",

@@ -37,7 +37,7 @@ def get_services_path() -> pathlib.Path:
 
 class Service(ABC):
     @abstractmethod
-    def get_optional_property(self, name) -> T.Optional[str]:
+    def get_optional_property(self, name: str, default: T.Optional[str] = None) -> T.Optional[str]:
         ...
 
     @abstractmethod
@@ -59,7 +59,7 @@ class Service(ABC):
     def get_download_paths(self) -> T.List[pathlib.Path]:
         return [cfg.dest_path for cfg in self.get_databases() + self.get_sffs() + self.get_oems()]
 
-    def get_property(self, name) -> str:
+    def get_property(self, name: str) -> str:
         value = self.get_optional_property(name)
 
         if value is None:
@@ -75,8 +75,8 @@ class SimpleService(Service):
         super().__init__()
         self._xml = xml
 
-    def get_optional_property(self, name) -> T.Optional[str]:
-        return self._xml.findtext(f'./{name}')
+    def get_optional_property(self, name: str, default: T.Optional[str] = None) -> T.Optional[str]:
+        return self._xml.findtext(f'./{name}', default)
 
     def get_media(self) -> T.List[ET.Element]:
         return self._xml.findall('./media')
@@ -168,12 +168,12 @@ class ChartViewService(Service):
         super().__init__()
         self._subservices = subservices
 
-    def get_optional_property(self, name) -> T.Optional[str]:
+    def get_optional_property(self, name: str, default: T.Optional[str] = None) -> T.Optional[str]:
         if name in ('coverage_desc', 'service_code', 'unique_service_id'):
             values = [s.get_property(name) for s in self._subservices]
             return ', '.join(values)
         else:
-            return self._subservices[0].get_optional_property(name)
+            return self._subservices[0].get_optional_property(name, default)
 
     def get_media(self):
         return self._subservices[0].get_media()
