@@ -1,5 +1,13 @@
 import binascii
-from typing import List
+from enum import Enum
+from io import BytesIO
+import pathlib
+import sys
+from typing import Dict, List
+
+
+FEAT_UNLK = 'feat_unlk.dat'
+
 
 # From "objdump -s --start-address=0x10028108 --stop-address=0x10028508 plugins/oem_garmin/GrmNavdata.dll"
 # Jeppesen Distribution Manager Version 3.14.0 (Build 60)
@@ -71,10 +79,191 @@ LOOKUP_TABLE: List[int] = [int.from_bytes(binascii.a2b_hex(v), 'little') for v i
 '''.split()]
 
 
-def feat_unlk_checksum(data: bytes) -> int:
-    value = 0xFFFFFFFF
+# Note: appending the checksum to the content makes the overall checksum become 0.
+def feat_unlk_checksum(data: bytes, value: int = 0xFFFFFFFF) -> int:
     for b in data:
         x = b ^ (value & 0xFF)
         value >>= 8
         value ^= LOOKUP_TABLE[x]
     return value
+
+
+try:
+    import numpy as np
+    from numba import jit
+
+    LOOKUP_TABLE = np.array(LOOKUP_TABLE)
+    feat_unlk_checksum = jit(nopython=True, nogil=True)(feat_unlk_checksum)
+except ImportError as ex:
+    print("Using a slow checksum implementation; consider installing jdmtool[jit]")
+
+
+def decode_volume_id(encoded_vol_id: int) -> int:
+    return ~((encoded_vol_id << 1 & 0xFFFFFFFF) | (encoded_vol_id >> 31)) & 0xFFFFFFFF
+
+def encode_volume_id(vol_id: int) -> int:
+    return ~((vol_id << 31 & 0xFFFFFFFF) | (vol_id >> 1)) & 0xFFFFFFFF
+
+
+CONTENT1_LEN = 85
+CONTENT2_LEN = 824
+
+SEC_ID_OFFSET = 191
+
+MAGIC1 = 0x1
+MAGIC2 = 0x7648329A
+MAGIC3 = 0x6501
+
+
+class Feature(Enum):
+    NAVIGATION = 0, 0
+    TERRAIN = 1826, 3
+    APT_TERRAIN = 3652, 5
+    CHARTVIEW = 4565, 6
+    SAFETAXI = 5478, 7
+    BASEMAP = 7304, 10
+    AIRPORT_DIR = 8217, 10
+    AIR_SPORT = 9130, 10
+    OBSTACLE2 = 11869, 10
+    NAV_DB2 = 12782, 10
+    SAFETAXI2 = 16434, 10
+    BASEMAP2 = 17347, 10
+
+    def __init__(self, offset, bit):
+        self.offset = offset
+        self.bit = bit
+
+
+FILENAME_TO_FEATURE: Dict[str, Feature] = {
+    'apt_dir.gca': Feature.AIRPORT_DIR,
+    'bmap.bin': Feature.BASEMAP,
+    'bmap2.bin': Feature.BASEMAP2,
+    'ldr_sys/avtn_db.bin': Feature.NAVIGATION,
+    'ldr_sys/nav_db2.bin': Feature.NAV_DB2,
+    'safetaxi.bin': Feature.SAFETAXI,
+    'safetaxi2.gca': Feature.SAFETAXI2,
+    'standard.odb': Feature.OBSTACLE2,
+    'terrain_9as.tdb': Feature.TERRAIN,
+    'terrain.odb': Feature.TERRAIN,
+    'trn.dat': Feature.TERRAIN,
+    "air_sport.gpi": Feature.AIR_SPORT,
+    "avtn_db.bin": Feature.NAVIGATION,
+    "crcfiles.txt": Feature.CHARTVIEW,
+    "fbo.gpi": Feature.AIRPORT_DIR,
+    "nav_db2.bin": Feature.NAV_DB2,
+    "terrain.adb": Feature.APT_TERRAIN,
+}
+
+
+def verify_feat_unlk(path: pathlib.Path, filename: str, vol_id: int, security_id: int, system_id: int) -> None:
+    feature = FILENAME_TO_FEATURE.get(filename)
+    if feature is None:
+        raise ValueError(f"Unsupported filename: {filename}")
+    if feature == Feature.CHARTVIEW:
+        raise ValueError(f"ChartView not yet supported")
+
+    with open(path / FEAT_UNLK, 'rb') as fd:
+        fd.seek(feature.offset)
+
+        content1_bytes = fd.read(CONTENT1_LEN)
+        if all(b == 0 for b in content1_bytes):
+            raise ValueError("No content")
+        chk1 = feat_unlk_checksum(content1_bytes)
+        if chk1 != 0:
+            raise ValueError("Content1 failed the checksum")
+
+        content2_bytes = fd.read(CONTENT2_LEN)
+        chk2 = feat_unlk_checksum(content2_bytes)
+        if chk2 != 0:
+            raise ValueError("Content2 failed the checksum")
+
+        overall_chk = fd.read(4)
+        chk3 = feat_unlk_checksum(content2_bytes + overall_chk, 0)
+        if chk3 != 0:
+            raise ValueError("Content failed the checksum")
+
+    content1 = BytesIO(content1_bytes[:-4])
+
+    magic = int.from_bytes(content1.read(2), 'little')
+    if magic != MAGIC1:
+        raise ValueError(f"Unexpected magic number: 0x{magic:04X}")
+
+    expected_security_id = (int.from_bytes(content1.read(2), 'little') + SEC_ID_OFFSET) & 0xFFFF
+    if expected_security_id != security_id:
+        raise ValueError(f"Unexpected security_id: {expected_security_id}")
+
+    magic = int.from_bytes(content1.read(4), 'little')
+    if magic != MAGIC2:
+        raise ValueError(f"Unexpected magic number: 0x{magic:08X}")
+
+    expected_bit_value = int.from_bytes(content1.read(4), 'little')
+    if expected_bit_value != 1 << feature.bit:
+        raise ValueError(f"Incorrect bit: expected {expected_bit_value:04x}, got {1 << feature.bit:04x}")
+
+    if not all(b == 0 for b in content1.read(4)):
+        raise ValueError("Expected zeros")
+
+    expected_vol_id = decode_volume_id(int.from_bytes(content1.read(4), 'little'))
+    if expected_vol_id != vol_id:
+        raise ValueError(f"Unexpected volume ID: {expected_vol_id:08X}")
+
+    if feature == Feature.NAVIGATION:
+        magic = int.from_bytes(content1.read(2), 'little')
+        if magic != MAGIC3:
+            raise ValueError(f"Unexpected magic number: 0x{magic:04X}")
+
+    expected_chk = int.from_bytes(content1.read(4), 'little')
+    expected_preview = content1.read(17)
+    with open(path / filename, 'rb') as fd:
+        block = fd.read(0x1000)
+
+        if feature == Feature.NAVIGATION:
+            if expected_preview != block[129:146]:
+                raise ValueError("Preview data mismatch")
+        else:
+            if not all(b == 0 for b in expected_preview):
+                raise ValueError("Expected zeros in the content")
+
+        chk = 0xFFFFFFFF
+        while True:
+            next_block = fd.read(0x1000)
+            if not next_block:
+                break
+            chk = feat_unlk_checksum(block, chk)
+            block = next_block
+
+        chk = feat_unlk_checksum(block, chk)
+        if chk != 0:
+            raise ValueError(f"{filename} failed the checksum")
+        file_chk = int.from_bytes(block[-4:], 'little')
+
+    if file_chk != expected_chk:
+        raise ValueError(f"Incorrect checksum in {FEAT_UNLK} for {filename}")
+
+    if not all(b == 0 for b in content1.read()):
+        raise ValueError("Expected zeros in the content")
+
+    content2 = BytesIO(content2_bytes[:-4])
+
+    if not all(b == 0 for b in content2.read(4)):
+        raise ValueError("Expected zeros in the content2")
+
+    expected_system_id = int.from_bytes(content2.read(4), 'little')
+    if expected_system_id != system_id:
+        raise ValueError(f"Unexpected system_id: 0x{expected_system_id:x}")
+
+    if not all(b == 0 for b in content2.read()):
+        raise ValueError("Expected zeros in the content2")
+
+
+def main():
+    if len(sys.argv) != 6:
+        print(f"Usage: {sys.argv[0]} sd-path filename vol-id security-id system-id")
+        return
+
+    _, path, filename, vol_id, security_id, system_id = sys.argv
+    verify_feat_unlk(pathlib.Path(path), filename, int(vol_id, 16), int(security_id), int(system_id, 16))
+    print("Success")
+
+if __name__ == '__main__':
+    main()
