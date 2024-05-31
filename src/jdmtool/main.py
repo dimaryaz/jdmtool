@@ -15,7 +15,6 @@ import psutil
 import tqdm
 import usb1
 
-from .avidyne import SFXFile, SecurityContext
 from .skybound import SkyboundDevice, SkyboundException
 from .downloader import Downloader, DownloaderException, GRM_FEAT_KEY
 from .service import Service, ServiceException, SimpleService, get_data_dir, load_services
@@ -412,6 +411,8 @@ def _transfer_sd_card(service: Service, path: pathlib.Path, vol_id_override: T.O
     sh_size = 0
 
     if transfer_type == TransferType.AVIDYNE:
+        from .avidyne import SFXFile, SecurityContext
+
         assert len(databases) == 1
         database_path = databases[0].dest_path
 

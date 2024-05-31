@@ -28,6 +28,12 @@ dependencies = [
     'typing_extensions; python_version < "3.11"',
 ]
 
+[project.optional-dependencies]
+jit = [
+    'numpy>=1.21.6',
+    'numba>=0.56.4',
+]
+
 [project.urls]
 "Homepage" = "https://github.com/dimaryaz/jdmtool"
 "Bug Tracker" = "https://github.com/dimaryaz/jdmtool/issues"

@@ -88,7 +88,17 @@ def sfx_checksum(data: bytes) -> int:
         x = (value & 0x00FFFFFF) << 8
         value >>= 24
         value = b ^ x ^ LOOKUP_TABLE[value]
-    return value
+    return int(value)  # Handle the numpy case
+
+
+try:
+    import numpy as np
+    from numba import jit
+
+    LOOKUP_TABLE = np.array(LOOKUP_TABLE)
+    sfx_checksum = jit(nopython=True, nogil=True)(sfx_checksum)
+except ImportError as ex:
+    print("Using a slow checksum implementation; consider installing jdmtool[jit]")
 
 
 def read_u32(fd: BinaryIO) -> int:
