@@ -347,17 +347,10 @@ def _transfer_sd_card(service: Service, path: pathlib.Path, vol_id_override: T.O
         AVIDYNE = 1
         GARMIN_BASIC = 2
 
-    requires_vol_id = False
-
     if isinstance(service, SimpleService):
         if service.get_optional_property("oem_avidyne_e2") == '1':
             transfer_type = TransferType.AVIDYNE
-            requires_vol_id = True
         elif service.get_optional_property("oem_garmin") == '1':
-            for media in service.get_media():
-                if media.findtext('./filename') == FEAT_UNLK:
-                    raise DownloaderException(f"This service uses {FEAT_UNLK} and is not yet supported")
-
             transfer_type = TransferType.GARMIN_BASIC
         else:
             raise DownloaderException("This service is not yet supported")
@@ -387,21 +380,18 @@ def _transfer_sd_card(service: Service, path: pathlib.Path, vol_id_override: T.O
         elif not path.root:
             path = path / '/'
 
-    if requires_vol_id:
-        if vol_id_override is not None:
-            try:
-                vol_id_override = vol_id_override.replace('-', '')
-                if len(vol_id_override) != 8:
-                    raise ValueError()
-                volume_id = int(vol_id_override, 16)
-            except ValueError:
-                raise DownloaderException(f"Volume ID must be 8 hex digits long")
-            print(f"Using a manually-provided volume ID: {volume_id:08x}")
-        else:
-            volume_id = get_device_volume_id(path)
-            print(f"Found volume ID: {volume_id:08x}")
+    if vol_id_override is not None:
+        try:
+            vol_id_override = vol_id_override.replace('-', '')
+            if len(vol_id_override) != 8:
+                raise ValueError()
+            volume_id = int(vol_id_override, 16)
+        except ValueError:
+            raise DownloaderException(f"Volume ID must be 8 hex digits long")
+        print(f"Using a manually-provided volume ID: {volume_id:08x}")
     else:
-        volume_id = None
+        volume_id = get_device_volume_id(path)
+        print(f"Found volume ID: {volume_id:08x}")
 
     prompt = input(f"Transfer databases to {path}? (y/n) ")
     if prompt.lower() != 'y':
@@ -450,14 +440,23 @@ def _transfer_sd_card(service: Service, path: pathlib.Path, vol_id_override: T.O
         database_path = databases[0].dest_path
 
         sh_size = 0x2000
+        security_id = int(service.get_property('garmin_sec_id'))
+        system_id = int(service.get_property('avionics_id'), 16)
 
         with zipfile.ZipFile(database_path) as database_zip:
+            from .garmin import copy_with_feat_unlk, FILENAME_TO_FEATURE
+
             infolist = database_zip.infolist()
             for info in infolist:
                 info.filename = info.filename.replace('\\', '/')  # 🤦‍
+                if info.filename not in FILENAME_TO_FEATURE:
+                    raise DownloaderException(f"Unexpected filename: {info.filename}! Please file a bug.")
+
                 target = path / info.filename
-                print(f"Copying {database_path}!{info.orig_filename} to {target}...")
-                database_zip.extract(info, path)
+                with tqdm.tqdm(desc=f"Writing to {target}", total=info.file_size, unit='B', unit_scale=True) as t:
+                    with database_zip.open(info) as src_fd:
+                        copy_with_feat_unlk(path, src_fd, info.filename, volume_id, security_id, system_id, t.update)
+
                 dot_jdm_files.append(target)
 
         sffs = service.get_sffs()

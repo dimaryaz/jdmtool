@@ -3,7 +3,7 @@ from enum import Enum
 from io import BytesIO
 import pathlib
 import sys
-from typing import Dict, List
+from typing import BinaryIO, Callable, Dict, List, Optional
 
 
 FEAT_UNLK = 'feat_unlk.dat'
@@ -114,6 +114,11 @@ MAGIC1 = 0x1
 MAGIC2 = 0x7648329A
 MAGIC3 = 0x6501
 
+NAVIGATION_PREVIEW_START = 129
+NAVIGATION_PREVIEW_END = 146
+
+CHUNK_SIZE = 0x8000
+
 
 class Feature(Enum):
     NAVIGATION = 0, 0
@@ -155,6 +160,93 @@ FILENAME_TO_FEATURE: Dict[str, Feature] = {
 }
 
 
+def copy_with_feat_unlk(
+        dest_dir: pathlib.Path, src: BinaryIO, filename: str,
+        vol_id: int, security_id: int, system_id: int,
+        progress_cb: Callable[[int], None]
+) -> None:
+    feature = FILENAME_TO_FEATURE.get(filename)
+    if feature is None:
+        raise ValueError(f"Unsupported filename: {filename}")
+    if feature == Feature.CHARTVIEW:
+        raise ValueError(f"ChartView not yet supported")
+
+    preview = None
+    with open(dest_dir / filename, 'wb') as dest:
+        last_block = block = src.read(CHUNK_SIZE)
+
+        if feature == Feature.NAVIGATION:
+            preview = block[NAVIGATION_PREVIEW_START:NAVIGATION_PREVIEW_END]
+
+        chk = 0xFFFFFFFF
+        while block:
+            last_block = block
+            dest.write(block)
+            chk = feat_unlk_checksum(block, chk)
+            progress_cb(len(block))
+
+            block = src.read(CHUNK_SIZE)
+
+    if chk != 0:
+        raise ValueError(f"{filename} failed the checksum")
+
+    checksum = int.from_bytes(last_block[-4:], 'little')
+
+    update_feat_unlk(dest_dir, feature, vol_id, security_id, system_id, checksum, preview)
+
+
+def update_feat_unlk(
+        dest_dir: pathlib.Path, feature: Feature, vol_id: int, security_id: int,
+        system_id: int, checksum: int, preview: Optional[str]
+) -> None:
+    content1 = BytesIO()
+
+    content1.write(MAGIC1.to_bytes(2, 'little'))
+    content1.write(((security_id - SEC_ID_OFFSET + 0x10000) & 0XFFFF).to_bytes(2, 'little'))
+    content1.write(MAGIC2.to_bytes(4, 'little'))
+    content1.write((1 << feature.bit).to_bytes(4, 'little'))
+    content1.write((0).to_bytes(4, 'little'))
+    content1.write(encode_volume_id(vol_id).to_bytes(4, 'little'))
+
+    if feature == Feature.NAVIGATION:
+        content1.write(MAGIC3.to_bytes(2, 'little'))
+
+    content1.write(checksum.to_bytes(4, 'little'))
+
+    preview_len = NAVIGATION_PREVIEW_END - NAVIGATION_PREVIEW_START
+    if feature == Feature.NAVIGATION:
+        assert len(preview) == preview_len, preview
+        content1.write(preview)
+    else:
+        content1.write(b'\x00' * preview_len)
+
+    content1.write(b'\x00' * (CONTENT1_LEN - len(content1.getbuffer()) - 4))
+
+    chk1 = feat_unlk_checksum(content1.getbuffer())
+    content1.write(chk1.to_bytes(4, 'little'))
+    assert len(content1.getbuffer()) == CONTENT1_LEN, len(content1.getbuffer())
+
+    content2 = BytesIO()
+    content2.write((0).to_bytes(4, 'little'))
+
+    system_id = (system_id & 0xFFFFFFFF) + (system_id >> 32)
+    content2.write(system_id.to_bytes(4, 'little'))
+
+    content2.write(b'\x00' * (CONTENT2_LEN - len(content2.getbuffer()) - 4))
+
+    chk2 = feat_unlk_checksum(content2.getbuffer())
+    content2.write(chk2.to_bytes(4, 'little'))
+    assert len(content2.getbuffer()) == CONTENT2_LEN, len(content2.getbuffer())
+
+    chk3 = feat_unlk_checksum(content1.getvalue() + content2.getvalue())
+
+    with open(dest_dir / FEAT_UNLK, 'r+b') as out:
+        out.seek(feature.offset)
+        out.write(content1.getbuffer())
+        out.write(content2.getbuffer())
+        out.write(chk3.to_bytes(4, 'little'))
+
+
 def verify_feat_unlk(path: pathlib.Path, filename: str, vol_id: int, security_id: int, system_id: int) -> None:
     feature = FILENAME_TO_FEATURE.get(filename)
     if feature is None:
@@ -180,7 +272,7 @@ def verify_feat_unlk(path: pathlib.Path, filename: str, vol_id: int, security_id
         overall_chk = fd.read(4)
         chk3 = feat_unlk_checksum(content2_bytes + overall_chk, 0)
         if chk3 != 0:
-            raise ValueError("Content failed the checksum")
+            raise ValueError(f"Content failed the checksum: {chk3:08x}")
 
     content1 = BytesIO(content1_bytes[:-4])
 
@@ -215,7 +307,7 @@ def verify_feat_unlk(path: pathlib.Path, filename: str, vol_id: int, security_id
     expected_chk = int.from_bytes(content1.read(4), 'little')
     expected_preview = content1.read(17)
     with open(path / filename, 'rb') as fd:
-        block = fd.read(0x1000)
+        block = fd.read(CHUNK_SIZE)
 
         if feature == Feature.NAVIGATION:
             if expected_preview != block[129:146]:
@@ -224,15 +316,14 @@ def verify_feat_unlk(path: pathlib.Path, filename: str, vol_id: int, security_id
             if not all(b == 0 for b in expected_preview):
                 raise ValueError("Expected zeros in the content")
 
-        chk = 0xFFFFFFFF
+        chk = feat_unlk_checksum(block)
         while True:
-            next_block = fd.read(0x1000)
+            next_block = fd.read(CHUNK_SIZE)
             if not next_block:
                 break
-            chk = feat_unlk_checksum(block, chk)
             block = next_block
+            chk = feat_unlk_checksum(block, chk)
 
-        chk = feat_unlk_checksum(block, chk)
         if chk != 0:
             raise ValueError(f"{filename} failed the checksum")
         file_chk = int.from_bytes(block[-4:], 'little')
@@ -248,9 +339,10 @@ def verify_feat_unlk(path: pathlib.Path, filename: str, vol_id: int, security_id
     if not all(b == 0 for b in content2.read(4)):
         raise ValueError("Expected zeros in the content2")
 
+    system_id = (system_id & 0xFFFFFFFF) + (system_id >> 32)
     expected_system_id = int.from_bytes(content2.read(4), 'little')
     if expected_system_id != system_id:
-        raise ValueError(f"Unexpected system_id: 0x{expected_system_id:x}")
+        raise ValueError(f"Unexpected encoded system_id: 0x{expected_system_id:x}")
 
     if not all(b == 0 for b in content2.read()):
         raise ValueError("Expected zeros in the content2")
