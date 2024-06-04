@@ -26,7 +26,6 @@ CARD_TYPE_GARMIN = 7
 DOT_JDM = '.jdm'
 
 LDR_SYS = 'ldr_sys'
-FEAT_UNLK = 'feat_unlk.dat'
 
 DETAILED_INFO_MAP = [
     ("Aircraft Manufacturer", "oracle_aircraft_manufacturer"),
@@ -393,7 +392,10 @@ def _transfer_sd_card(service: Service, path: pathlib.Path, vol_id_override: T.O
         volume_id = get_device_volume_id(path)
         print(f"Found volume ID: {volume_id:08x}")
 
-    prompt = input(f"Transfer databases to {path}? (y/n) ")
+    avionics = service.get_property('avionics')
+    service_type = service.get_property('service_type')
+    name = f'{avionics} - {service_type}'
+    prompt = input(f"Transfer {name!r} to {path}? (y/n) ")
     if prompt.lower() != 'y':
         raise DownloaderException("Cancelled")
 
@@ -453,7 +455,7 @@ def _transfer_sd_card(service: Service, path: pathlib.Path, vol_id_override: T.O
                     raise DownloaderException(f"Unexpected filename: {info.filename}! Please file a bug.")
 
                 target = path / info.filename
-                with tqdm.tqdm(desc=f"Writing to {target}", total=info.file_size, unit='B', unit_scale=True) as t:
+                with tqdm.tqdm(desc=f"Extracting {info.filename}...", total=info.file_size, unit='B', unit_scale=True) as t:
                     with database_zip.open(info) as src_fd:
                         copy_with_feat_unlk(path, src_fd, info.filename, volume_id, security_id, system_id, t.update)
 

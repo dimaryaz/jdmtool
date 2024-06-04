@@ -104,6 +104,9 @@ def decode_volume_id(encoded_vol_id: int) -> int:
 def encode_volume_id(vol_id: int) -> int:
     return ~((vol_id << 31 & 0xFFFFFFFF) | (vol_id >> 1)) & 0xFFFFFFFF
 
+def truncate_system_id(system_id: int) -> int:
+    return (system_id & 0xFFFFFFFF) + (system_id >> 32)
+
 
 CONTENT1_LEN = 85
 CONTENT2_LEN = 824
@@ -111,7 +114,7 @@ CONTENT2_LEN = 824
 SEC_ID_OFFSET = 191
 
 MAGIC1 = 0x1
-MAGIC2 = 0x7648329A
+MAGIC2 = 0x7648329A  # Hard-coded in GrmNavdata.dll
 MAGIC3 = 0x6501
 
 NAVIGATION_PREVIEW_START = 129
@@ -172,6 +175,8 @@ def copy_with_feat_unlk(
         raise ValueError(f"ChartView not yet supported")
 
     preview = None
+    dest_path = dest_dir / filename
+    dest_path.parent.mkdir(parents=True, exist_ok=True)
     with open(dest_dir / filename, 'wb') as dest:
         last_block = block = src.read(CHUNK_SIZE)
 
@@ -229,8 +234,7 @@ def update_feat_unlk(
     content2 = BytesIO()
     content2.write((0).to_bytes(4, 'little'))
 
-    system_id = (system_id & 0xFFFFFFFF) + (system_id >> 32)
-    content2.write(system_id.to_bytes(4, 'little'))
+    content2.write(truncate_system_id(system_id).to_bytes(4, 'little'))
 
     content2.write(b'\x00' * (CONTENT2_LEN - len(content2.getbuffer()) - 4))
 
@@ -240,6 +244,9 @@ def update_feat_unlk(
 
     chk3 = feat_unlk_checksum(content1.getvalue() + content2.getvalue())
 
+    # Why is there no mode that accomplishes both of these in one call?
+    with open(dest_dir / FEAT_UNLK, 'ab'):
+        pass
     with open(dest_dir / FEAT_UNLK, 'r+b') as out:
         out.seek(feature.offset)
         out.write(content1.getbuffer())
@@ -247,7 +254,7 @@ def update_feat_unlk(
         out.write(chk3.to_bytes(4, 'little'))
 
 
-def verify_feat_unlk(path: pathlib.Path, filename: str, vol_id: int, security_id: int, system_id: int) -> None:
+def verify_feat_unlk(path: pathlib.Path, filename: str) -> None:
     feature = FILENAME_TO_FEATURE.get(filename)
     if feature is None:
         raise ValueError(f"Unsupported filename: {filename}")
@@ -280,9 +287,8 @@ def verify_feat_unlk(path: pathlib.Path, filename: str, vol_id: int, security_id
     if magic != MAGIC1:
         raise ValueError(f"Unexpected magic number: 0x{magic:04X}")
 
-    expected_security_id = (int.from_bytes(content1.read(2), 'little') + SEC_ID_OFFSET) & 0xFFFF
-    if expected_security_id != security_id:
-        raise ValueError(f"Unexpected security_id: {expected_security_id}")
+    security_id = (int.from_bytes(content1.read(2), 'little') + SEC_ID_OFFSET) & 0xFFFF
+    print(f"garmin_sec_id: {security_id}")
 
     magic = int.from_bytes(content1.read(4), 'little')
     if magic != MAGIC2:
@@ -295,9 +301,8 @@ def verify_feat_unlk(path: pathlib.Path, filename: str, vol_id: int, security_id
     if not all(b == 0 for b in content1.read(4)):
         raise ValueError("Expected zeros")
 
-    expected_vol_id = decode_volume_id(int.from_bytes(content1.read(4), 'little'))
-    if expected_vol_id != vol_id:
-        raise ValueError(f"Unexpected volume ID: {expected_vol_id:08X}")
+    vol_id = decode_volume_id(int.from_bytes(content1.read(4), 'little'))
+    print(f"Volume ID: {vol_id:08X}")
 
     if feature == Feature.NAVIGATION:
         magic = int.from_bytes(content1.read(2), 'little')
@@ -339,23 +344,22 @@ def verify_feat_unlk(path: pathlib.Path, filename: str, vol_id: int, security_id
     if not all(b == 0 for b in content2.read(4)):
         raise ValueError("Expected zeros in the content2")
 
-    system_id = (system_id & 0xFFFFFFFF) + (system_id >> 32)
-    expected_system_id = int.from_bytes(content2.read(4), 'little')
-    if expected_system_id != system_id:
-        raise ValueError(f"Unexpected encoded system_id: 0x{expected_system_id:x}")
+    system_id = int.from_bytes(content2.read(4), 'little')
+    print(f"Truncated avionics_id: {system_id:08X}")
+    possible_system_ids = [system_id - i | i << 32 for i in range(1, 4)]
+    print(f"  (Possible values: {', '.join(f'{v:X}' for v in possible_system_ids)}, ...)")
 
     if not all(b == 0 for b in content2.read()):
         raise ValueError("Expected zeros in the content2")
 
 
 def main():
-    if len(sys.argv) != 6:
-        print(f"Usage: {sys.argv[0]} sd-path filename vol-id security-id system-id")
+    if len(sys.argv) != 3:
+        print(f"Usage: {sys.argv[0]} path filename")
         return
 
-    _, path, filename, vol_id, security_id, system_id = sys.argv
-    verify_feat_unlk(pathlib.Path(path), filename, int(vol_id, 16), int(security_id), int(system_id, 16))
-    print("Success")
+    _, path, filename = sys.argv
+    verify_feat_unlk(pathlib.Path(path), filename)
 
 if __name__ == '__main__':
     main()
