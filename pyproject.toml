@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "jdmtool"
-version = "0.1"
+version = "0.2"
 authors = [
   { name="Dima Ryazanov", email="dima@gmail.com" },
 ]
@@ -35,8 +35,9 @@ jit = [
 ]
 
 [project.urls]
-"Homepage" = "https://github.com/dimaryaz/jdmtool"
-"Bug Tracker" = "https://github.com/dimaryaz/jdmtool/issues"
+homepage = "https://github.com/dimaryaz/jdmtool"
+issues = "https://github.com/dimaryaz/jdmtool/issues"
+changelog = "https://github.com/dimaryaz/jdmtool/blob/main/CHANGELOG.md"
 
 [project.scripts]
 jdmtool = "jdmtool.main:main"

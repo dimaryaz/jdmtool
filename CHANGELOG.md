@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.2 (2024-06-04)
+- (Very experimental) Support for Garmin G1000, except for Electronic Charts
+- Optional JIT - improves transfer speed for IFD 400 and G1000
+
 ## 0.1 (2024-05-25)
 - Support for Avidyne IFD 400 series
 - Support for 4MB non-WAAS data cards for GNS 400/500 series

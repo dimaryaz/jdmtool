@@ -8,6 +8,8 @@ It requires a Jeppesen subscription, and currenty supports the following service
   - Requires a 16MB NavData WAAS card or a 4MB NavData non-WAAS card
     - If you have an 8MB data card, please [file a bug](https://github.com/dimaryaz/jdmtool/issues/)!
 - NavData and Obstacles for Avidyne IFD 400 Series
+- (Very experimental) Garmin G1000 support, except for Electronic Charts
+  - If you try it, please [file a bug](https://github.com/dimaryaz/jdmtool/issues/) to report your results - even just to say "it worked".
 
 It is mainly tested on Linux, but should work on OS X and Windows.
 
@@ -27,7 +29,18 @@ Or install the latest code from GitHub:
 pip3 install "git+https://github.com/dimaryaz/jdmtool.git#egg=jdmtool"
 ```
 
-To program Garmin data cards, make sure you have access to the USB device. On Linux, you should copy `udev/50-garmin.rules` to `/etc/udev/rules.d/` and possibly reload the rules.
+### IFD 400 and G1000
+
+You should install an optional Just-in-Time compiler by running:
+```
+pip3 install jdmtool[jit]
+```
+
+This should significantly improve transfer speeds.
+
+### GNS 400/500
+
+Make sure you have access to the USB device. On Linux, you should copy `udev/50-garmin.rules` to `/etc/udev/rules.d/` and possibly reload the rules.
 
 ## Basic Usage
 
@@ -117,7 +130,7 @@ Writing new metadata: {2303~12345678}
 Done
 ```
 
-### Transfer the database to the USB drive (Avidyne IFD 440)
+### Transfer the database to the USB drive (IFD 440 or G1000)
 
 Note: the final database file requires the FAT32 volume ID of the USB drive. `jdmtool` will attempt to find it automatically - which requires the destination to be an actual FAT32-formatted device, not any random directory. Alternatively, you may set the volume ID manually using the `--vol-id` parameter.
 
@@ -125,7 +138,7 @@ Note: the final database file requires the FAT32 volume ID of the USB drive. `jd
 
 ```
 $ jdmtool transfer 0 /run/media/user/USB/
-Transfer databases to /run/media/user/USB/? (y/n) y
+Transfer 'Avidyne IFD 400 Series, Bendix King AeroNav Series - NavData' to /run/media/user/USB/? (y/n) y
 Found volume ID: 1234abcd
 Writing to /run/media/user/USB/navdata.dsf: 100%|██████████████████| 38.0M/38.0M [00:15<00:00, 2.49MB/s]
 Updating .jdm...
