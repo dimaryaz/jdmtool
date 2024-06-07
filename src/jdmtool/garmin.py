@@ -171,8 +171,6 @@ def copy_with_feat_unlk(
     feature = FILENAME_TO_FEATURE.get(filename)
     if feature is None:
         raise ValueError(f"Unsupported filename: {filename}")
-    if feature == Feature.CHARTVIEW:
-        raise ValueError(f"ChartView not yet supported")
 
     preview = None
     dest_path = dest_dir / filename
@@ -187,7 +185,7 @@ def copy_with_feat_unlk(
         while block:
             last_block = block
             dest.write(block)
-            chk = feat_unlk_checksum(block, chk)
+            chk = feat_unlk_checksum(block.replace(b'\r', b'') if feature == Feature.CHARTVIEW else block, chk)
             progress_cb(len(block))
 
             block = src.read(CHUNK_SIZE)
@@ -258,8 +256,6 @@ def verify_feat_unlk(path: pathlib.Path, filename: str) -> None:
     feature = FILENAME_TO_FEATURE.get(filename)
     if feature is None:
         raise ValueError(f"Unsupported filename: {filename}")
-    if feature == Feature.CHARTVIEW:
-        raise ValueError(f"ChartView not yet supported")
 
     with open(path / FEAT_UNLK, 'rb') as fd:
         fd.seek(feature.offset)
@@ -311,6 +307,11 @@ def verify_feat_unlk(path: pathlib.Path, filename: str) -> None:
 
     expected_chk = int.from_bytes(content1.read(4), 'little')
     expected_preview = content1.read(17)
+
+    if feature != Feature.NAVIGATION:
+        if not all(b == 0 for b in expected_preview):
+            raise ValueError("Expected zeros in the content")
+
     with open(path / filename, 'rb') as fd:
         block = fd.read(CHUNK_SIZE)
 
@@ -321,17 +322,20 @@ def verify_feat_unlk(path: pathlib.Path, filename: str) -> None:
             if not all(b == 0 for b in expected_preview):
                 raise ValueError("Expected zeros in the content")
 
-        chk = feat_unlk_checksum(block)
+        chk = 0xFFFFFFFF
         while True:
+            chk = feat_unlk_checksum(block.replace(b'\r', b'') if feature == Feature.CHARTVIEW else block, chk)
             next_block = fd.read(CHUNK_SIZE)
             if not next_block:
                 break
             block = next_block
-            chk = feat_unlk_checksum(block, chk)
 
-        if chk != 0:
-            raise ValueError(f"{filename} failed the checksum")
-        file_chk = int.from_bytes(block[-4:], 'little')
+        if feature == Feature.CHARTVIEW:
+            file_chk = chk
+        else:
+            if chk != 0:
+                raise ValueError(f"{filename} failed the checksum")
+            file_chk = int.from_bytes(block[-4:], 'little')
 
     if file_chk != expected_chk:
         raise ValueError(f"Incorrect checksum in {FEAT_UNLK} for {filename}")
