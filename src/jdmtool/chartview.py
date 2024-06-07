@@ -1,9 +1,22 @@
 import argparse
 import binascii
+from collections import defaultdict
+import configparser
 from dataclasses import dataclass
+import datetime
+import pathlib
 import struct
-import typing as T
+from typing import Any, Dict, IO, List, Optional, Set
+try:
+    from typing import Self  # type: ignore
+except ImportError:
+    from typing_extensions import Self  # type: ignore
+import zipfile
 import zlib
+
+import libscrc
+
+from .dbf import DbfField, DbfFile, DbfHeader
 
 
 @dataclass
@@ -17,7 +30,7 @@ class ChartHeader:
     db_begin_date: str
 
     @classmethod
-    def from_bytes(cls, data: bytes) -> T.Self:
+    def from_bytes(cls, data: bytes) -> Self:
         db_begin_date: bytes
         checksum, magic, num_files, index_offset, db_begin_date = struct.unpack('<4i11s', data)
 
@@ -44,13 +57,184 @@ class ChartRecord:
     metadata: bytes
 
     @classmethod
-    def from_bytes(cls, data: bytes) -> T.Self:
+    def from_bytes(cls, data: bytes) -> Self:
         name: bytes
         name, offset, size, metadata = struct.unpack('<26s2i6s', data)
         return cls(name.rstrip(b'\x00').decode(), offset, size, metadata)
 
     def to_bytes(self) -> bytes:
         return struct.pack('<26s2i6s', self.name.encode(), self.offset, self.size, self.metadata)
+
+
+@dataclass
+class ChartSource:
+    path: pathlib.Path
+    handle: zipfile.ZipFile
+    entry_map: Dict[str, zipfile.ZipInfo]
+
+
+class ChartView:
+    def __init__(self, zip_list: List[pathlib.Path]) -> None:
+        self._sources: List[ChartSource] = []
+        for path in zip_list:
+            handle = zipfile.ZipFile(path)
+            entry_map = {
+                entry.filename.lower(): entry
+                for entry in handle.infolist()
+            }
+            self._sources.append(ChartSource(path, handle, entry_map))
+
+    def close(self) -> None:
+        for source in self._sources:
+            source.handle.close()
+
+    def __enter__(self) -> Self:
+        return self
+
+    def __exit__(self, type, value, traceback) -> None:
+        self.close()
+
+    @classmethod
+    def find_charts_bin(cls, entry_map: Dict[str, zipfile.ZipInfo]) -> zipfile.ZipInfo:
+        for name, entry in entry_map.items():
+            if name.endswith('.bin'):
+                return entry
+        raise ValueError("Could not find the charts file!")
+
+    def process_charts_ini(self, dest_path: pathlib.Path) -> str:
+        config_bytes = self._sources[0].handle.read(self._sources[0].entry_map['charts.ini'])
+        cfg = configparser.ConfigParser()
+        cfg.read_string(config_bytes.decode())
+        (dest_path / 'charts.ini').write_bytes(config_bytes)
+
+        return cfg['CHARTS']['Database_Begin_Date']
+
+    def process_charts_bin(self, dest_path: pathlib.Path, db_begin_date: str) -> Dict[str, List[str]]:
+        filenames: Dict[str, List[str]] = {}
+
+        charts_bin_dest = dest_path / 'charts.bin'
+        with open(charts_bin_dest, 'wb') as charts_bin_fd:
+            crc32q = 0
+
+            def write_with_crc(data: bytes):
+                nonlocal crc32q
+                charts_bin_fd.write(data)
+                crc32q = libscrc.crc32_q(data, crc32q)
+
+            chart_fds: List[IO[bytes]] = []
+            headers: List[ChartHeader] = []
+            all_records: List[ChartRecord] = []
+
+            total_size = 0
+            total_files = 0
+
+            try:
+                for source in self._sources:
+                    chart_fd = source.handle.open(self.find_charts_bin(source.entry_map))
+                    chart_fds.append(chart_fd)
+                    header = ChartHeader.from_bytes(chart_fd.read(ChartHeader.SIZE))
+                    headers.append(header)
+
+                    total_size += header.index_offset - ChartHeader.SIZE
+                    total_files += header.num_files
+
+                new_header = ChartHeader(0, total_files, total_size + ChartHeader.SIZE, db_begin_date)
+                new_header_bytes = new_header.to_bytes()
+                charts_bin_fd.write(new_header_bytes[:4])
+                write_with_crc(new_header_bytes[4:])
+
+                total_offset = ChartHeader.SIZE
+
+                for chart_fd, header in zip(chart_fds, headers):
+                    chart_fd.seek(header.index_offset)
+                    records = [
+                        ChartRecord.from_bytes(chart_fd.read(ChartRecord.SIZE))
+                        for _ in range(header.num_files)
+                    ]
+                    all_records.extend(records)
+                    filenames[chart_fd.name] = [record.name for record in records]
+
+                    for record in records:
+                        assert 0 < record.size < 0x1000000, record.size
+                        chart_fd.seek(record.offset)
+                        contents = chart_fd.read(record.size)
+                        record.offset = total_offset
+                        total_offset += record.size
+                        write_with_crc(contents)
+
+                all_records.sort(key=lambda record: record.name)
+
+                for record in all_records:
+                    write_with_crc(record.to_bytes())
+
+                charts_bin_fd.seek(0)
+                charts_bin_fd.write(crc32q.to_bytes(4, 'little'))
+            finally:
+                for chart_fd in chart_fds:
+                    chart_fd.close()
+
+        return filenames
+
+    def get_airports_by_filename(self) -> Dict[str, str]:
+        airports: Dict[str, str] = {}
+        for chart_filename in ['charts.dbf', 'vfrchrts.dbf']:
+            with self._sources[0].handle.open(self._sources[0].entry_map[chart_filename]) as fd:
+                header, fields = DbfFile.read_dbf_header(fd)
+                for _ in range(header.num_records):
+                    record = DbfFile.read_dbf_record(fd, fields)
+                    airports[record[1]] = record[0]
+        return airports
+
+    def get_airports_by_key(self) -> Dict[int, Set[str]]:
+        result: defaultdict[int, Set[str]] = defaultdict(set)
+        with self._sources[0].handle.open(self._sources[0].entry_map['coverags.dbf']) as fd:
+            header, fields = DbfFile.read_dbf_header(fd)
+            for _ in range(header.num_records):
+                record = DbfFile.read_dbf_record(fd, fields)
+                result[int(record[0])].add(record[1])
+        return result
+
+
+    def process_charts(self, ifr_airports: Set[str], vfr_airports: Set[str], dest_path: pathlib.Path) -> None:
+        records: List[List[Any]] = []
+        header: Optional[DbfHeader] = None
+        fields: Optional[List[DbfField]] = None
+        for name, airports in (('charts.dbf', ifr_airports), ('vfrchrts.dbf', vfr_airports)):
+            with self._sources[0].handle.open(self._sources[0].entry_map[name]) as fd:
+                header, fields = DbfFile.read_dbf_header(fd)
+                for _ in range(header.num_records):
+                    record = DbfFile.read_dbf_record(fd, fields)
+                    if record[0] in airports:
+                        records.append(record)
+
+        records.sort(key=lambda r: r[0])
+
+        assert header is not None
+        assert fields is not None
+
+        header.num_records = len(records)
+        header.last_update = datetime.date.today()
+
+        with open(dest_path / 'charts.dbf', 'wb') as fd:
+            DbfFile.write_dbf_header(fd, header, fields)
+            for record in records:
+                DbfFile.write_dbf_record(fd, fields, record)
+
+    def process_chartlink(self, ifr_airports: Set[str], vfr_airports: Set[str], dest_path: pathlib.Path) -> None:
+        with self._sources[0].handle.open(self._sources[0].entry_map['chrtlink.dbf']) as fd:
+            header, fields = DbfFile.read_dbf_header(fd)
+            records = []
+            for _ in range(header.num_records):
+                record = DbfFile.read_dbf_record(fd, fields)
+                if record[0] in ifr_airports or record[0] in vfr_airports:
+                    records.append(record)
+
+        header.num_records = len(records)
+
+        with open(dest_path / 'chrtlink.dbf', 'wb') as fd:
+            DbfFile.write_dbf_header(fd, header, fields)
+            for record in records:
+                DbfFile.write_dbf_record(fd, fields, record)
 
 
 def main() -> int:

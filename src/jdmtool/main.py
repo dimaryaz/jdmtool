@@ -229,9 +229,9 @@ def cmd_download(id: int) -> None:
 
 def update_dot_jdm(service: Service, path: pathlib.Path, files: T.List[pathlib.Path], sh_size: int) -> None:
     try:
-        with open(path / DOT_JDM) as fd:
+        with open(path / DOT_JDM, encoding='utf-8') as fd:
             data = json.load(fd)
-    except Exception as e:
+    except Exception:
         data = {}
 
     # Calculate new file hashes
@@ -345,6 +345,7 @@ def _transfer_sd_card(service: Service, path: pathlib.Path, vol_id_override: T.O
     class TransferType(Enum):
         AVIDYNE = 1
         GARMIN_BASIC = 2
+        GARMIN_CHARTVIEW = 3
 
     if isinstance(service, SimpleService):
         if service.get_optional_property("oem_avidyne_e2") == '1':
@@ -354,10 +355,11 @@ def _transfer_sd_card(service: Service, path: pathlib.Path, vol_id_override: T.O
         else:
             raise DownloaderException("This service is not yet supported")
     else:
-        raise DownloaderException("Electronic Charts are not yet supported")
-
-    if not isinstance(service, SimpleService):
-        raise DownloaderException("Unexpected service")
+        if service.get_optional_property("oem_garmin") == '1':
+            print("WARNING: Electronic Charts support is not quite finished yet!")
+            transfer_type = TransferType.GARMIN_CHARTVIEW
+        else:
+            raise DownloaderException("Unexpected service type")
 
     if not all(f.exists() for f in service.get_download_paths()):
         raise DownloaderException("Need to download it first")
@@ -438,6 +440,8 @@ def _transfer_sd_card(service: Service, path: pathlib.Path, vol_id_override: T.O
             dot_jdm_files.append(dest)
 
     elif transfer_type == TransferType.GARMIN_BASIC:
+        from .garmin import copy_with_feat_unlk, FILENAME_TO_FEATURE
+
         assert len(databases) == 1
         database_path = databases[0].dest_path
 
@@ -446,8 +450,6 @@ def _transfer_sd_card(service: Service, path: pathlib.Path, vol_id_override: T.O
         system_id = int(service.get_property('avionics_id'), 16)
 
         with zipfile.ZipFile(database_path) as database_zip:
-            from .garmin import copy_with_feat_unlk, FILENAME_TO_FEATURE
-
             infolist = database_zip.infolist()
             for info in infolist:
                 info.filename = info.filename.replace('\\', '/')  # 🤦‍
@@ -461,22 +463,76 @@ def _transfer_sd_card(service: Service, path: pathlib.Path, vol_id_override: T.O
 
                 dot_jdm_files.append(target)
 
-        sffs = service.get_sffs()
-        for sff in sffs:
-            sff_target = path / sff.dest_path.name
-            print(f"Copying {sff.dest_path} to {sff_target}...")
-            shutil.copyfile(sff.dest_path, sff_target)
+    elif transfer_type == TransferType.GARMIN_CHARTVIEW:
+        # from .garmin import copy_with_feat_unlk, FILENAME_TO_FEATURE
+        from .chartview import ChartView
 
-        if sffs:
-            keychain_source = get_data_dir() / GRM_FEAT_KEY
-            (path / LDR_SYS).mkdir(exist_ok=True)
-            keychain_target = path / LDR_SYS / GRM_FEAT_KEY
-            print(f"Copying {keychain_source} to {keychain_target}...")
-            shutil.copyfile(keychain_source, keychain_target)
+        zip_files = [d.dest_path for d in databases]
+        with ChartView(zip_files) as cv:
+            db_begin_date = cv.process_charts_ini(path)
+
+            print("Processing charts.bin...")
+            filenames_by_chart = cv.process_charts_bin(path, db_begin_date)
+
+            airports_by_filename = cv.get_airports_by_filename()
+            airports_by_key = cv.get_airports_by_key()
+
+            ifr_subscription_airports: T.Set[str] = set()
+            vfr_subscription_airports: T.Set[str] = set()
+
+            for name, filenames in filenames_by_chart.items():
+                code, chartname = name.split('_', 1)
+                print(f"Guessing subscription for code {code}...")
+
+                if chartname == 'Charts.bin':
+                    subscription_airports = ifr_subscription_airports
+                elif chartname == 'VFRCharts.bin':
+                    subscription_airports = vfr_subscription_airports
+                else:
+                    raise ValueError(f"Unexpected filename: {name}")
+
+                airports: T.Set[str] = set()
+                for filename in filenames:
+                    airport = airports_by_filename.get(filename.split('.')[0].upper())
+                    if airport is None:
+                        raise ValueError(f"Failed to find the airport for {filename}!")
+                    airports.add(airport)
+
+                matches = []
+                for key, key_airports in airports_by_key.items():
+                    if key_airports.issuperset(airports):
+                        matches.append((key, key_airports))
+                if not matches:
+                    raise ValueError("Failed to find any matching subscriptions!")
+
+                matches.sort(key=lambda match: len(match[1]))
+                best_subscription, best_airports = matches[0]
+                subscription_airports.update(best_airports)
+                print(f"Best match: {best_subscription}")
+
+            print("Processing charts.dbf...")
+            cv.process_charts(ifr_subscription_airports, vfr_subscription_airports, path)
+
+            print("Processing chrtlink.dbf...")
+            cv.process_chartlink(ifr_subscription_airports, vfr_subscription_airports, path)
+
 
     else:
         # TODO
         assert False
+
+    sffs = service.get_sffs()
+    for sff in sffs:
+        sff_target = path / sff.dest_path.name
+        print(f"Copying {sff.dest_path} to {sff_target}...")
+        shutil.copyfile(sff.dest_path, sff_target)
+
+    if sffs:
+        keychain_source = get_data_dir() / GRM_FEAT_KEY
+        (path / LDR_SYS).mkdir(exist_ok=True)
+        keychain_target = path / LDR_SYS / GRM_FEAT_KEY
+        print(f"Copying {keychain_source} to {keychain_target}...")
+        shutil.copyfile(keychain_source, keychain_target)
 
     print("Updating .jdm...")
     update_dot_jdm(service, path, dot_jdm_files, sh_size)

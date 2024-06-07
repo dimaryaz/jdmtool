@@ -4,9 +4,9 @@ from dataclasses import dataclass
 import re
 from typing import BinaryIO, Callable, List, Mapping, Optional, TextIO
 try:
-    from typing import Self
+    from typing import Self  # type: ignore
 except ImportError:
-    from typing_extensions import Self
+    from typing_extensions import Self  # type: ignore
 import sys
 import zlib
 from zipfile import ZipFile
