@@ -477,17 +477,17 @@ def _transfer_sd_card(service: Service, path: pathlib.Path, vol_id_override: T.O
             airports_by_filename = cv.get_airports_by_filename()
             airports_by_key = cv.get_airports_by_key()
 
-            ifr_subscription_airports: T.Set[str] = set()
-            vfr_subscription_airports: T.Set[str] = set()
+            ifr_airports: T.Set[str] = set()
+            vfr_airports: T.Set[str] = set()
 
             for name, filenames in filenames_by_chart.items():
                 code, chartname = name.split('_', 1)
                 print(f"Guessing subscription for code {code}...")
 
                 if chartname == 'Charts.bin':
-                    subscription_airports = ifr_subscription_airports
+                    subscription_airports = ifr_airports
                 elif chartname == 'VFRCharts.bin':
-                    subscription_airports = vfr_subscription_airports
+                    subscription_airports = vfr_airports
                 else:
                     raise ValueError(f"Unexpected filename: {name}")
 
@@ -508,14 +508,16 @@ def _transfer_sd_card(service: Service, path: pathlib.Path, vol_id_override: T.O
                 matches.sort(key=lambda match: len(match[1]))
                 best_subscription, best_airports = matches[0]
                 subscription_airports.update(best_airports)
-                print(f"Best match: {best_subscription}")
+                print(f"Best match: {best_subscription}, {len(best_airports)} airports")
 
             print("Processing charts.dbf...")
-            cv.process_charts(ifr_subscription_airports, vfr_subscription_airports, path)
+            charts = cv.process_charts(ifr_airports, vfr_airports, path)
 
             print("Processing chrtlink.dbf...")
-            cv.process_chartlink(ifr_subscription_airports, vfr_subscription_airports, path)
+            chartlink = cv.process_chartlink(ifr_airports, vfr_airports, path)
 
+            print("Processing airports.dbf...")
+            cv.process_airports(ifr_airports, vfr_airports, charts, chartlink, path)
 
     else:
         # TODO

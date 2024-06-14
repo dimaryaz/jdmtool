@@ -53,7 +53,7 @@ class DbfField:
 
 class DbfFile:
     @classmethod
-    def read_dbf_header(cls, fd: BinaryIO) -> Tuple[DbfHeader, List[DbfField]]:
+    def read_header(cls, fd: BinaryIO) -> Tuple[DbfHeader, List[DbfField]]:
         header = DbfHeader.from_bytes(fd.read(DbfHeader.SIZE))
         num_fields = (header.header_bytes - 33) // 32
         fields = [DbfField.from_bytes(fd.read(DbfField.SIZE)) for _ in range(num_fields)]
@@ -62,7 +62,7 @@ class DbfFile:
         return header, fields
 
     @classmethod
-    def write_dbf_header(cls, fd: BinaryIO, header: DbfHeader, fields: List[DbfField]) -> None:
+    def write_header(cls, fd: BinaryIO, header: DbfHeader, fields: List[DbfField]) -> None:
         header.header_bytes = len(fields) * 32 + 33
         fd.write(header.to_bytes())
         for field in fields:
@@ -70,10 +70,13 @@ class DbfFile:
         fd.write(b'\x0D')
 
     @classmethod
-    def read_dbf_record(cls, fd: BinaryIO, fields: List[DbfField]) -> List[Any]:
+    def read_record(cls, fd: BinaryIO, fields: List[DbfField]) -> List[Any]:
         del_marker = fd.read(1).decode()
-        if del_marker != ' ':
-            raise ValueError("Deleted field?")
+        if del_marker == '*':
+            raise ValueError("Deleted record?")
+        elif del_marker != ' ':
+            raise ValueError(f"Bad deleted marker: {del_marker!r}")
+
         values = []
         for field in fields:
             data = fd.read(field.length).decode('latin-1')
@@ -82,22 +85,28 @@ class DbfFile:
             elif field.type == 'D':
                 values.append(data)
             elif field.type == 'N':
-                values.append(int(data))
+                s = data.strip(' ')
+                values.append(int(s) if s else None)
             else:
                 raise ValueError(f"Unsupported field: {field.type}")
         return values
 
     @classmethod
-    def write_dbf_record(cls, fd: BinaryIO, fields: List[DbfField], values: List[Any]) -> None:
+    def write_record(cls, fd: BinaryIO, fields: List[DbfField], values: List[Any]) -> None:
         fd.write(b' ')
         for field, value in zip(fields, values):
             data = None
             if field.type == 'C':
+                if value is None:
+                    raise ValueError("C type cannot be None")
                 data = value.ljust(field.length, ' ')
             elif field.type == 'D':
+                if value is None:
+                    raise ValueError("D type cannot be None")
                 data = value
             elif field.type == 'N':
-                data = str(value).rjust(field.length, ' ')
+                # Why is it not rjust???
+                data = ('' if value is None else str(value)).ljust(field.length, ' ')
             else:
                 raise ValueError(f"Unsupported field: {field.type}")
             fd.write(data.encode('latin-1'))
