@@ -467,12 +467,15 @@ def _transfer_sd_card(service: Service, path: pathlib.Path, vol_id_override: T.O
         # from .garmin import copy_with_feat_unlk, FILENAME_TO_FEATURE
         from .chartview import ChartView
 
+        charts_path = path / 'Charts'
+        charts_path.mkdir(exist_ok=True)
+
         zip_files = [d.dest_path for d in databases]
         with ChartView(zip_files) as cv:
-            db_begin_date = cv.process_charts_ini(path)
+            db_begin_date = cv.process_charts_ini(charts_path)
 
             print("Processing charts.bin...")
-            filenames_by_chart = cv.process_charts_bin(path, db_begin_date)
+            filenames_by_chart = cv.process_charts_bin(charts_path, db_begin_date)
 
             airports_by_filename = cv.get_airports_by_filename()
             airports_by_key = cv.get_airports_by_key()
@@ -511,13 +514,13 @@ def _transfer_sd_card(service: Service, path: pathlib.Path, vol_id_override: T.O
                 print(f"Best match: {best_subscription}, {len(best_airports)} airports")
 
             print("Processing charts.dbf...")
-            charts = cv.process_charts(ifr_airports, vfr_airports, path)
+            charts = cv.process_charts(ifr_airports, vfr_airports, charts_path)
 
             print("Processing chrtlink.dbf...")
-            chartlink = cv.process_chartlink(ifr_airports, vfr_airports, path)
+            chartlink = cv.process_chartlink(ifr_airports, vfr_airports, charts_path)
 
             print("Processing airports.dbf...")
-            cv.process_airports(ifr_airports, vfr_airports, charts, chartlink, path)
+            cv.process_airports(ifr_airports, vfr_airports, charts, chartlink, charts_path)
 
     else:
         # TODO
