@@ -388,7 +388,7 @@ def _transfer_sd_card(service: Service, path: pathlib.Path, vol_id_override: T.O
                 raise ValueError()
             volume_id = int(vol_id_override, 16)
         except ValueError:
-            raise DownloaderException(f"Volume ID must be 8 hex digits long")
+            raise DownloaderException("Volume ID must be 8 hex digits long")
         print(f"Using a manually-provided volume ID: {volume_id:08x}")
     else:
         volume_id = get_device_volume_id(path)
@@ -464,8 +464,8 @@ def _transfer_sd_card(service: Service, path: pathlib.Path, vol_id_override: T.O
                 dot_jdm_files.append(target)
 
     elif transfer_type == TransferType.GARMIN_CHARTVIEW:
-        # from .garmin import copy_with_feat_unlk, FILENAME_TO_FEATURE
         from .chartview import ChartView
+        from .garmin import Feature, feat_unlk_checksum, update_feat_unlk
 
         charts_path = path / 'Charts'
         charts_path.mkdir(exist_ok=True)
@@ -535,6 +535,14 @@ def _transfer_sd_card(service: Service, path: pathlib.Path, vol_id_override: T.O
 
             print("Processing crcfiles.txt...")
             cv.process_crcfiles(charts_path)
+
+        security_id = int(service.get_property('garmin_sec_id'))
+        system_id = int(service.get_property('avionics_id'), 16)
+
+        crcfiles = (charts_path / 'crcfiles.txt').read_bytes()
+        chk = feat_unlk_checksum(crcfiles)
+
+        update_feat_unlk(path, Feature.CHARTVIEW, volume_id, security_id, system_id, chk, None)
 
     else:
         # TODO
