@@ -74,6 +74,13 @@ class ChartSource:
 
 
 class ChartView:
+    FILES_TO_COPY = [
+        'ctypes.dbf',
+        'jeppesen.tfl',
+        'jeppesen.tls',
+        'lssdef.tcl',
+    ]
+
     def __init__(self, zip_list: List[pathlib.Path]) -> None:
         self._sources: List[ChartSource] = []
         for path in zip_list:
@@ -338,6 +345,15 @@ class ChartView:
             DbfFile.write_header(fd, header, fields)
             for record in records:
                 DbfFile.write_record(fd, fields, record)
+
+    def extract_file(self, filename: str, dest_path: pathlib.Path) -> None:
+        entry = self._sources[0].entry_map[filename.lower()]
+        self._sources[0].handle.extract(entry, dest_path)
+
+    def extract_fonts(self, dest_path: pathlib.Path) -> None:
+        for entry in self._sources[0].handle.infolist():
+            if entry.filename.lower().startswith("fonts/"):
+                self._sources[0].handle.extract(entry, dest_path)
 
 
 def main() -> int:

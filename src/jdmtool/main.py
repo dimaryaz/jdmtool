@@ -526,6 +526,13 @@ def _transfer_sd_card(service: Service, path: pathlib.Path, vol_id_override: T.O
             print("Processing notams.dbf + notams.dbt...")
             cv.process_notams(ifr_countries | vfr_countries, charts_path)
 
+            for filename in ChartView.FILES_TO_COPY:
+                print(f"Extracting {filename}...")
+                cv.extract_file(filename, charts_path)
+
+            print("Extracting fonts...")
+            cv.extract_fonts(path)
+
     else:
         # TODO
         assert False
