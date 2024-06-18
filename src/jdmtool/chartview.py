@@ -81,6 +81,24 @@ class ChartView:
         'lssdef.tcl',
     ]
 
+    CRC_FILES: List[Tuple[str, bool]] = [
+        ('airports.dbf', True),
+        ('charts.dbf', True),
+        ('charts.ini', True),
+        ('chrtlink.dbf', True),
+        ('country.dbf', False),
+        # ('coverags.dbf', False),
+        ('ctypes.dbf', False),
+        ('jeppesen.tfl', False),
+        ('jeppesen.tls', False),
+        ('lssdef.tcl', False),
+        ('notams.dbf', True),
+        ('notams.dbt', True),
+        # ('regions.dat', False),
+        # ('sbscrips.dbf', False),
+        ('state.dbf', False),
+    ]
+
     def __init__(self, zip_list: List[pathlib.Path]) -> None:
         self._sources: List[ChartSource] = []
         for path in zip_list:
@@ -111,9 +129,11 @@ class ChartView:
     def _open(self, name: str) -> BinaryIO:
         return self._sources[0].handle.open(self._sources[0].entry_map[name])
 
+    def _read(self, name: str) -> bytes:
+        return self._sources[0].handle.read(self._sources[0].entry_map[name])
+
     def process_charts_ini(self, dest_path: pathlib.Path) -> str:
-        with self._open('charts.ini') as fd:
-            config_bytes = fd.read()
+        config_bytes = self._read('charts.ini')
         cfg = configparser.ConfigParser()
         cfg.read_string(config_bytes.decode())
         (dest_path / 'charts.ini').write_bytes(config_bytes)
@@ -354,6 +374,16 @@ class ChartView:
         for entry in self._sources[0].handle.infolist():
             if entry.filename.lower().startswith("fonts/"):
                 self._sources[0].handle.extract(entry, dest_path)
+
+    def process_crcfiles(self, dest_path: pathlib.Path) -> None:
+        with open(dest_path / 'crcfiles.txt', 'w', encoding='utf-8', newline='\r\n') as fd:
+            for filename, is_processed in self.CRC_FILES:
+                if is_processed:
+                    contents = (dest_path / filename).read_bytes()
+                else:
+                    contents = self._read(filename)
+                checksum = libscrc.crc32_q(contents)
+                print(f'{filename},0x{checksum:08x}', file=fd)
 
 
 def main() -> int:

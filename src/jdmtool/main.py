@@ -533,6 +533,9 @@ def _transfer_sd_card(service: Service, path: pathlib.Path, vol_id_override: T.O
             print("Extracting fonts...")
             cv.extract_fonts(path)
 
+            print("Processing crcfiles.txt...")
+            cv.process_crcfiles(charts_path)
+
     else:
         # TODO
         assert False
