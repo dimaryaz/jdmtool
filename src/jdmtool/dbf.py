@@ -13,6 +13,7 @@ class DbfHeader:
     SIZE = 32
     VERSION = 3
 
+    info: int
     last_update: datetime.date
     num_records: int
     header_bytes: int
@@ -20,16 +21,17 @@ class DbfHeader:
 
     @classmethod
     def from_bytes(cls, data: bytes) -> Self:
-        version, year, month, day, num_records, header_bytes, record_bytes = struct.unpack('<4BIHH20x', data)
+        info, year, month, day, num_records, header_bytes, record_bytes = struct.unpack('<4BIHH20x', data)
+        version = info & 0x3
         if version != cls.VERSION:
             raise ValueError(f"Unsupported DBF version: {version}")
 
-        return cls(datetime.date(year + 1900, month, day), num_records, header_bytes, record_bytes)
+        return cls(info, datetime.date(year + 1900, month, day), num_records, header_bytes, record_bytes)
 
     def to_bytes(self) -> bytes:
         return struct.pack(
             '<4BIHH20x',
-            self.VERSION, self.last_update.year - 1900, self.last_update.month, self.last_update.day,
+            self.info, self.last_update.year - 1900, self.last_update.month, self.last_update.day,
             self.num_records, self.header_bytes, self.record_bytes
         )
 
@@ -79,16 +81,31 @@ class DbfFile:
 
         values = []
         for field in fields:
-            data = fd.read(field.length).decode('latin-1')
+            data = fd.read(field.length).decode('latin-1').strip(' ')
             if field.type == 'C':
-                values.append(data.rstrip(' '))
+                value = data
             elif field.type == 'D':
-                values.append(data)
-            elif field.type == 'N':
                 s = data.strip(' ')
-                values.append(int(s) if s else None)
+                if s:
+                    value = datetime.datetime.strptime(data, '%Y%m%d').date()
+                else:
+                    value = None
+            elif field.type == 'L':
+                if len(data) != 1:
+                    raise ValueError(f"Incorrect length: {data!r}")
+                if data in 'YyTt':
+                    value = True
+                elif data in 'NnFf':
+                    value = False
+                elif data == '?':
+                    value = None
+                else:
+                    raise ValueError(f"Incorrect boolean: {data!r}")
+            elif field.type in ('M', 'N'):
+                value = int(data) if data else None
             else:
                 raise ValueError(f"Unsupported field: {field.type}")
+            values.append(value)
         return values
 
     @classmethod
@@ -99,14 +116,95 @@ class DbfFile:
             if field.type == 'C':
                 if value is None:
                     raise ValueError("C type cannot be None")
-                data = value.ljust(field.length, ' ')
+                data = value
             elif field.type == 'D':
                 if value is None:
-                    raise ValueError("D type cannot be None")
-                data = value
-            elif field.type == 'N':
-                # Why is it not rjust???
-                data = ('' if value is None else str(value)).ljust(field.length, ' ')
+                    data = ''
+                else:
+                    assert isinstance(value, datetime.date)
+                    data = value.strftime('%Y%m%d')
+            elif field.type == 'L':
+                data = {
+                    True: 'T',
+                    False: 'F',
+                    None: '?',
+                }[value]
+            elif field.type in ('M', 'N'):
+                # Should be rjust, but that's not what JDM does!
+                data = '' if value is None else str(value)
             else:
                 raise ValueError(f"Unsupported field: {field.type}")
-            fd.write(data.encode('latin-1'))
+            fd.write(data.ljust(field.length).encode('latin-1'))
+
+
+@dataclass
+class DbtHeader:
+    SIZE = 512
+
+    next_free_block: int
+    dbf_filename: str
+    block_length: int
+
+    @classmethod
+    def from_bytes(cls, data: bytes) -> Self:
+        next_free_block, dbf_filename, block_length = struct.unpack('<I4x8s4xH490x', data)
+        return cls(next_free_block, dbf_filename.decode('latin-1'), block_length)
+
+    def to_bytes(self) -> bytes:
+        return struct.pack(
+            '<I4x8s4xH490x',
+            self.next_free_block, self.dbf_filename.encode('latin-1'), self.block_length
+        )
+
+
+class DbtFile:
+    DBT3_BLOCK_SIZE = 512
+    DBT4_BLOCK_START = b'\xFF\xFF\x08\x00'
+
+    @classmethod
+    def read_header(cls, fd: BinaryIO) -> DbtHeader:
+        fd.seek(0)
+        block = fd.read(DbtHeader.SIZE)
+        return DbtHeader.from_bytes(block)
+
+    @classmethod
+    def write_header(cls, fd: BinaryIO, header: DbtHeader) -> None:
+        fd.seek(0)
+        fd.write(header.to_bytes())
+
+    @classmethod
+    def read_record(cls, fd: BinaryIO, header: DbtHeader, idx: int) -> str:
+        if header.block_length:
+            fd.seek(header.block_length * idx)
+            block_start = fd.read(8)
+            if block_start[0:4] != cls.DBT4_BLOCK_START:
+                raise ValueError("Invalid dBase IV block")
+            length = int.from_bytes(block_start[4:8], 'little')
+            data = fd.read(length - len(block_start))
+        else:
+            fd.seek(cls.DBT3_BLOCK_SIZE * idx)
+            blocks = b''
+            while True:
+                block = fd.read(cls.DBT3_BLOCK_SIZE)
+                if not block:
+                    raise ValueError("Failed to find field terminator!")
+                blocks += block
+                if b'\x1a\x1a' in blocks:
+                    break
+            data = blocks.split(b'\x1a\x1a', 1)[0]
+
+        return data.decode('latin-1')
+
+    @classmethod
+    def write_record(cls, fd: BinaryIO, header: DbtHeader, idx: int, data: str) -> int:
+        if header.block_length:
+            block_length = header.block_length
+            total_length = 8 + len(data)
+            blocks = cls.DBT4_BLOCK_START + total_length.to_bytes(4, 'little') + data.encode('latin-1')
+        else:
+            block_length = cls.DBT3_BLOCK_SIZE
+            blocks = data.encode('latin-1') + b'\x1a\x1a'
+
+        fd.seek(block_length * idx)
+        fd.write(blocks)
+        return -(-len(blocks) // block_length)

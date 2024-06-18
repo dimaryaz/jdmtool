@@ -6,7 +6,7 @@ from dataclasses import dataclass
 import datetime
 import pathlib
 import struct
-from typing import Any, Dict, IO, List, Optional, Set
+from typing import Any, BinaryIO, Dict, List, Optional, Set, Tuple
 try:
     from typing import Self  # type: ignore
 except ImportError:
@@ -16,7 +16,7 @@ import zlib
 
 import libscrc
 
-from .dbf import DbfField, DbfFile, DbfHeader
+from .dbf import DbfField, DbfFile, DbfHeader, DbtFile, DbtHeader
 
 
 @dataclass
@@ -101,8 +101,12 @@ class ChartView:
                 return entry
         raise ValueError("Could not find the charts file!")
 
+    def _open(self, name: str) -> BinaryIO:
+        return self._sources[0].handle.open(self._sources[0].entry_map[name])
+
     def process_charts_ini(self, dest_path: pathlib.Path) -> str:
-        config_bytes = self._sources[0].handle.read(self._sources[0].entry_map['charts.ini'])
+        with self._open('charts.ini') as fd:
+            config_bytes = fd.read()
         cfg = configparser.ConfigParser()
         cfg.read_string(config_bytes.decode())
         (dest_path / 'charts.ini').write_bytes(config_bytes)
@@ -121,7 +125,7 @@ class ChartView:
                 charts_bin_fd.write(data)
                 crc32q = libscrc.crc32_q(data, crc32q)
 
-            chart_fds: List[IO[bytes]] = []
+            chart_fds: List[BinaryIO] = []
             headers: List[ChartHeader] = []
             all_records: List[ChartRecord] = []
 
@@ -178,7 +182,7 @@ class ChartView:
     def get_airports_by_filename(self) -> Dict[str, str]:
         airports: Dict[str, str] = {}
         for chart_filename in ['charts.dbf', 'vfrchrts.dbf']:
-            with self._sources[0].handle.open(self._sources[0].entry_map[chart_filename]) as fd:
+            with self._open(chart_filename) as fd:
                 header, fields = DbfFile.read_header(fd)
                 for _ in range(header.num_records):
                     record = DbfFile.read_record(fd, fields)
@@ -187,7 +191,7 @@ class ChartView:
 
     def get_airports_by_key(self) -> Dict[int, Set[str]]:
         result: defaultdict[int, Set[str]] = defaultdict(set)
-        with self._sources[0].handle.open(self._sources[0].entry_map['coverags.dbf']) as fd:
+        with self._open('coverags.dbf') as fd:
             header, fields = DbfFile.read_header(fd)
             for _ in range(header.num_records):
                 record = DbfFile.read_record(fd, fields)
@@ -200,7 +204,7 @@ class ChartView:
         header: Optional[DbfHeader] = None
         fields: Optional[List[DbfField]] = None
         for name, airports in (('charts.dbf', ifr_airports), ('vfrchrts.dbf', vfr_airports)):
-            with self._sources[0].handle.open(self._sources[0].entry_map[name]) as fd:
+            with self._open(name) as fd:
                 header, fields = DbfFile.read_header(fd)
                 if airports:
                     for _ in range(header.num_records):
@@ -227,7 +231,7 @@ class ChartView:
         return indexes
 
     def process_chartlink(self, ifr_airports: Set[str], vfr_airports: Set[str], dest_path: pathlib.Path) -> Dict[str, int]:
-        with self._sources[0].handle.open(self._sources[0].entry_map['chrtlink.dbf']) as fd:
+        with self._open('chrtlink.dbf') as fd:
             header, fields = DbfFile.read_header(fd)
             records = []
             for _ in range(header.num_records):
@@ -250,10 +254,12 @@ class ChartView:
     def process_airports(
             self, ifr_airports: Set[str], vfr_airports: Set[str],
             chart: Dict[str, int], chartlink: Dict[str, int], dest_path: pathlib.Path
-    ) -> None:
+    ) -> Tuple[Set[str], Set[str]]:
+        ifr_countries: Set[str] = set()
+        vfr_countries: Set[str] = set()
         records: Dict[str, List[Any]] = {}
 
-        with self._sources[0].handle.open(self._sources[0].entry_map['airports.dbf']) as fd:
+        with self._open('airports.dbf') as fd:
             header, fields = DbfFile.read_header(fd)
             assert len(fields) == 26, fields
 
@@ -264,8 +270,9 @@ class ChartView:
                         record[-2] = chart.get(record[0])
                         record[-1] = chartlink.get(record[0])
                         records[record[0]] = record
+                        ifr_countries.add(record[10])
 
-        with self._sources[0].handle.open(self._sources[0].entry_map['vfrapts.dbf']) as fd:
+        with self._open('vfrapts.dbf') as fd:
             vfr_header, vfr_fields = DbfFile.read_header(fd)
             assert len(vfr_fields) == 28, vfr_fields
 
@@ -284,12 +291,52 @@ class ChartView:
                         record.append(chartlink.get(record[0]))
 
                         records[record[0]] = record
+                        vfr_countries.add(record[10])
 
         header.num_records = len(records)
 
         with open(dest_path / 'airports.dbf', 'wb') as fd:
             DbfFile.write_header(fd, header, fields)
             for record in sorted(records.values()):
+                DbfFile.write_record(fd, fields, record)
+
+        return ifr_countries, vfr_countries
+
+
+    def process_notams(self, countries: Set[str], dest_path: pathlib.Path) -> None:
+        records: List[List[Any]] = []
+        header: Optional[DbfHeader] = None
+        fields: Optional[List[DbfField]] = None
+
+        with open(dest_path / 'notams.dbt', 'wb') as dbt_out:
+            memo_idx = 1
+            dbt_out_header = DbtHeader(0, 'NTMSNULL', 512)
+
+            for name in ('notams', 'vfrntms'):
+                with self._open(f'{name}.dbf') as dbf_in, self._open(f'{name}.dbt') as dbt_in:
+                    header, fields = DbfFile.read_header(dbf_in)
+                    dbt_header = DbtFile.read_header(dbt_in)
+                    for _ in range(header.num_records):
+                        record = DbfFile.read_record(dbf_in, fields)
+                        if record[0] in countries:
+                            memo = DbtFile.read_record(dbt_in, dbt_header, record[3])
+                            record[3] = memo_idx
+                            records.append(record)
+
+                            DbtFile.write_record(dbt_out, dbt_out_header, memo_idx, memo)
+                            memo_idx += 1
+
+            dbt_out_header.next_free_block = memo_idx
+            DbtFile.write_header(dbt_out, dbt_out_header)
+
+        records.sort(key=lambda r: (r[0], r[2] if r[2] else '\xFF'))
+
+        header.num_records = len(records)
+        header.last_update = datetime.date.today()
+
+        with open(dest_path / 'notams.dbf', 'wb') as fd:
+            DbfFile.write_header(fd, header, fields)
+            for record in records:
                 DbfFile.write_record(fd, fields, record)
 
 

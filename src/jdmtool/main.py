@@ -520,7 +520,11 @@ def _transfer_sd_card(service: Service, path: pathlib.Path, vol_id_override: T.O
             chartlink = cv.process_chartlink(ifr_airports, vfr_airports, charts_path)
 
             print("Processing airports.dbf...")
-            cv.process_airports(ifr_airports, vfr_airports, charts, chartlink, charts_path)
+            ifr_countries, vfr_countries = cv.process_airports(
+                ifr_airports, vfr_airports, charts, chartlink, charts_path)
+
+            print("Processing notams.dbf + notams.dbt...")
+            cv.process_notams(ifr_countries | vfr_countries, charts_path)
 
     else:
         # TODO
