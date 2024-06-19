@@ -339,7 +339,10 @@ class ChartView:
         return ifr_countries, vfr_countries
 
 
-    def process_notams(self, countries: Set[str], dest_path: pathlib.Path) -> None:
+    def process_notams(
+            self, ifr_airports: Set[str], vfr_airports: Set[str],
+            countries: Set[str], dest_path: pathlib.Path
+    ) -> None:
         records: List[List[Any]] = []
         header: Optional[DbfHeader] = None
         fields: Optional[List[DbfField]] = None
@@ -348,13 +351,16 @@ class ChartView:
             memo_idx = 1
             dbt_out_header = DbtHeader(0, 'NTMSNULL', 512)
 
-            for name in ('notams', 'vfrntms'):
+            for name, airports in (('notams', ifr_airports), ('vfrntms', vfr_airports)):
                 with self._open(f'{name}.dbf') as dbf_in, self._open(f'{name}.dbt') as dbt_in:
                     header, fields = DbfFile.read_header(dbf_in)
                     dbt_header = DbtFile.read_header(dbt_in)
                     for _ in range(header.num_records):
                         record = DbfFile.read_record(dbf_in, fields)
-                        if record[0] in countries:
+                        country = record[0]
+                        airport = record[2]
+                        include = (airport in airports) if airport else (country in countries)
+                        if include:
                             memo = DbtFile.read_record(dbt_in, dbt_header, record[3])
                             record[3] = memo_idx
                             records.append(record)
