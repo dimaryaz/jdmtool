@@ -568,6 +568,11 @@ def _transfer_sd_card(service: Service, path: pathlib.Path, vol_id_override: T.O
         dot_jdm_files.extend(path / f for f in fonts_files)
         dot_jdm_files.extend(charts_path / f for f in charts_files)
 
+        for oem in service.get_oems():
+            print(f"Extracting {oem.dest_path}...")
+            with zipfile.ZipFile(oem.dest_path) as oem_zip:
+                oem_zip.extractall(charts_path)
+
     else:
         # TODO
         assert False
