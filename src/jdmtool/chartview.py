@@ -350,8 +350,7 @@ class ChartView:
                             record[3] = memo_idx
                             records.append(record)
 
-                            DbtFile.write_record(dbt_out, dbt_out_header, memo_idx, memo)
-                            memo_idx += 1
+                            memo_idx += DbtFile.write_record(dbt_out, dbt_out_header, memo_idx, memo)
 
             dbt_out_header.next_free_block = memo_idx
             DbtFile.write_header(dbt_out, dbt_out_header)
