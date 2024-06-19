@@ -6,7 +6,7 @@ from dataclasses import dataclass
 import datetime
 import pathlib
 import struct
-from typing import Any, BinaryIO, Dict, List, Optional, Set, Tuple
+from typing import Any, BinaryIO, Callable, Dict, List, Optional, Set, Tuple
 try:
     from typing import Self  # type: ignore
 except ImportError:
@@ -140,7 +140,15 @@ class ChartView:
 
         return cfg['CHARTS']['Database_Begin_Date']
 
-    def process_charts_bin(self, dest_path: pathlib.Path, db_begin_date: str) -> Dict[str, List[str]]:
+    def get_charts_bin_size(self) -> int:
+        total = ChartHeader.SIZE
+        for source in self._sources:
+            total += self.find_charts_bin(source.entry_map).file_size - ChartHeader.SIZE
+        return total
+
+    def process_charts_bin(
+            self, dest_path: pathlib.Path, db_begin_date: str, progress_cb: Callable[[int], None]
+    ) -> Dict[str, List[str]]:
         filenames: Dict[str, List[str]] = {}
 
         charts_bin_dest = dest_path / 'charts.bin'
@@ -151,6 +159,7 @@ class ChartView:
                 nonlocal crc32q
                 charts_bin_fd.write(data)
                 crc32q = libscrc.crc32_q(data, crc32q)
+                progress_cb(len(data))
 
             chart_fds: List[BinaryIO] = []
             headers: List[ChartHeader] = []
