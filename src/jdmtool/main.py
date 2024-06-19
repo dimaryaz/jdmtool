@@ -24,6 +24,7 @@ CARD_TYPE_SD = 2
 CARD_TYPE_GARMIN = 7
 
 DOT_JDM = '.jdm'
+DOT_JDM_MAX_FH_SIZE = 100 * 1024 * 1024  # fh calculated up to 100MB
 
 LDR_SYS = 'ldr_sys'
 
@@ -239,21 +240,26 @@ def update_dot_jdm(service: Service, path: pathlib.Path, files: T.List[pathlib.P
     file_path_set: T.Set[str] = set()
 
     for f in files:
+        size = f.stat().st_size
+
         with open(f, 'rb') as fd:
             sh = libscrc.crc32_q(fd.read(sh_size))
-            fh = sh
-            while True:
-                chunk = fd.read(0x8000)
-                if not chunk:
-                    break
-                fh = libscrc.crc32_q(chunk, fh)
+            if size <= DOT_JDM_MAX_FH_SIZE:
+                fh = sh
+                while True:
+                    chunk = fd.read(0x8000)
+                    if not chunk:
+                        break
+                    fh = libscrc.crc32_q(chunk, fh)
+            else:
+                fh = None
 
         rel_file_path = str(f.relative_to(path))
         file_info.append({
             "fp": rel_file_path,
-            "fs": f.stat().st_size,
+            "fs": size,
             "sh": f"{sh:08x}",
-            "fh": f"{fh:08x}",
+            "fh": f"{fh:08x}" if fh is not None else "",
         })
         file_path_set.add(rel_file_path)
 
@@ -278,7 +284,7 @@ def update_dot_jdm(service: Service, path: pathlib.Path, files: T.List[pathlib.P
         "fid": service.get_optional_property('fleet_ids', ""),
         "filter_applied": "no",
         "gsi": f"0x{gsi}" if gsi else "",
-        "jvsn": "",
+        "jvsn": service.get_optional_property('serial_number', ""),
         "ndv": service.get_property('next_display_version'),
         "nvad": service.get_property('next_version_avail_date'),
         "nvsd": service.get_property('next_version_start_date'),
@@ -470,11 +476,16 @@ def _transfer_sd_card(service: Service, path: pathlib.Path, vol_id_override: T.O
         charts_path = path / 'Charts'
         charts_path.mkdir(exist_ok=True)
 
+        charts_files: T.List[str] = []
+
         zip_files = [d.dest_path for d in databases]
         with ChartView(zip_files) as cv:
+            print("Processing charts.ini...")
+            charts_files.append('charts.ini')
             db_begin_date = cv.process_charts_ini(charts_path)
 
             print("Processing charts.bin...")
+            charts_files.append('charts.bin')
             filenames_by_chart = cv.process_charts_bin(charts_path, db_begin_date)
 
             airports_by_filename = cv.get_airports_by_filename()
@@ -514,26 +525,32 @@ def _transfer_sd_card(service: Service, path: pathlib.Path, vol_id_override: T.O
                 print(f"Best match: {best_subscription}, {len(best_airports)} airports")
 
             print("Processing charts.dbf...")
+            charts_files.append('charts.dbf')
             charts = cv.process_charts(ifr_airports, vfr_airports, charts_path)
 
             print("Processing chrtlink.dbf...")
+            charts_files.append('chrtlink.dbf')
             chartlink = cv.process_chartlink(ifr_airports, vfr_airports, charts_path)
 
             print("Processing airports.dbf...")
+            charts_files.append('airports.dbf')
             ifr_countries, vfr_countries = cv.process_airports(
                 ifr_airports, vfr_airports, charts, chartlink, charts_path)
 
             print("Processing notams.dbf + notams.dbt...")
+            charts_files.extend(['notams.dbf', 'notams.dbt'])
             cv.process_notams(ifr_countries | vfr_countries, charts_path)
 
             for filename in ChartView.FILES_TO_COPY:
                 print(f"Extracting {filename}...")
+                charts_files.append(filename)
                 cv.extract_file(filename, charts_path)
 
             print("Extracting fonts...")
-            cv.extract_fonts(path)
+            fonts_files = cv.extract_fonts(path)
 
             print("Processing crcfiles.txt...")
+            charts_files.append('crcfiles.txt')
             cv.process_crcfiles(charts_path)
 
         security_id = int(service.get_property('garmin_sec_id'))
@@ -543,6 +560,13 @@ def _transfer_sd_card(service: Service, path: pathlib.Path, vol_id_override: T.O
         chk = feat_unlk_checksum(crcfiles)
 
         update_feat_unlk(path, Feature.CHARTVIEW, volume_id, security_id, system_id, chk, None)
+
+        sh_size = 0x2000
+
+        fonts_files.sort()
+        charts_files.sort()
+        dot_jdm_files.extend(path / f for f in fonts_files)
+        dot_jdm_files.extend(charts_path / f for f in charts_files)
 
     else:
         # TODO

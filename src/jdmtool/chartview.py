@@ -369,10 +369,13 @@ class ChartView:
         entry = self._sources[0].entry_map[filename.lower()]
         self._sources[0].handle.extract(entry, dest_path)
 
-    def extract_fonts(self, dest_path: pathlib.Path) -> None:
+    def extract_fonts(self, dest_path: pathlib.Path) -> List[str]:
+        paths = []
         for entry in self._sources[0].handle.infolist():
-            if entry.filename.lower().startswith("fonts/"):
+            if not entry.is_dir() and entry.filename.lower().startswith("fonts/"):
+                paths.append(entry.filename)
                 self._sources[0].handle.extract(entry, dest_path)
+        return paths
 
     def process_crcfiles(self, dest_path: pathlib.Path) -> None:
         with open(dest_path / 'crcfiles.txt', 'w', encoding='utf-8', newline='\r\n') as fd:
