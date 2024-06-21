@@ -495,16 +495,10 @@ def _transfer_sd_card(service: Service, path: pathlib.Path, vol_id_override: T.O
             ifr_airports: T.Set[str] = set()
             vfr_airports: T.Set[str] = set()
 
-            for name, filenames in filenames_by_chart.items():
-                code, chartname = name.split('_', 1)
+            for (code, is_vfr), filenames in filenames_by_chart.items():
                 print(f"Guessing subscription for code {code}...")
 
-                if chartname == 'Charts.bin':
-                    subscription_airports = ifr_airports
-                elif chartname == 'VFRCharts.bin':
-                    subscription_airports = vfr_airports
-                else:
-                    raise ValueError(f"Unexpected filename: {name}")
+                subscription_airports = vfr_airports if is_vfr else ifr_airports
 
                 airports: T.Set[str] = set()
                 for filename in filenames:

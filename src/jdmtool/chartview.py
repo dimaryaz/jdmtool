@@ -66,13 +66,6 @@ class ChartRecord:
         return struct.pack('<26s2i6s', self.name.encode(), self.offset, self.size, self.metadata)
 
 
-@dataclass
-class ChartSource:
-    path: pathlib.Path
-    handle: zipfile.ZipFile
-    entry_map: Dict[str, zipfile.ZipInfo]
-
-
 class ChartView:
     FILES_TO_COPY = [
         'ctypes.dbf',
@@ -99,19 +92,20 @@ class ChartView:
         ('state.dbf', False),
     ]
 
+    _handles: List[zipfile.ZipFile]
+    _entry_map: Dict[str, Tuple[zipfile.ZipFile, zipfile.ZipInfo]]
+
     def __init__(self, zip_list: List[pathlib.Path]) -> None:
-        self._sources: List[ChartSource] = []
-        for path in zip_list:
-            handle = zipfile.ZipFile(path)
-            entry_map = {
-                entry.filename.lower(): entry
-                for entry in handle.infolist()
-            }
-            self._sources.append(ChartSource(path, handle, entry_map))
+        self._handles = [zipfile.ZipFile(path) for path in zip_list]
+        self._entry_map = {}
+
+        for handle in self._handles:
+            for entry in handle.infolist():
+                self._entry_map[entry.filename.lower()] = (handle, entry)
 
     def close(self) -> None:
-        for source in self._sources:
-            source.handle.close()
+        for handle in self._handles:
+            handle.close()
 
     def __enter__(self) -> Self:
         return self
@@ -119,18 +113,16 @@ class ChartView:
     def __exit__(self, type, value, traceback) -> None:
         self.close()
 
-    @classmethod
-    def find_charts_bin(cls, entry_map: Dict[str, zipfile.ZipInfo]) -> zipfile.ZipInfo:
-        for name, entry in entry_map.items():
-            if name.endswith('.bin'):
-                return entry
-        raise ValueError("Could not find the charts file!")
+    def find_charts_bin(self) -> List[Tuple[zipfile.ZipFile, zipfile.ZipInfo]]:
+        return [value for name, value in self._entry_map.items() if name.endswith('.bin')]
 
     def _open(self, name: str) -> BinaryIO:
-        return self._sources[0].handle.open(self._sources[0].entry_map[name])
+        handle, entry = self._entry_map[name]
+        return handle.open(entry)
 
     def _read(self, name: str) -> bytes:
-        return self._sources[0].handle.read(self._sources[0].entry_map[name])
+        handle, entry = self._entry_map[name]
+        return handle.read(entry)
 
     def process_charts_ini(self, dest_path: pathlib.Path) -> str:
         config_bytes = self._read('charts.ini')
@@ -142,14 +134,14 @@ class ChartView:
 
     def get_charts_bin_size(self) -> int:
         total = ChartHeader.SIZE
-        for source in self._sources:
-            total += self.find_charts_bin(source.entry_map).file_size - ChartHeader.SIZE
+        for _, entry in self.find_charts_bin():
+            total += entry.file_size - ChartHeader.SIZE
         return total
 
     def process_charts_bin(
             self, dest_path: pathlib.Path, db_begin_date: str, progress_cb: Callable[[int], None]
-    ) -> Dict[str, List[str]]:
-        filenames: Dict[str, List[str]] = {}
+    ) -> Dict[Tuple[str, bool], List[str]]:
+        filenames: Dict[Tuple[str, bool], List[str]] = {}
 
         charts_bin_dest = dest_path / 'charts.bin'
         with open(charts_bin_dest, 'wb') as charts_bin_fd:
@@ -169,8 +161,8 @@ class ChartView:
             total_files = 0
 
             try:
-                for source in self._sources:
-                    chart_fd = source.handle.open(self.find_charts_bin(source.entry_map))
+                for handle, entry in self.find_charts_bin():
+                    chart_fd = handle.open(entry)
                     chart_fds.append(chart_fd)
                     header = ChartHeader.from_bytes(chart_fd.read(ChartHeader.SIZE))
                     headers.append(header)
@@ -192,7 +184,20 @@ class ChartView:
                         for _ in range(header.num_files)
                     ]
                     all_records.extend(records)
-                    filenames[chart_fd.name] = [record.name for record in records]
+
+                    try:
+                        code, name = chart_fd.name.split('_')
+                    except ValueError:
+                        raise ValueError(f"Unexpected chart filename: {chart_fd.name}") from None
+
+                    if name.lower() == 'charts.bin':
+                        is_vfr = False
+                    elif name.lower() == 'vfrcharts.bin':
+                        is_vfr = True
+                    else:
+                        raise ValueError(f"Unexpected chart filename: {chart_fd.name}")
+
+                    filenames[(code, is_vfr)] = [record.name for record in records]
 
                     for record in records:
                         assert 0 < record.size < 0x1000000, record.size
@@ -385,15 +390,15 @@ class ChartView:
                 DbfFile.write_record(fd, fields, record)
 
     def extract_file(self, filename: str, dest_path: pathlib.Path) -> None:
-        entry = self._sources[0].entry_map[filename.lower()]
-        self._sources[0].handle.extract(entry, dest_path)
+        handle, entry = self._entry_map[filename.lower()]
+        handle.extract(entry, dest_path)
 
     def extract_fonts(self, dest_path: pathlib.Path) -> List[str]:
         paths = []
-        for entry in self._sources[0].handle.infolist():
-            if not entry.is_dir() and entry.filename.lower().startswith("fonts/"):
+        for name, (handle, entry) in self._entry_map.items():
+            if not entry.is_dir() and name.startswith("fonts/"):
                 paths.append(entry.filename)
-                self._sources[0].handle.extract(entry, dest_path)
+                handle.extract(entry, dest_path)
         return paths
 
     def process_crcfiles(self, dest_path: pathlib.Path) -> None:
