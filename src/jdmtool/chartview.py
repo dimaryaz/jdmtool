@@ -306,6 +306,7 @@ class ChartView:
                         record[-2] = chart.get(record[0])
                         record[-1] = chartlink.get(record[0])
                         records[record[0]] = record
+
                         ifr_countries.add(record[10])
 
         with self._open('vfrapts.dbf') as fd:
@@ -317,7 +318,7 @@ class ChartView:
 
                 for _ in range(vfr_header.num_records):
                     record = DbfFile.read_record(fd, vfr_fields)
-                    if record[0] in vfr_airports and not record[0] in records:
+                    if record[0] in vfr_airports:
                         del record[1]  # F5_6_TYPE
                         del record[14]  # SUP_SVCS
                         record.insert(16, 'N')  # PRECISION
@@ -326,7 +327,7 @@ class ChartView:
                         record[-1] = chart.get(record[0])
                         record.append(chartlink.get(record[0]))
 
-                        records[record[0]] = record
+                        records.setdefault(record[0], record)
                         vfr_countries.add(record[10])
 
         header.num_records = len(records)
@@ -341,7 +342,7 @@ class ChartView:
 
     def process_notams(
             self, ifr_airports: Set[str], vfr_airports: Set[str],
-            countries: Set[str], dest_path: pathlib.Path
+            ifr_countries: Set[str], vfr_countries: Set[str], dest_path: pathlib.Path
     ) -> None:
         records: List[List[Any]] = []
         header: Optional[DbfHeader] = None
@@ -351,7 +352,10 @@ class ChartView:
             memo_idx = 1
             dbt_out_header = DbtHeader(0, 'NTMSNULL', 512)
 
-            for name, airports in (('notams', ifr_airports), ('vfrntms', vfr_airports)):
+            for name, airports, countries in (
+                ('notams', ifr_airports, ifr_countries),
+                ('vfrntms', vfr_airports, vfr_countries)
+            ):
                 with self._open(f'{name}.dbf') as dbf_in, self._open(f'{name}.dbt') as dbt_in:
                     header, fields = DbfFile.read_header(dbf_in)
                     dbt_header = DbtFile.read_header(dbt_in)

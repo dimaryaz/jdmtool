@@ -540,7 +540,7 @@ def _transfer_sd_card(service: Service, path: pathlib.Path, vol_id_override: T.O
 
             print("Processing notams.dbf + notams.dbt...")
             charts_files.extend(['notams.dbf', 'notams.dbt'])
-            cv.process_notams(ifr_airports, vfr_airports, ifr_countries | vfr_countries, charts_path)
+            cv.process_notams(ifr_airports, vfr_airports, ifr_countries, vfr_countries, charts_path)
 
             for filename in ChartView.FILES_TO_COPY:
                 print(f"Extracting {filename}...")
