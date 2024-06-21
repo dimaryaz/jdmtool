@@ -386,6 +386,7 @@ class ChartView:
 
         records.sort(key=lambda r: (r[0], r[2] if r[2] else '\xFF'))
 
+        header.info = 0x3  # Incorrect (means there's no .dbt file!), but matches JDM :(
         header.num_records = len(records)
         header.last_update = self._last_update()
 
