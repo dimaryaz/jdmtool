@@ -362,7 +362,11 @@ def _transfer_sd_card(service: Service, path: pathlib.Path, vol_id_override: T.O
             raise DownloaderException("This service is not yet supported")
     else:
         if service.get_optional_property("oem_garmin") == '1':
-            print("WARNING: Electronic Charts support is not quite finished yet!")
+            print()
+            print("WARNING: Electronic Charts support is very experimental!")
+            print("Transferred files may not completely match JDM, and may not even be correct.")
+            print("Please report your results at https://github.com/dimaryaz/jdmtool/issues.")
+            print()
             transfer_type = TransferType.GARMIN_CHARTVIEW
         else:
             raise DownloaderException("Unexpected service type")
