@@ -169,7 +169,7 @@ class ChartViewService(Service):
         self._subservices = subservices
 
     def get_optional_property(self, name: str, default: T.Optional[str] = None) -> T.Optional[str]:
-        if name in ('coverage_desc', 'service_code', 'unique_service_id'):
+        if name == 'coverage_desc':
             values = [s.get_property(name) for s in self._subservices]
             return ', '.join(values)
         else:
