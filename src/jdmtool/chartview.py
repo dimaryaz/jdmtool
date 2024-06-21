@@ -124,6 +124,11 @@ class ChartView:
         handle, entry = self._entry_map[name]
         return handle.read(entry)
 
+    @classmethod
+    def _last_update(cls) -> datetime.date:
+        # TODO: Figure out the actual TZ; doesn't seem to be UTC?
+        return datetime.datetime.now(datetime.timezone.utc).date()
+
     def process_charts_ini(self, dest_path: pathlib.Path) -> str:
         config_bytes = self._read('charts.ini')
         cfg = configparser.ConfigParser()
@@ -259,7 +264,7 @@ class ChartView:
         assert fields is not None
 
         header.num_records = len(records)
-        header.last_update = datetime.date.today()
+        header.last_update = self._last_update()
 
         indexes: Dict[str, int] = {}
 
@@ -319,7 +324,7 @@ class ChartView:
             assert len(vfr_fields) == 28, vfr_fields
 
             if vfr_airports:
-                header.last_update = datetime.date.today()
+                header.last_update = self._last_update()
 
                 for _ in range(vfr_header.num_records):
                     record = DbfFile.read_record(fd, vfr_fields)
@@ -382,7 +387,7 @@ class ChartView:
         records.sort(key=lambda r: (r[0], r[2] if r[2] else '\xFF'))
 
         header.num_records = len(records)
-        header.last_update = datetime.date.today()
+        header.last_update = self._last_update()
 
         with open(dest_path / 'notams.dbf', 'wb') as fd:
             DbfFile.write_header(fd, header, fields)
