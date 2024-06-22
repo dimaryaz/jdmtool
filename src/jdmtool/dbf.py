@@ -137,23 +137,26 @@ class DbfFile:
             fd.write(data.ljust(field.length).encode('latin-1'))
 
 
+# http://www.manmrk.net/tutorials/database/xbase/dbt.html
+
 @dataclass
 class DbtHeader:
     SIZE = 512
 
     next_free_block: int
     dbf_filename: str
+    reserved: int
     block_length: int
 
     @classmethod
     def from_bytes(cls, data: bytes) -> Self:
-        next_free_block, dbf_filename, block_length = struct.unpack('<I4x8s4xH490x', data)
-        return cls(next_free_block, dbf_filename.decode('latin-1'), block_length)
+        next_free_block, dbf_filename, reserved, block_length = struct.unpack('<I4x8sIH490x', data)
+        return cls(next_free_block, dbf_filename.decode('latin-1'), reserved, block_length)
 
     def to_bytes(self) -> bytes:
         return struct.pack(
-            '<I4x8s4xH490x',
-            self.next_free_block, self.dbf_filename.encode('latin-1'), self.block_length
+            '<I4x8sIH490x',
+            self.next_free_block, self.dbf_filename.encode('latin-1'), self.reserved, self.block_length
         )
 
 
@@ -205,6 +208,8 @@ class DbtFile:
             block_length = cls.DBT3_BLOCK_SIZE
             blocks = data.encode('latin-1') + b'\x1a\x1a'
 
+        block_count = -(-len(blocks) // block_length)
+
         fd.seek(block_length * idx)
-        fd.write(blocks)
-        return -(-len(blocks) // block_length)
+        fd.write(blocks.ljust(block_length * block_count, b'\x00'))
+        return block_count

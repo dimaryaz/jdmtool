@@ -360,7 +360,7 @@ class ChartView:
 
         with open(dest_path / 'notams.dbt', 'wb') as dbt_out:
             memo_idx = 1
-            dbt_out_header = DbtHeader(0, 'NTMSNULL', 512)
+            dbt_out_header: Optional[DbtHeader] = None
 
             for name, airports, countries in (
                 ('notams', ifr_airports, ifr_countries),
@@ -369,6 +369,8 @@ class ChartView:
                 with self._open(f'{name}.dbf') as dbf_in, self._open(f'{name}.dbt') as dbt_in:
                     header, fields = DbfFile.read_header(dbf_in)
                     dbt_header = DbtFile.read_header(dbt_in)
+                    if dbt_out_header is None:
+                        dbt_out_header = dbt_header
                     for _ in range(header.num_records):
                         record = DbfFile.read_record(dbf_in, fields)
                         country = record[0]
@@ -381,7 +383,11 @@ class ChartView:
 
                             memo_idx += DbtFile.write_record(dbt_out, dbt_out_header, memo_idx, memo)
 
-            dbt_out_header.next_free_block = memo_idx
+            # JDM does it, so...
+            dbt_out.seek(0, 2)
+            dbt_out.write(b'\x1a')
+
+            # JDM does NOT set next_free_block, even though that's incorrect!
             DbtFile.write_header(dbt_out, dbt_out_header)
 
         records.sort(key=lambda r: (r[0], r[2] if r[2] else '\xFF'))
