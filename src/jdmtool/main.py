@@ -177,15 +177,8 @@ def cmd_info(id: int) -> None:
         status = '' if f.exists() else '  (missing)'
         print(f'  {f}{status}')
 
-def cmd_download(id: int) -> None:
-    downloader = Downloader()
 
-    services = load_services()
-    if id < 0 or id >= len(services):
-        raise DownloaderException("Invalid download ID")
-
-    service = services[id]
-
+def _download(downloader: Downloader, service: Service) -> None:
     databases = service.get_databases()
     sffs = service.get_sffs()
     oems = service.get_oems()
@@ -223,6 +216,16 @@ def cmd_download(id: int) -> None:
         print(f'Downloading {oem.dest_path.name}...')
         downloader.download_oem(oem.params, oem.dest_path)
         print(f"Downloaded to {oem.dest_path}")
+
+
+def cmd_download(id: int) -> None:
+    services = load_services()
+    if id < 0 or id >= len(services):
+        raise DownloaderException("Invalid download ID")
+
+    downloader = Downloader()
+    service = services[id]
+    _download(downloader, service)
 
 
 def update_dot_jdm(service: Service, path: pathlib.Path, files: T.List[pathlib.Path], sh_size: int) -> None:
@@ -368,9 +371,6 @@ def _transfer_sd_card(service: Service, path: pathlib.Path, vol_id_override: T.O
         else:
             raise DownloaderException("Unexpected service type")
 
-    if not all(f.exists() for f in service.get_download_paths()):
-        raise DownloaderException("Need to download it first")
-
     databases = service.get_databases()
 
     if path.is_block_device():
@@ -401,12 +401,14 @@ def _transfer_sd_card(service: Service, path: pathlib.Path, vol_id_override: T.O
         volume_id = get_device_volume_id(path)
         print(f"Found volume ID: {volume_id:08x}")
 
-    avionics = service.get_property('avionics')
-    service_type = service.get_property('service_type')
-    name = f'{avionics} - {service_type}'
+    name = service.get_full_name()
     prompt = input(f"Transfer {name!r} to {path}? (y/n) ")
     if prompt.lower() != 'y':
         raise DownloaderException("Cancelled")
+
+    if not all(f.exists() for f in service.get_download_paths()):
+        downloader = Downloader()
+        _download(downloader, service)
 
     dot_jdm_files: T.List[pathlib.Path] = []
     sh_size = 0
@@ -611,13 +613,16 @@ def _transfer_garmin(dev: SkyboundDevice, service: Service) -> None:
         )
         print()
 
-    path = databases[0].dest_path
-    if not path.exists():
-        raise DownloaderException("Need to download it first")
-
-    prompt = input(f"Transfer {path} to the data card? (y/n) ")
+    name = service.get_full_name()
+    prompt = input(f"Transfer {name!r} to the data card? (y/n) ")
     if prompt.lower() != 'y':
         raise DownloaderException("Cancelled")
+
+    if not all(f.exists() for f in service.get_download_paths()):
+        downloader = Downloader()
+        _download(downloader, service)
+
+    path = databases[0].dest_path
 
     _clear_metadata(dev)
     _write_database(dev, str(path))
@@ -629,12 +634,15 @@ def _transfer_garmin(dev: SkyboundDevice, service: Service) -> None:
         _write_metadata(dev, new_metadata)
 
 
-def cmd_transfer(id: int, device: T.Optional[str], vol_id: T.Optional[str]) -> None:
+def cmd_transfer(id: int, device: T.Optional[str], no_download: bool, vol_id: T.Optional[str]) -> None:
     services = load_services()
     if id < 0 or id >= len(services):
         raise DownloaderException("Invalid download ID")
 
     service = services[id]
+
+    if no_download and not all(f.exists() for f in service.get_download_paths()):
+        raise DownloaderException("Need to download the data, but --no-download was specified")
 
     card_type = int(service.get_property('media/card_type'))
 
@@ -857,6 +865,11 @@ def main():
     transfer_p = subparsers.add_parser(
         "transfer",
         help="Transfer the downloaded database to an SD card or a Garmin data card",
+    )
+    transfer_p.add_argument(
+        "--no-download",
+        help="Don't automatically downloaded missing databases",
+        action="store_true",
     )
     transfer_p.add_argument(
         "--vol-id",

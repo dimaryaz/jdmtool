@@ -67,6 +67,11 @@ class Service(ABC):
 
         return value
 
+    def get_full_name(self) -> str:
+        avionics = self.get_property('avionics')
+        service_type = self.get_property('service_type')
+        return f'{avionics} - {service_type}'
+
 
 class SimpleService(Service):
     OEM = 'Garmin'  # TODO?

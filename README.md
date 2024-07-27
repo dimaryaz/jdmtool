@@ -110,6 +110,8 @@ Downloads:
 
 ### Download the database
 
+This is optional - the next command will automatically download the database as needed - but can be useful if you want to transfer the database when you are offline.
+
 ```
 $ jdmtool download 0
 Downloading: 100%|█████████████████████████████████████████████████| 8.44M/8.44M [00:03<00:00, 2.15MB/s]
