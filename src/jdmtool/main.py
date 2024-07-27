@@ -24,6 +24,7 @@ CARD_TYPE_SD = 2
 CARD_TYPE_GARMIN = 7
 
 DOT_JDM = '.jdm'
+DOT_JDM_MAX_FH_SIZE = 100 * 1024 * 1024  # fh calculated up to 100MB
 
 LDR_SYS = 'ldr_sys'
 
@@ -239,21 +240,26 @@ def update_dot_jdm(service: Service, path: pathlib.Path, files: T.List[pathlib.P
     file_path_set: T.Set[str] = set()
 
     for f in files:
+        size = f.stat().st_size
+
         with open(f, 'rb') as fd:
             sh = libscrc.crc32_q(fd.read(sh_size))
-            fh = sh
-            while True:
-                chunk = fd.read(0x8000)
-                if not chunk:
-                    break
-                fh = libscrc.crc32_q(chunk, fh)
+            if size <= DOT_JDM_MAX_FH_SIZE:
+                fh = sh
+                while True:
+                    chunk = fd.read(0x8000)
+                    if not chunk:
+                        break
+                    fh = libscrc.crc32_q(chunk, fh)
+            else:
+                fh = None
 
         rel_file_path = str(f.relative_to(path))
         file_info.append({
             "fp": rel_file_path,
-            "fs": f.stat().st_size,
+            "fs": size,
             "sh": f"{sh:08x}",
-            "fh": f"{fh:08x}",
+            "fh": f"{fh:08x}" if fh is not None else "",
         })
         file_path_set.add(rel_file_path)
 
@@ -278,7 +284,7 @@ def update_dot_jdm(service: Service, path: pathlib.Path, files: T.List[pathlib.P
         "fid": service.get_optional_property('fleet_ids', ""),
         "filter_applied": "no",
         "gsi": f"0x{gsi}" if gsi else "",
-        "jvsn": "",
+        "jvsn": service.get_optional_property('serial_number', ""),
         "ndv": service.get_property('next_display_version'),
         "nvad": service.get_property('next_version_avail_date'),
         "nvsd": service.get_property('next_version_start_date'),
