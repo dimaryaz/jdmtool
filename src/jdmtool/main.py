@@ -126,16 +126,29 @@ def cmd_login() -> None:
     print("Logged in successfully")
 
 def cmd_refresh() -> None:
+    try:
+        old_services = load_services()
+    except ServiceException:
+        old_services = []
+
     downloader = Downloader()
     print("Downloading services...")
     downloader.refresh()
     print("Downloading keychain...")
     downloader.refresh_keychain()
-    print("Success")
 
-def cmd_list() -> None:
-    services = load_services()
+    new_services = load_services()
 
+    if [s.get_fingerprint() for s in old_services] != [s.get_fingerprint() for s in new_services]:
+        print()
+        print("Found updates!")
+        print()
+        _list(new_services)
+    else:
+        print("No updates.")
+
+
+def _list(services: T.List[Service]) -> None:
     row_format = "{:>2}  {:<70}  {:<25}  {:<8}  {:<10}  {:<10}  {:<10}"
 
     header = row_format.format("ID", "Name", "Coverage", "Version", "Start Date", "End Date", "Downloaded")
@@ -154,6 +167,12 @@ def cmd_list() -> None:
         downloaded = all(f.exists() for f in service.get_download_paths())
 
         print(row_format.format(idx, name, coverage, version, start_date, end_date, 'Y' if downloaded else ''))
+
+
+def cmd_list() -> None:
+    services = load_services()
+    _list(services)
+
 
 def cmd_info(id: int) -> None:
     services = load_services()

@@ -72,6 +72,13 @@ class Service(ABC):
         service_type = self.get_property('service_type')
         return f'{avionics} - {service_type}'
 
+    def get_fingerprint(self) -> T.Tuple[str, str, str]:
+        return (
+            self.get_property('unique_service_id'),
+            self.get_property('service_code'),
+            self.get_property('version'),
+        )
+
 
 class SimpleService(Service):
     OEM = 'Garmin'  # TODO?

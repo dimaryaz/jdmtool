@@ -63,7 +63,7 @@ Run this every time you want to download updates.
 $ jdmtool refresh
 Downloading services...
 Downloading keychain...
-Success
+No updates.
 ```
 
 ### View available downloads
