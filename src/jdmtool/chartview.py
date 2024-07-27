@@ -2,7 +2,10 @@ import argparse
 import binascii
 from dataclasses import dataclass
 import struct
-import typing as T
+try:
+    from typing import Self  # type: ignore
+except ImportError:
+    from typing_extensions import Self  # type: ignore
 import zlib
 
 
@@ -17,7 +20,7 @@ class ChartHeader:
     db_begin_date: str
 
     @classmethod
-    def from_bytes(cls, data: bytes) -> T.Self:
+    def from_bytes(cls, data: bytes) -> Self:
         db_begin_date: bytes
         checksum, magic, num_files, index_offset, db_begin_date = struct.unpack('<4i11s', data)
 
@@ -44,7 +47,7 @@ class ChartRecord:
     metadata: bytes
 
     @classmethod
-    def from_bytes(cls, data: bytes) -> T.Self:
+    def from_bytes(cls, data: bytes) -> Self:
         name: bytes
         name, offset, size, metadata = struct.unpack('<26s2i6s', data)
         return cls(name.rstrip(b'\x00').decode(), offset, size, metadata)

@@ -198,10 +198,7 @@ def cmd_download(id: int) -> None:
         database.dest_path.parent.mkdir(parents=True, exist_ok=True)
 
         with tqdm.tqdm(desc=f"Downloading {database.dest_path.name}", total=database.size, unit='B', unit_scale=True) as t:
-            def _update(n: int) -> None:
-                t.update(n)
-
-            downloader.download_database(database.params, database.dest_path, database.crc32, _update)
+            downloader.download_database(database.params, database.dest_path, database.crc32, t.update)
 
         print(f"Downloaded to {database.dest_path}")
 
@@ -230,9 +227,9 @@ def cmd_download(id: int) -> None:
 
 def update_dot_jdm(service: Service, path: pathlib.Path, files: T.List[pathlib.Path], sh_size: int) -> None:
     try:
-        with open(path / DOT_JDM) as fd:
+        with open(path / DOT_JDM, encoding='utf-8') as fd:
             data = json.load(fd)
-    except Exception as e:
+    except Exception:
         data = {}
 
     # Calculate new file hashes
@@ -309,7 +306,7 @@ def update_dot_jdm(service: Service, path: pathlib.Path, files: T.List[pathlib.P
     z = libscrc.crc32_q(data_str.encode())
     data["z"] = f"{z:08x}"
 
-    with open(path / DOT_JDM, 'w') as fd:
+    with open(path / DOT_JDM, 'w', encoding='utf-8') as fd:
         json.dump(data, fd, separators=(',', ':'), sort_keys=True)
 
 
@@ -425,7 +422,7 @@ def _transfer_sd_card(service: Service, path: pathlib.Path, vol_id_override: T.O
                 raise DownloaderException(f"Found multiple dsf.txt files: {dsf_txt_files}")
             dsf_txt_file = dsf_txt_files[0]
 
-            with database_zip.open(dsf_txt_file, ) as dsf_bytes:
+            with database_zip.open(dsf_txt_file) as dsf_bytes:
                 with TextIOWrapper(dsf_bytes) as dsf_txt:
                     script = SFXFile.parse_script(dsf_txt)
 
