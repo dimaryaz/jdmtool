@@ -883,7 +883,7 @@ def _parse_ids(ids: str) -> T.List[int]:
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Program a Garmin data card")
+    parser = argparse.ArgumentParser(description="Download and transfer Jeppesen databases")
 
     subparsers = parser.add_subparsers(metavar="<command>")
     subparsers.required = True
@@ -930,7 +930,7 @@ def main():
 
     transfer_p = subparsers.add_parser(
         "transfer",
-        help="Transfer the downloaded database to an SD card or a Garmin data card",
+        help="Transfer the downloaded database to a USB drive or a Skybound data card",
     )
     transfer_p.add_argument(
         "--no-download",
@@ -963,13 +963,13 @@ def main():
 
     read_metadata_p = subparsers.add_parser(
         "read-metadata",
-        help="Read the database metadata",
+        help="Read the database metadata from a data card",
     )
     read_metadata_p.set_defaults(func=cmd_read_metadata)
 
     write_metadata_p = subparsers.add_parser(
         "write-metadata",
-        help="Write the database metadata",
+        help="Write the database metadata to a data card",
     )
     write_metadata_p.add_argument(
         "metadata",
@@ -979,7 +979,7 @@ def main():
 
     read_database_p = subparsers.add_parser(
         "read-database",
-        help="Read the database from the card and write to the file",
+        help="Read the database from a data card and write to a file",
     )
     read_database_p.add_argument(
         "path",
@@ -989,7 +989,7 @@ def main():
 
     write_database_p = subparsers.add_parser(
         "write-database",
-        help="Write the database to the card",
+        help="Write the database to a data card",
     )
     write_database_p.add_argument(
         "path",
