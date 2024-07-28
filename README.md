@@ -8,8 +8,11 @@ It requires a Jeppesen subscription, and currenty supports the following service
   - Requires a 16MB NavData WAAS card or a 4MB NavData non-WAAS card
     - If you have an 8MB data card, please [file a bug](https://github.com/dimaryaz/jdmtool/issues/)!
 - NavData and Obstacles for Avidyne IFD 400 Series
-- (Very experimental) Garmin G1000 support, except for Electronic Charts
+- (Very experimental) Garmin G1000 support
   - If you try it, please [file a bug](https://github.com/dimaryaz/jdmtool/issues/) to report your results - even just to say "it worked".
+  - Services other than Electronic Charts should produce byte-for-byte identical results to JDM, and are expected to work.
+  - Electronic Charts _may_ work, but are completely untested! See [more info here](ElectronicCharts.md).
+
 
 It is mainly tested on Linux, but should work on OS X and Windows.
 
@@ -160,6 +163,7 @@ Done
 
 ## More Information
 
+- [Experimental support for G1000 Electronic Charts](ElectronicCharts.md)
 - [Troubleshooting Skybound data cards (GNS 400/500)](Skybound.md)
 
 ## Bugs
