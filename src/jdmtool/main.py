@@ -21,7 +21,7 @@ from .service import Service, ServiceException, SimpleService, get_data_dir, loa
 
 
 CARD_TYPE_SD = 2
-CARD_TYPE_GARMIN = 7
+CARD_TYPE_SKYBOUND = 7
 
 DOT_JDM = '.jdm'
 DOT_JDM_MAX_FH_SIZE = 100 * 1024 * 1024  # fh calculated up to 100MB
@@ -613,7 +613,7 @@ def _transfer_sd_card(service: Service, path: pathlib.Path, vol_id_override: T.O
 
 
 @with_data_card
-def _transfer_garmin(dev: SkyboundDevice, service: Service) -> None:
+def _transfer_skybound(dev: SkyboundDevice, service: Service) -> None:
     databases = service.get_databases()
     assert len(databases) == 1, databases
 
@@ -670,14 +670,14 @@ def cmd_transfer(id: int, device: T.Optional[str], no_download: bool, vol_id: T.
             raise DownloaderException("This database requires a path to an SD card")
 
         _transfer_sd_card(service, pathlib.Path(device), vol_id)
-    elif card_type == CARD_TYPE_GARMIN:
+    elif card_type == CARD_TYPE_SKYBOUND:
         if device:
             raise DownloaderException("This database requires a programmer device and does not support paths")
 
         if vol_id:
             raise DownloaderException("--vol-id only makes sense for SD cards / USB drives")
 
-        _transfer_garmin(service)
+        _transfer_skybound(service)  # pylint: disable=no-value-for-parameter
 
     print("Done")
 
