@@ -55,7 +55,7 @@ class Downloader:
     def get_auth(cls) -> dict:
         auth_file = get_data_dir() / 'auth.json'
         try:
-            with open(auth_file) as fd:
+            with open(auth_file, encoding='utf-8') as fd:
                 return json.load(fd)
         except FileNotFoundError:
             raise DownloaderException("Not logged in") from None
@@ -84,7 +84,7 @@ class Downloader:
             raise DownloaderException("Invalid login")
 
         auth_file = get_data_dir() / 'auth.json'
-        with open(auth_file, 'w') as fd:
+        with open(auth_file, 'w', encoding='utf-8') as fd:
             json.dump(dict(
                 username=username,
                 pwhash=pwhash,

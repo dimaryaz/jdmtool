@@ -92,8 +92,8 @@ def sfx_checksum(data: bytes) -> int:
 
 
 try:
-    import numpy as np
-    from numba import jit
+    import numpy as np  # type: ignore
+    from numba import jit  # type: ignore
 
     LOOKUP_TABLE = np.array(LOOKUP_TABLE)
     sfx_checksum = jit(nopython=True, nogil=True)(sfx_checksum)

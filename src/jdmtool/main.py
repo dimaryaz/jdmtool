@@ -66,7 +66,7 @@ def with_usb(f: T.Callable):
                 print(f"Found device: {usbdev}")
                 handle = usbdev.open()
             except usb1.USBError as ex:
-                raise SkyboundException(f"Could not open: {ex}")
+                raise SkyboundException(f"Could not open device: {ex}") from ex
 
             handle.setAutoDetachKernelDriver(True)
             with handle.claimInterface(0):
@@ -258,7 +258,7 @@ def update_dot_jdm(service: Service, path: pathlib.Path, config: DotJdmConfig) -
     try:
         with open(path / DOT_JDM, encoding='utf-8') as fd:
             data = json.load(fd)
-    except Exception:
+    except (OSError, ValueError):
         data = {}
 
     # Calculate new file hashes
@@ -345,7 +345,7 @@ def get_device_volume_id(path: pathlib.Path) -> int:
         raise DownloaderException(f"Could not find the device name for {path}")
 
     if psutil.LINUX:
-        import pyudev  # type: ignore
+        import pyudev  # type: ignore  pylint: disable=import-error
 
         if partition.fstype != 'vfat':
             raise DownloaderException(f"Wrong filesystem: {partition.fstype}")
@@ -361,7 +361,7 @@ def get_device_volume_id(path: pathlib.Path) -> int:
 
         return int(volume_id_str, 16)
     elif psutil.WINDOWS:
-        import win32api  # type: ignore
+        import win32api  # type: ignore  pylint: disable=import-error
 
         if partition.fstype != 'FAT32':
             raise DownloaderException(f"Wrong filesystem: {partition.fstype}")

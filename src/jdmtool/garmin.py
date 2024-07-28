@@ -89,8 +89,8 @@ def feat_unlk_checksum(data: bytes, value: int = 0xFFFFFFFF) -> int:
 
 
 try:
-    import numpy as np
-    from numba import jit
+    import numpy as np  # type: ignore
+    from numba import jit  # type: ignore
 
     LOOKUP_TABLE = np.array(LOOKUP_TABLE)
     feat_unlk_checksum = jit(nopython=True, nogil=True)(feat_unlk_checksum)
