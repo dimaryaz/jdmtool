@@ -17,6 +17,7 @@ classifiers = [
     "Operating System :: OS Independent",
 ]
 dependencies = [
+    'importlib-metadata; python_version < "3.8"',
     'libusb1>=2.0.1',
     'libscrc>=1.8.0',
     'platformdirs>=2.6.2',

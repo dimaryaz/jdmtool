@@ -3,6 +3,10 @@ from dataclasses import dataclass
 from datetime import datetime
 from functools import wraps
 from getpass import getpass
+try:
+    from importlib import metadata as importlib_metadata
+except ImportError:
+    import importlib_metadata
 from io import TextIOWrapper
 import json
 import os
@@ -884,6 +888,8 @@ def _parse_ids(ids: str) -> T.List[int]:
 
 def main():
     parser = argparse.ArgumentParser(description="Download and transfer Jeppesen databases")
+
+    parser.add_argument('--version', action='version', version=importlib_metadata.version('jdmtool'))
 
     subparsers = parser.add_subparsers(metavar="<command>")
     subparsers.required = True
