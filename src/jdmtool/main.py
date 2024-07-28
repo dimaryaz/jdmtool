@@ -539,26 +539,28 @@ def _transfer_g1000_chartview(service: Service, path: pathlib.Path, volume_id: i
     return DotJdmConfig(0x2000, dot_jdm_files)
 
 
-def _transfer_sd_card(service: Service, path: pathlib.Path, vol_id_override: T.Optional[str]) -> None:
-    transfer_func: T.Callable[[Service, pathlib.Path, int], DotJdmConfig]
+def _transfer_sd_card(services: T.List[Service], path: pathlib.Path, vol_id_override: T.Optional[str]) -> None:
+    transfer_funcs: T.List[T.Callable[[Service, pathlib.Path, int], DotJdmConfig]] = []
 
-    if isinstance(service, SimpleService):
-        if service.get_optional_property("oem_avidyne_e2") == '1':
-            transfer_func = _transfer_avidyne
-        elif service.get_optional_property("oem_garmin") == '1':
-            transfer_func = _transfer_g1000_basic
+    for service in services:
+        if isinstance(service, SimpleService):
+            if service.get_optional_property("oem_avidyne_e2") == '1':
+                transfer_func = _transfer_avidyne
+            elif service.get_optional_property("oem_garmin") == '1':
+                transfer_func = _transfer_g1000_basic
+            else:
+                raise DownloaderException("This service is not yet supported")
         else:
-            raise DownloaderException("This service is not yet supported")
-    else:
-        if service.get_optional_property("oem_garmin") == '1':
-            print()
-            print("WARNING: Electronic Charts support is very experimental!")
-            print("Transferred files may not completely match JDM, and may not even be correct.")
-            print("Please report your results at https://github.com/dimaryaz/jdmtool/issues.")
-            print()
-            transfer_func = _transfer_g1000_chartview
-        else:
-            raise DownloaderException("Unexpected service type")
+            if service.get_optional_property("oem_garmin") == '1':
+                print()
+                print("WARNING: Electronic Charts support is very experimental!")
+                print("Transferred files may not completely match JDM, and may not even be correct.")
+                print("Please report your results at https://github.com/dimaryaz/jdmtool/issues.")
+                print()
+                transfer_func = _transfer_g1000_chartview
+            else:
+                raise DownloaderException("Unexpected service type")
+        transfer_funcs.append(transfer_func)
 
     if path.is_block_device():
         raise DownloaderException(f"{path} is a device file; need the directory where the SD card is mounted")
@@ -588,32 +590,38 @@ def _transfer_sd_card(service: Service, path: pathlib.Path, vol_id_override: T.O
         volume_id = get_device_volume_id(path)
         print(f"Found volume ID: {volume_id:08x}")
 
-    name = service.get_full_name()
-    prompt = input(f"Transfer {name!r} to {path}? (y/n) ")
+    print()
+    print("Selected services:")
+    for service in services:
+        print(f"  {service.get_full_name()}")
+    print()
+    prompt = input(f"Transfer to {path}? (y/n) ")
     if prompt.lower() != 'y':
         raise DownloaderException("Cancelled")
 
-    if not all(f.exists() for f in service.get_download_paths()):
+    if not all(f.exists() for s in services for f in s.get_download_paths()):
         downloader = Downloader()
-        _download(downloader, service)
+        for service in services:
+            _download(downloader, service)
 
-    dot_jdm_config = transfer_func(service, path, volume_id)
+    for service, transfer_func in zip(services, transfer_funcs):
+        dot_jdm_config = transfer_func(service, path, volume_id)
 
-    sffs = service.get_sffs()
-    for sff in sffs:
-        sff_target = path / sff.dest_path.name
-        print(f"Copying {sff.dest_path} to {sff_target}...")
-        shutil.copyfile(sff.dest_path, sff_target)
+        sffs = service.get_sffs()
+        for sff in sffs:
+            sff_target = path / sff.dest_path.name
+            print(f"Copying {sff.dest_path} to {sff_target}...")
+            shutil.copyfile(sff.dest_path, sff_target)
 
-    if sffs:
-        keychain_source = get_data_dir() / GRM_FEAT_KEY
-        (path / LDR_SYS).mkdir(exist_ok=True)
-        keychain_target = path / LDR_SYS / GRM_FEAT_KEY
-        print(f"Copying {keychain_source} to {keychain_target}...")
-        shutil.copyfile(keychain_source, keychain_target)
+        if sffs:
+            keychain_source = get_data_dir() / GRM_FEAT_KEY
+            (path / LDR_SYS).mkdir(exist_ok=True)
+            keychain_target = path / LDR_SYS / GRM_FEAT_KEY
+            print(f"Copying {keychain_source} to {keychain_target}...")
+            shutil.copyfile(keychain_source, keychain_target)
 
-    print("Updating .jdm...")
-    update_dot_jdm(service, path, dot_jdm_config)
+        print("Updating .jdm...")
+        update_dot_jdm(service, path, dot_jdm_config)
 
 
 @with_data_card
@@ -657,31 +665,40 @@ def _transfer_skybound(dev: SkyboundDevice, service: Service) -> None:
         _write_metadata(dev, new_metadata)
 
 
-def cmd_transfer(id: int, device: T.Optional[str], no_download: bool, vol_id: T.Optional[str]) -> None:
-    services = load_services()
-    if id < 0 or id >= len(services):
-        raise DownloaderException("Invalid download ID")
+def cmd_transfer(ids: T.List[int], device: T.Optional[str], no_download: bool, vol_id: T.Optional[str]) -> None:
+    if not ids:
+        raise DownloaderException("Need at least one download ID")
 
-    service = services[id]
+    all_services = load_services()
 
-    if no_download and not all(f.exists() for f in service.get_download_paths()):
+    try:
+        services = [all_services[id] for id in ids]
+    except IndexError:
+        raise DownloaderException("Invalid service ID") from None
+
+    if no_download and not all(f.exists() for s in services for f in s.get_download_paths()):
         raise DownloaderException("Need to download the data, but --no-download was specified")
 
-    card_type = int(service.get_property('media/card_type'))
+    card_types = set(int(service.get_property('media/card_type')) for service in services)
+    if len(card_types) != 1:
+        raise DownloaderException("Cannot mix SD card and programmer device services")
+    card_type = card_types.pop()
 
     if card_type == CARD_TYPE_SD:
         if not device:
             raise DownloaderException("This database requires a path to an SD card")
 
-        _transfer_sd_card(service, pathlib.Path(device), vol_id)
+        _transfer_sd_card(services, pathlib.Path(device), vol_id)
     elif card_type == CARD_TYPE_SKYBOUND:
         if device:
             raise DownloaderException("This database requires a programmer device and does not support paths")
+        if len(services) != 1:
+            raise DownloaderException("Cannot transfer multiple programmer device services at the same time")
 
         if vol_id:
             raise DownloaderException("--vol-id only makes sense for SD cards / USB drives")
 
-        _transfer_skybound(service)  # pylint: disable=no-value-for-parameter
+        _transfer_skybound(services[0])  # pylint: disable=no-value-for-parameter
 
     print("Done")
 
@@ -839,6 +856,11 @@ def cmd_write_database(dev: SkyboundDevice, path: str) -> None:
 
     print("Done")
 
+
+def _parse_ids(ids: str) -> T.List[int]:
+    return [int(s) for s in ids.split(',')]
+
+
 def main():
     parser = argparse.ArgumentParser(description="Program a Garmin data card")
 
@@ -900,9 +922,9 @@ def main():
         type=str,
     )
     transfer_p.add_argument(
-        "id",
-        help="ID of the download",
-        type=int,
+        "ids",
+        help="Comma-separated list of service IDs",
+        type=_parse_ids,
     )
     transfer_p.add_argument(
         "device",

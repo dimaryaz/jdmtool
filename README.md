@@ -134,14 +134,21 @@ Done
 
 ### Transfer the database to the USB drive (IFD 440 or G1000)
 
+You can specify a single service ID, or multiple IDs separated by commas.
+
 Note: the final database file requires the FAT32 volume ID of the USB drive. `jdmtool` will attempt to find it automatically - which requires the destination to be an actual FAT32-formatted device, not any random directory. Alternatively, you may set the volume ID manually using the `--vol-id` parameter.
 
 > Getting the volume ID automatically is currently not supported on Mac OS, so you will need to use the `--vol-id` parameter. You can try [these instructions](https://apple.stackexchange.com/questions/408562/how-can-i-get-the-volume-serial-number-of-a-fat-volume) for finding the volume ID.
 
 ```
-$ jdmtool transfer 0 /run/media/user/USB/
-Transfer 'Avidyne IFD 400 Series, Bendix King AeroNav Series - NavData' to /run/media/user/USB/? (y/n) y
+$ jdmtool transfer 0,1 /run/media/user/USB/
 Found volume ID: 1234abcd
+
+Selected services:
+  Avidyne IFD 400 Series, Bendix King AeroNav Series - NavData
+  Avidyne IFD 400 Series, Bendix King AeroNav Series - Obstacles
+
+Transfer to /run/media/user/USB/? (y/n) y
 Writing to /run/media/user/USB/navdata.dsf: 100%|██████████████████| 38.0M/38.0M [00:15<00:00, 2.49MB/s]
 Updating .jdm...
 Done
