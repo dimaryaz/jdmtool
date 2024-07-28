@@ -156,7 +156,9 @@ Selected services:
   Avidyne IFD 400 Series, Bendix King AeroNav Series - Obstacles
 
 Transfer to /run/media/user/USB/? (y/n) y
-Writing to /run/media/user/USB/navdata.dsf: 100%|██████████████████| 38.0M/38.0M [00:15<00:00, 2.49MB/s]
+Writing to /run/media/user/USB/navdata.dsf: 100%|██████████████████| 32.2M/32.2M [00:10<00:00, 3.18MB/s]
+Updating .jdm...
+Writing to /run/media/user/USB/obstacles.dsf: 100%|████████████████| 2.24M/2.24M [00:02<00:00, 984kB/s]
 Updating .jdm...
 Done
 ```
