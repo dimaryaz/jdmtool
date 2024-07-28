@@ -1,5 +1,5 @@
 import argparse 
-from enum import Enum
+from dataclasses import dataclass
 from functools import wraps
 from getpass import getpass
 from io import TextIOWrapper
@@ -247,7 +247,13 @@ def cmd_download(id: int) -> None:
     _download(downloader, service)
 
 
-def update_dot_jdm(service: Service, path: pathlib.Path, files: T.List[pathlib.Path], sh_size: int) -> None:
+@dataclass
+class DotJdmConfig:
+    sh_size: int
+    files: T.List[pathlib.Path]
+
+
+def update_dot_jdm(service: Service, path: pathlib.Path, config: DotJdmConfig) -> None:
     try:
         with open(path / DOT_JDM, encoding='utf-8') as fd:
             data = json.load(fd)
@@ -258,11 +264,11 @@ def update_dot_jdm(service: Service, path: pathlib.Path, files: T.List[pathlib.P
     file_info: T.List[T.Dict[str, T.Any]] = []
     file_path_set: T.Set[str] = set()
 
-    for f in files:
+    for f in config.files:
         size = f.stat().st_size
 
         with open(f, 'rb') as fd:
-            sh = libscrc.crc32_q(fd.read(sh_size))
+            sh = libscrc.crc32_q(fd.read(config.sh_size))
             if size <= DOT_JDM_MAX_FH_SIZE:
                 fh = sh
                 while True:
@@ -366,17 +372,181 @@ def get_device_volume_id(path: pathlib.Path) -> int:
         raise DownloaderException("OS not supported")
 
 
+def _transfer_avidyne(service: Service, path: pathlib.Path, volume_id: int) -> DotJdmConfig:
+    from .avidyne import SFXFile, SecurityContext
+
+    databases = service.get_databases()
+    assert len(databases) == 1
+    database_path = databases[0].dest_path
+
+    dot_jdm = DotJdmConfig(0x8000, [])
+
+    with zipfile.ZipFile(database_path) as database_zip:
+        # Look for files ending with dsf.txt, even not preceeded by a dot, or anything at all.
+        dsf_txt_files = [f for f in database_zip.infolist() if '/' not in f.filename and f.filename.endswith('dsf.txt')]
+        if not dsf_txt_files:
+            raise DownloaderException("Did not find a dsf.txt file")
+        if len(dsf_txt_files) > 1:
+            raise DownloaderException(f"Found multiple dsf.txt files: {dsf_txt_files}")
+        dsf_txt_file = dsf_txt_files[0]
+
+        with database_zip.open(dsf_txt_file) as dsf_bytes:
+            with TextIOWrapper(dsf_bytes) as dsf_txt:
+                script = SFXFile.parse_script(dsf_txt)
+
+        dsf_name = dsf_txt_file.filename[:-4].lower()
+        if not dsf_name.endswith('.dsf'):
+            dsf_name += '.dsf'
+
+        ctx = SecurityContext(service.get_property('display_version'), volume_id, 2)
+
+        dest = path / dsf_name
+        total = script.total_progress(database_zip)
+        with tqdm.tqdm(desc=f"Writing to {dest}", total=total, unit='B', unit_scale=True) as t:
+            with open(dest, 'wb') as dsf_fd:
+                script.run(dsf_fd, database_zip, ctx, t.update)
+
+        dot_jdm.files.append(dest)
+
+    return dot_jdm
+
+
+def _transfer_g1000_basic(service: Service, path: pathlib.Path, volume_id: int) -> DotJdmConfig:
+    from .garmin import copy_with_feat_unlk, FILENAME_TO_FEATURE
+
+    databases = service.get_databases()
+    assert len(databases) == 1
+    database_path = databases[0].dest_path
+
+    dot_jdm = DotJdmConfig(0x2000, [])
+    security_id = int(service.get_property('garmin_sec_id'))
+    system_id = int(service.get_property('avionics_id'), 16)
+
+    with zipfile.ZipFile(database_path) as database_zip:
+        infolist = database_zip.infolist()
+        for info in infolist:
+            info.filename = info.filename.replace('\\', '/')  # 🤦‍
+            if info.filename not in FILENAME_TO_FEATURE:
+                raise DownloaderException(f"Unexpected filename: {info.filename}! Please file a bug.")
+
+            target = path / info.filename
+            with tqdm.tqdm(desc=f"Extracting {info.filename}...", total=info.file_size, unit='B', unit_scale=True) as t:
+                with database_zip.open(info) as src_fd:
+                    copy_with_feat_unlk(path, src_fd, info.filename, volume_id, security_id, system_id, t.update)
+
+            dot_jdm.files.append(target)
+
+    return dot_jdm
+
+
+def _transfer_g1000_chartview(service: Service, path: pathlib.Path, volume_id: int) -> DotJdmConfig:
+    from .chartview import ChartView
+    from .garmin import Feature, feat_unlk_checksum, update_feat_unlk
+
+    charts_path = path / 'Charts'
+    charts_path.mkdir(exist_ok=True)
+
+    charts_files: T.List[str] = []
+
+    zip_files = [d.dest_path for d in service.get_databases()]
+    with ChartView(zip_files) as cv:
+        print("Processing charts.ini...")
+        charts_files.append('charts.ini')
+        db_begin_date = cv.process_charts_ini(charts_path)
+
+        charts_bin_size = cv.get_charts_bin_size()
+        charts_files.append('charts.bin')
+        with tqdm.tqdm(desc="Processing charts.bin", total=charts_bin_size, unit='B', unit_scale=True) as t:
+            filenames_by_chart = cv.process_charts_bin(charts_path, db_begin_date, t.update)
+
+        airports_by_filename = cv.get_airports_by_filename()
+        airports_by_key = cv.get_airports_by_key()
+
+        ifr_airports: T.Set[str] = set()
+        vfr_airports: T.Set[str] = set()
+
+        for (code, is_vfr), filenames in filenames_by_chart.items():
+            print(f"Guessing subscription for code {code}...")
+
+            subscription_airports = vfr_airports if is_vfr else ifr_airports
+
+            airports: T.Set[str] = set()
+            for filename in filenames:
+                airport = airports_by_filename.get(filename.split('.')[0].upper())
+                if airport is None:
+                    raise ValueError(f"Failed to find the airport for {filename}!")
+                airports.add(airport)
+
+            matches = []
+            for key, key_airports in airports_by_key.items():
+                if key_airports.issuperset(airports):
+                    matches.append((key, key_airports))
+            if not matches:
+                raise ValueError("Failed to find any matching subscriptions!")
+
+            matches.sort(key=lambda match: len(match[1]))
+            best_subscription, best_airports = matches[0]
+            subscription_airports.update(best_airports)
+            print(f"Best match: {best_subscription}, {len(best_airports)} airports")
+
+        print("Processing charts.dbf...")
+        charts_files.append('charts.dbf')
+        charts = cv.process_charts(ifr_airports, vfr_airports, charts_path)
+
+        print("Processing chrtlink.dbf...")
+        charts_files.append('chrtlink.dbf')
+        chartlink = cv.process_chartlink(ifr_airports, vfr_airports, charts_path)
+
+        print("Processing airports.dbf...")
+        charts_files.append('airports.dbf')
+        ifr_countries, vfr_countries = cv.process_airports(
+            ifr_airports, vfr_airports, charts, chartlink, charts_path)
+
+        print("Processing notams.dbf + notams.dbt...")
+        charts_files.extend(['notams.dbf', 'notams.dbt'])
+        cv.process_notams(ifr_airports, vfr_airports, ifr_countries, vfr_countries, charts_path)
+
+        for filename in ChartView.FILES_TO_COPY:
+            print(f"Extracting {filename}...")
+            charts_files.append(filename)
+            cv.extract_file(filename, charts_path)
+
+        print("Extracting fonts...")
+        fonts_files = cv.extract_fonts(path)
+
+        print("Processing crcfiles.txt...")
+        charts_files.append('crcfiles.txt')
+        cv.process_crcfiles(charts_path)
+
+    security_id = int(service.get_property('garmin_sec_id'))
+    system_id = int(service.get_property('avionics_id'), 16)
+
+    crcfiles = (charts_path / 'crcfiles.txt').read_bytes()
+    chk = feat_unlk_checksum(crcfiles)
+
+    update_feat_unlk(path, Feature.CHARTVIEW, volume_id, security_id, system_id, chk, None)
+
+    for oem in service.get_oems():
+        with zipfile.ZipFile(oem.dest_path) as oem_zip:
+            for entry in oem_zip.infolist():
+                print(f"Extracting {entry.filename}...")
+                oem_zip.extract(entry, charts_path)
+
+    fonts_files.sort()
+    charts_files.sort()
+    dot_jdm_files = [path / f for f in fonts_files] + [charts_path / f for f in charts_files]
+
+    return DotJdmConfig(0x2000, dot_jdm_files)
+
+
 def _transfer_sd_card(service: Service, path: pathlib.Path, vol_id_override: T.Optional[str]) -> None:
-    class TransferType(Enum):
-        AVIDYNE = 1
-        GARMIN_BASIC = 2
-        GARMIN_CHARTVIEW = 3
+    transfer_func: T.Callable[[Service, pathlib.Path, int], DotJdmConfig]
 
     if isinstance(service, SimpleService):
         if service.get_optional_property("oem_avidyne_e2") == '1':
-            transfer_type = TransferType.AVIDYNE
+            transfer_func = _transfer_avidyne
         elif service.get_optional_property("oem_garmin") == '1':
-            transfer_type = TransferType.GARMIN_BASIC
+            transfer_func = _transfer_g1000_basic
         else:
             raise DownloaderException("This service is not yet supported")
     else:
@@ -386,11 +556,9 @@ def _transfer_sd_card(service: Service, path: pathlib.Path, vol_id_override: T.O
             print("Transferred files may not completely match JDM, and may not even be correct.")
             print("Please report your results at https://github.com/dimaryaz/jdmtool/issues.")
             print()
-            transfer_type = TransferType.GARMIN_CHARTVIEW
+            transfer_func = _transfer_g1000_chartview
         else:
             raise DownloaderException("Unexpected service type")
-
-    databases = service.get_databases()
 
     if path.is_block_device():
         raise DownloaderException(f"{path} is a device file; need the directory where the SD card is mounted")
@@ -414,7 +582,7 @@ def _transfer_sd_card(service: Service, path: pathlib.Path, vol_id_override: T.O
                 raise ValueError()
             volume_id = int(vol_id_override, 16)
         except ValueError:
-            raise DownloaderException("Volume ID must be 8 hex digits long")
+            raise DownloaderException("Volume ID must be 8 hex digits long") from None
         print(f"Using a manually-provided volume ID: {volume_id:08x}")
     else:
         volume_id = get_device_volume_id(path)
@@ -429,171 +597,7 @@ def _transfer_sd_card(service: Service, path: pathlib.Path, vol_id_override: T.O
         downloader = Downloader()
         _download(downloader, service)
 
-    dot_jdm_files: T.List[pathlib.Path] = []
-    sh_size = 0
-
-    if transfer_type == TransferType.AVIDYNE:
-        from .avidyne import SFXFile, SecurityContext
-
-        assert len(databases) == 1
-        database_path = databases[0].dest_path
-
-        sh_size = 0x8000
-
-        with zipfile.ZipFile(database_path) as database_zip:
-            # Look for files ending with dsf.txt, even not preceeded by a dot, or anything at all.
-            dsf_txt_files = [f for f in database_zip.infolist() if '/' not in f.filename and f.filename.endswith('dsf.txt')]
-            if not dsf_txt_files:
-                raise DownloaderException("Did not find a dsf.txt file")
-            if len(dsf_txt_files) > 1:
-                raise DownloaderException(f"Found multiple dsf.txt files: {dsf_txt_files}")
-            dsf_txt_file = dsf_txt_files[0]
-
-            with database_zip.open(dsf_txt_file) as dsf_bytes:
-                with TextIOWrapper(dsf_bytes) as dsf_txt:
-                    script = SFXFile.parse_script(dsf_txt)
-
-            dsf_name = dsf_txt_file.filename[:-4].lower()
-            if not dsf_name.endswith('.dsf'):
-                dsf_name += '.dsf'
-
-            ctx = SecurityContext(service.get_property('display_version'), volume_id, 2)
-
-            dest = path / dsf_name
-            total = script.total_progress(database_zip)
-            with tqdm.tqdm(desc=f"Writing to {dest}", total=total, unit='B', unit_scale=True) as t:
-                with open(dest, 'wb') as dsf_fd:
-                    script.run(dsf_fd, database_zip, ctx, t.update)
-
-            dot_jdm_files.append(dest)
-
-    elif transfer_type == TransferType.GARMIN_BASIC:
-        from .garmin import copy_with_feat_unlk, FILENAME_TO_FEATURE
-
-        assert len(databases) == 1
-        database_path = databases[0].dest_path
-
-        sh_size = 0x2000
-        security_id = int(service.get_property('garmin_sec_id'))
-        system_id = int(service.get_property('avionics_id'), 16)
-
-        with zipfile.ZipFile(database_path) as database_zip:
-            infolist = database_zip.infolist()
-            for info in infolist:
-                info.filename = info.filename.replace('\\', '/')  # 🤦‍
-                if info.filename not in FILENAME_TO_FEATURE:
-                    raise DownloaderException(f"Unexpected filename: {info.filename}! Please file a bug.")
-
-                target = path / info.filename
-                with tqdm.tqdm(desc=f"Extracting {info.filename}...", total=info.file_size, unit='B', unit_scale=True) as t:
-                    with database_zip.open(info) as src_fd:
-                        copy_with_feat_unlk(path, src_fd, info.filename, volume_id, security_id, system_id, t.update)
-
-                dot_jdm_files.append(target)
-
-    elif transfer_type == TransferType.GARMIN_CHARTVIEW:
-        from .chartview import ChartView
-        from .garmin import Feature, feat_unlk_checksum, update_feat_unlk
-
-        charts_path = path / 'Charts'
-        charts_path.mkdir(exist_ok=True)
-
-        charts_files: T.List[str] = []
-
-        zip_files = [d.dest_path for d in databases]
-        with ChartView(zip_files) as cv:
-            print("Processing charts.ini...")
-            charts_files.append('charts.ini')
-            db_begin_date = cv.process_charts_ini(charts_path)
-
-            charts_bin_size = cv.get_charts_bin_size()
-            charts_files.append('charts.bin')
-            with tqdm.tqdm(desc="Processing charts.bin", total=charts_bin_size, unit='B', unit_scale=True) as t:
-                filenames_by_chart = cv.process_charts_bin(charts_path, db_begin_date, t.update)
-
-            airports_by_filename = cv.get_airports_by_filename()
-            airports_by_key = cv.get_airports_by_key()
-
-            ifr_airports: T.Set[str] = set()
-            vfr_airports: T.Set[str] = set()
-
-            for (code, is_vfr), filenames in filenames_by_chart.items():
-                print(f"Guessing subscription for code {code}...")
-
-                subscription_airports = vfr_airports if is_vfr else ifr_airports
-
-                airports: T.Set[str] = set()
-                for filename in filenames:
-                    airport = airports_by_filename.get(filename.split('.')[0].upper())
-                    if airport is None:
-                        raise ValueError(f"Failed to find the airport for {filename}!")
-                    airports.add(airport)
-
-                matches = []
-                for key, key_airports in airports_by_key.items():
-                    if key_airports.issuperset(airports):
-                        matches.append((key, key_airports))
-                if not matches:
-                    raise ValueError("Failed to find any matching subscriptions!")
-
-                matches.sort(key=lambda match: len(match[1]))
-                best_subscription, best_airports = matches[0]
-                subscription_airports.update(best_airports)
-                print(f"Best match: {best_subscription}, {len(best_airports)} airports")
-
-            print("Processing charts.dbf...")
-            charts_files.append('charts.dbf')
-            charts = cv.process_charts(ifr_airports, vfr_airports, charts_path)
-
-            print("Processing chrtlink.dbf...")
-            charts_files.append('chrtlink.dbf')
-            chartlink = cv.process_chartlink(ifr_airports, vfr_airports, charts_path)
-
-            print("Processing airports.dbf...")
-            charts_files.append('airports.dbf')
-            ifr_countries, vfr_countries = cv.process_airports(
-                ifr_airports, vfr_airports, charts, chartlink, charts_path)
-
-            print("Processing notams.dbf + notams.dbt...")
-            charts_files.extend(['notams.dbf', 'notams.dbt'])
-            cv.process_notams(ifr_airports, vfr_airports, ifr_countries, vfr_countries, charts_path)
-
-            for filename in ChartView.FILES_TO_COPY:
-                print(f"Extracting {filename}...")
-                charts_files.append(filename)
-                cv.extract_file(filename, charts_path)
-
-            print("Extracting fonts...")
-            fonts_files = cv.extract_fonts(path)
-
-            print("Processing crcfiles.txt...")
-            charts_files.append('crcfiles.txt')
-            cv.process_crcfiles(charts_path)
-
-        security_id = int(service.get_property('garmin_sec_id'))
-        system_id = int(service.get_property('avionics_id'), 16)
-
-        crcfiles = (charts_path / 'crcfiles.txt').read_bytes()
-        chk = feat_unlk_checksum(crcfiles)
-
-        update_feat_unlk(path, Feature.CHARTVIEW, volume_id, security_id, system_id, chk, None)
-
-        sh_size = 0x2000
-
-        fonts_files.sort()
-        charts_files.sort()
-        dot_jdm_files.extend(path / f for f in fonts_files)
-        dot_jdm_files.extend(charts_path / f for f in charts_files)
-
-        for oem in service.get_oems():
-            with zipfile.ZipFile(oem.dest_path) as oem_zip:
-                for entry in oem_zip.infolist():
-                    print(f"Extracting {entry.filename}...")
-                    oem_zip.extract(entry, charts_path)
-
-    else:
-        # TODO
-        assert False
+    dot_jdm_config = transfer_func(service, path, volume_id)
 
     sffs = service.get_sffs()
     for sff in sffs:
@@ -609,7 +613,7 @@ def _transfer_sd_card(service: Service, path: pathlib.Path, vol_id_override: T.O
         shutil.copyfile(keychain_source, keychain_target)
 
     print("Updating .jdm...")
-    update_dot_jdm(service, path, dot_jdm_files, sh_size)
+    update_dot_jdm(service, path, dot_jdm_config)
 
 
 @with_data_card
