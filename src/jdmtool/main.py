@@ -22,7 +22,7 @@ import usb1
 
 from .skybound import SkyboundDevice, SkyboundException
 from .downloader import Downloader, DownloaderException, GRM_FEAT_KEY
-from .service import Service, ServiceException, SimpleService, get_data_dir, load_services
+from .service import Service, ServiceException, SimpleService, get_data_dir, get_downloads_dir, load_services
 
 
 CARD_TYPE_SD = 2
@@ -121,6 +121,22 @@ def _loop_helper(dev, i):
         raise SkyboundException("Data card has disappeared!")
 
 
+def _find_obsolete_downloads(services: T.List[Service]) -> T.Tuple[T.List[pathlib.Path], int]:
+    good_downloads = set(f for s in services for f in s.get_download_paths())
+
+    obsolete_downloads: T.List[pathlib.Path] = []
+    total_size = 0
+
+    for path in get_downloads_dir().rglob('*'):
+        if not path.is_file():
+            continue
+        if path not in good_downloads:
+            obsolete_downloads.append(path)
+            total_size += path.stat().st_size
+
+    return obsolete_downloads, total_size
+
+
 def cmd_login() -> None:
     downloader = Downloader()
 
@@ -129,6 +145,7 @@ def cmd_login() -> None:
 
     downloader.login(username, password)
     print("Logged in successfully")
+
 
 def cmd_refresh() -> None:
     try:
@@ -151,6 +168,15 @@ def cmd_refresh() -> None:
         _list(new_services)
     else:
         print("No updates.")
+
+    obsolete_downloads, total_size = _find_obsolete_downloads(new_services)
+
+    if obsolete_downloads:
+        print()
+        print(
+            f"Found {len(obsolete_downloads)} obsolete downloads ({total_size / 2**20:.1f}MB total); "
+            "run `jdmtool clean` to delete them."
+        )
 
 
 def _list(services: T.List[Service]) -> None:
@@ -727,6 +753,35 @@ def cmd_transfer(ids: T.List[int], device: T.Optional[str], no_download: bool, v
 
     print("Done")
 
+
+def cmd_clean() -> None:
+    try:
+        services = load_services()
+    except ServiceException:
+        print("WARNING: Did not find any services. Will be cleaning all downloads!")
+        print()
+        services = []
+
+    obsolete_downloads, total_size = _find_obsolete_downloads(services)
+
+    if obsolete_downloads:
+        print(f"Found {len(obsolete_downloads)} obsolete downloads ({total_size / 2**20:.1f}MB total):")
+        for path in obsolete_downloads:
+            print(f"  {path}")
+
+        print()
+        prompt = input("Delete? (y/n) ")
+        if prompt.lower() != 'y':
+            raise DownloaderException("Cancelled")
+
+        for path in obsolete_downloads:
+            path.unlink()
+
+        print("Deleted.")
+    else:
+        print("No obsolete downloads found.")
+
+
 @with_usb
 def cmd_detect(dev: SkyboundDevice) -> None:
     version = dev.get_version()
@@ -960,6 +1015,12 @@ def main():
         nargs='?',
     )
     transfer_p.set_defaults(func=cmd_transfer)
+
+    clean_p = subparsers.add_parser(
+        "clean",
+        help="Delete downloaded files that are not used by any current service",
+    )
+    clean_p.set_defaults(func=cmd_clean)
 
     detect_p = subparsers.add_parser(
         "detect",
