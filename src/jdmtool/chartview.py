@@ -14,8 +14,7 @@ except ImportError:
 import zipfile
 import zlib
 
-import libscrc
-
+from .crc32q import calculate_crc32_q
 from .dbf import DbfField, DbfFile, DbfHeader, DbtFile, DbtHeader
 
 
@@ -155,7 +154,7 @@ class ChartView:
             def write_with_crc(data: bytes):
                 nonlocal crc32q
                 charts_bin_fd.write(data)
-                crc32q = libscrc.crc32_q(data, crc32q)
+                crc32q = calculate_crc32_q(data, crc32q)
                 progress_cb(len(data))
 
             chart_fds: List[BinaryIO] = []
@@ -420,7 +419,7 @@ class ChartView:
                     contents = (dest_path / filename).read_bytes()
                 else:
                     contents = self._read(filename)
-                checksum = libscrc.crc32_q(contents)
+                checksum = calculate_crc32_q(contents)
                 print(f'{filename},0x{checksum:08x}', file=fd)
 
 

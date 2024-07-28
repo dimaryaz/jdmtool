@@ -15,7 +15,6 @@ import shutil
 import typing as T
 import zipfile
 
-import libscrc
 import psutil
 import tqdm
 import usb1
@@ -285,6 +284,8 @@ class DotJdmConfig:
 
 
 def update_dot_jdm(service: Service, path: pathlib.Path, config: DotJdmConfig) -> None:
+    from .crc32q import calculate_crc32_q
+
     try:
         with open(path / DOT_JDM, encoding='utf-8') as fd:
             data = json.load(fd)
@@ -299,14 +300,14 @@ def update_dot_jdm(service: Service, path: pathlib.Path, config: DotJdmConfig) -
         size = f.stat().st_size
 
         with open(f, 'rb') as fd:
-            sh = libscrc.crc32_q(fd.read(config.sh_size))
+            sh = calculate_crc32_q(fd.read(config.sh_size))
             if size <= DOT_JDM_MAX_FH_SIZE:
                 fh = sh
                 while True:
                     chunk = fd.read(0x8000)
                     if not chunk:
                         break
-                    fh = libscrc.crc32_q(chunk, fh)
+                    fh = calculate_crc32_q(chunk, fh)
             else:
                 fh = None
 
@@ -362,7 +363,7 @@ def update_dot_jdm(service: Service, path: pathlib.Path, config: DotJdmConfig) -
     }
 
     data_str = json.dumps(data, separators=(',', ':'), sort_keys=True)
-    z = libscrc.crc32_q(data_str.encode())
+    z = calculate_crc32_q(data_str.encode())
     data["z"] = f"{z:08x}"
 
     with open(path / DOT_JDM, 'w', encoding='utf-8') as fd:
