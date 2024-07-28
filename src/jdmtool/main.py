@@ -406,17 +406,19 @@ def get_device_volume_id(path: pathlib.Path) -> int:
 def _format_service_name(service: Service, now: datetime) -> str:
     avionics = service.get_property('avionics')
     service_type = service.get_property('service_type')
+    name = f'{avionics} - {service_type}'
 
+    version = service.get_property('display_version')
     start = service.get_start_date()
     end = service.get_end_date()
     if now > end:
-        note = f" \033[1;31m(expired on {end.date()})\033[0m"
+        note = "  \033[1;31m(EXPIRED)\033[0m"
     elif now < start:
-        note = f" \033[1m(not valid until {start.date()})\033[0m"
+        note = "  \033[1m(not valid yet)\033[0m"
     else:
         note = ''
 
-    return f'{avionics} - {service_type}{note}'
+    return f'{name:<70}{version:<8}{start.date()} - {end.date()}{note}'
 
 
 def _transfer_avidyne(service: Service, path: pathlib.Path, volume_id: int) -> DotJdmConfig:
