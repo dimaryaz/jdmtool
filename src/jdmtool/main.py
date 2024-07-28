@@ -1,5 +1,6 @@
 import argparse 
 from dataclasses import dataclass
+from datetime import datetime
 from functools import wraps
 from getpass import getpass
 from io import TextIOWrapper
@@ -372,6 +373,22 @@ def get_device_volume_id(path: pathlib.Path) -> int:
         raise DownloaderException("OS not supported")
 
 
+def _format_service_name(service: Service, now: datetime) -> str:
+    avionics = service.get_property('avionics')
+    service_type = service.get_property('service_type')
+
+    start = service.get_start_date()
+    end = service.get_end_date()
+    if now > end:
+        note = f" \033[1;31m(expired on {end.date()})\033[0m"
+    elif now < start:
+        note = f" \033[1m(not valid until {start.date()})\033[0m"
+    else:
+        note = ''
+
+    return f'{avionics} - {service_type}{note}'
+
+
 def _transfer_avidyne(service: Service, path: pathlib.Path, volume_id: int) -> DotJdmConfig:
     from .avidyne import SFXFile, SecurityContext
 
@@ -592,8 +609,9 @@ def _transfer_sd_card(services: T.List[Service], path: pathlib.Path, vol_id_over
 
     print()
     print("Selected services:")
+    now = datetime.now()
     for service in services:
-        print(f"  {service.get_full_name()}")
+        print("  " + _format_service_name(service, now))
     print()
     prompt = input(f"Transfer to {path}? (y/n) ")
     if prompt.lower() != 'y':
@@ -644,8 +662,11 @@ def _transfer_skybound(dev: SkyboundDevice, service: Service) -> None:
         )
         print()
 
-    name = service.get_full_name()
-    prompt = input(f"Transfer {name!r} to the data card? (y/n) ")
+    print()
+    print("Selected service:")
+    print("  " + _format_service_name(service, datetime.now()))
+    print()
+    prompt = input("Transfer to the data card? (y/n) ")
     if prompt.lower() != 'y':
         raise DownloaderException("Cancelled")
 

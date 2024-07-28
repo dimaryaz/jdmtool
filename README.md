@@ -124,7 +124,11 @@ Downloaded to /home/user/.local/share/jdmtool/downloads/dgrw72_2303_eceb0273.bin
 $ jdmtool transfer 0
 Found device: Bus 001 Device 052: ID 0e39:1250
 Detected data card: 16MB WAAS
-Transfer /home/user/.local/share/jdmtool/downloads/dgrw72_2303_eceb0273.bin to the data card? (y/n) y
+
+Selected service:
+  Garmin GNS 400/500 Series WAAS - NavData
+
+Transfer to the data card? (y/n) y
 Erasing the database: 100%|████████████████████████████████████████| 8.59M/8.59M [02:15<00:00, 63.1KB/s]
 Writing the database: 100%|████████████████████████████████████████| 8.59M/8.59M [04:14<00:00, 40.5KB/s]
 Verifying the database: 100%|██████████████████████████████████████| 8.59M/8.59M [01:32<00:00, 92.5KB/s]

@@ -2,6 +2,7 @@
 from abc import ABC, abstractmethod
 from collections import defaultdict
 from dataclasses import dataclass
+from datetime import datetime
 import pathlib
 import typing as T
 import xml.etree.ElementTree as ET
@@ -67,17 +68,18 @@ class Service(ABC):
 
         return value
 
-    def get_full_name(self) -> str:
-        avionics = self.get_property('avionics')
-        service_type = self.get_property('service_type')
-        return f'{avionics} - {service_type}'
-
     def get_fingerprint(self) -> T.Tuple[str, str, str]:
         return (
             self.get_property('unique_service_id'),
             self.get_property('service_code'),
             self.get_property('version'),
         )
+
+    def get_start_date(self) -> datetime:
+        return datetime.strptime(self.get_property('version_start_date'), '%Y-%m-%d %H:%M:%S')
+
+    def get_end_date(self) -> datetime:
+        return datetime.strptime(self.get_property('version_end_date'), '%Y-%m-%d %H:%M:%S')
 
 
 class SimpleService(Service):
