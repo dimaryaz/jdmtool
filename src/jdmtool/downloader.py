@@ -11,7 +11,7 @@ import xml.etree.ElementTree as ET
 import requests
 
 
-from .service import get_data_dir, get_downloads_dir, get_services_path
+from .service import get_data_dir, get_services_path
 
 
 GRM_FEAT_KEY = 'grm_feat_key.zip'
@@ -131,7 +131,7 @@ class Downloader:
         if not resp.ok:
             raise DownloaderException(f"Unexpected response: {resp}")
 
-        (get_downloads_dir() / GRM_FEAT_KEY).write_bytes(resp.content)
+        (get_data_dir() / GRM_FEAT_KEY).write_bytes(resp.content)
 
     def download_database(
         self,
