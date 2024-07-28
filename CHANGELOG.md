@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.3.1 (2024-07-28)
+- Fix the download location of grm_feat_key.zip
+- Update docs
+
 ## 0.3 (2024-07-28)
 - (Very experimental, possibly incomplete) Support for Garmin G1000 Electronic Charts
 - Automatically download databases when transferring
