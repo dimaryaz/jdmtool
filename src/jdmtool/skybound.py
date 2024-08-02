@@ -1,10 +1,13 @@
-from typing import Iterable
+from contextlib import contextmanager
+from typing import BinaryIO, Callable, Generator, Iterable
 
-import usb1
+from .util import ProgrammingException
 
 
-class SkyboundException(Exception):
-    pass
+try:
+    import usb1
+except ImportError:
+    raise ProgrammingException("Please install USB support by running `pip3 install jdmtool[usb]") from None
 
 
 class SkyboundDevice():
@@ -46,16 +49,16 @@ class SkyboundDevice():
     def init(self) -> None:
         buf = self.control_read(0x80, 0x06, 0x0100, 0x0000, 18)
         if buf != b"\x12\x01\x10\x01\xFF\x83\xFF\x40\x39\x0E\x50\x12\x00\x00\x00\x00\x00\x01":
-            raise SkyboundException("Unexpected response")
+            raise ProgrammingException("Unexpected response")
         buf = self.control_read(0x80, 0x06, 0x0200, 0x0000, 9)
         if buf != b"\x09\x02\x20\x00\x01\x01\x00\x80\x0F":
-            raise SkyboundException("Unexpected response")
+            raise ProgrammingException("Unexpected response")
         buf = self.control_read(0x80, 0x06, 0x0200, 0x0000, 32)
         if buf != (
             b"\x09\x02\x20\x00\x01\x01\x00\x80\x0F\x09\x04\x00\x00\x02\x00\x00"
             b"\x00\x00\x07\x05\x81\x02\x40\x00\x05\x07\x05\x02\x02\x40\x00\x05"
         ):
-            raise SkyboundException("Unexpected response")
+            raise ProgrammingException("Unexpected response")
 
     def set_led(self, on: bool) -> None:
         if on:
@@ -71,18 +74,22 @@ class SkyboundDevice():
         elif buf == b"\x01":
             return False
         else:
-            raise SkyboundException(f"Unexpected response: {buf}")
+            raise ProgrammingException(f"Unexpected response: {buf}")
 
     def get_version(self) -> str:
         self.write(b"\x60")
         return self.read(0x0040).decode()
 
     def get_unknown(self) -> int: # TODO: what is this?
+        self.select_page(0)
+        self.before_read()
         self.write(b"\x50\x03")
         buf = self.read(0x0040)
         return int.from_bytes(buf, 'little')
 
     def get_iid(self) -> int:
+        self.select_page(0)
+        self.before_read()
         self.write(b"\x50\x04")
         buf = self.read(0x0040)
         return int.from_bytes(buf, 'little')
@@ -100,7 +107,7 @@ class SkyboundDevice():
 
         buf = self.read(0x0040)
         if buf[0] != data[-1] or buf[1:] != b"\x00\x00\x00":
-            raise SkyboundException(f"Unexpected response: {buf}")
+            raise ProgrammingException(f"Unexpected response: {buf}")
 
     def select_physical_page(self, page_id: int) -> None:
         if not (0x0000 <= page_id <= 0xFFFF):
@@ -118,7 +125,7 @@ class SkyboundDevice():
         self.write(b"\x52\x04")
         buf = self.read(0x0040)
         if buf != b"\x04":
-            raise SkyboundException(f"Unexpected response: {buf}")
+            raise ProgrammingException(f"Unexpected response: {buf}")
 
     def before_read(self) -> None:
         # It's not clear that this does anything, but JDM seems to send it
@@ -134,3 +141,116 @@ class SkyboundDevice():
 
     def get_total_size(self) -> int:
         return self.get_total_pages() * self.PAGE_SIZE
+
+    def init_data_card(self) -> None:
+        if not self.has_card():
+            raise ProgrammingException("Card is missing!")
+
+        self.select_page(0)
+        self.before_read()
+
+        # TODO: Figure out the actual meaning of the iid and the "unknown" value.
+        iid = self.get_iid()
+        if iid == 0x01004100:
+            # 16MB WAAS card
+            print("Detected data card: 16MB WAAS")
+            self.set_memory_layout(SkyboundDevice.MEMORY_LAYOUT_16MB)
+        elif iid == 0x0100ad00:
+            # 4MB non-WAAS card
+            print("Detected data card: 4MB non-WAAS")
+            self.set_memory_layout(SkyboundDevice.MEMORY_LAYOUT_4MB)
+        else:
+            raise ProgrammingException(
+                f"Unknown data card IID: 0x{iid:08x} (possibly 8MB non-WAAS?). Please file a bug!"
+            )
+
+    def _loop_helper(self, i: int) -> None:
+        self.set_led(i % 2 == 0)
+        if not self.has_card():
+            raise ProgrammingException("Data card has disappeared!")
+
+    def read_database(self, pages: int, fd: BinaryIO, progress_cb: Callable[[int], None]) -> None:
+        self.before_read()
+        for i in range(pages * SkyboundDevice.BLOCKS_PER_PAGE):
+            self._loop_helper(i)
+
+            if i % SkyboundDevice.BLOCKS_PER_PAGE == 0:
+                self.select_page(i // SkyboundDevice.BLOCKS_PER_PAGE)
+
+            block = self.read_block()
+
+            if block == b'\xFF' * SkyboundDevice.BLOCK_SIZE:
+                break
+
+            fd.write(block)
+            progress_cb(len(block))
+
+
+    def erase_database(self, pages: int, progress_cb: Callable[[int], None]) -> None:
+        self.before_write()
+        for i in range(pages):
+            self._loop_helper(i)
+            self.select_page(i)
+            self.erase_page()
+            progress_cb(SkyboundDevice.PAGE_SIZE)
+
+
+    def write_database(self, pages: int, fd: BinaryIO, progress_cb: Callable[[int], None]) -> None:
+        self.before_write()
+        for i in range(pages * SkyboundDevice.BLOCKS_PER_PAGE):
+            block = fd.read(SkyboundDevice.BLOCK_SIZE).ljust(SkyboundDevice.BLOCK_SIZE, b'\xFF')
+
+            self._loop_helper(i)
+
+            if i % SkyboundDevice.BLOCKS_PER_PAGE == 0:
+                self.select_page(i // SkyboundDevice.BLOCKS_PER_PAGE)
+
+            self.write_block(block)
+            progress_cb(len(block))
+
+
+    def verify_database(self, pages: int, fd: BinaryIO, progress_cb: Callable[[int], None]) -> None:
+        self.before_read()
+        for i in range(pages * SkyboundDevice.BLOCKS_PER_PAGE):
+            file_block = fd.read(SkyboundDevice.BLOCK_SIZE).ljust(SkyboundDevice.BLOCK_SIZE, b'\xFF')
+
+            self._loop_helper(i)
+
+            if i % SkyboundDevice.BLOCKS_PER_PAGE == 0:
+                self.select_page(i // SkyboundDevice.BLOCKS_PER_PAGE)
+
+            card_block = self.read_block()
+
+            if card_block != file_block:
+                raise ProgrammingException(f"Verification failed! Block {i} is incorrect.")
+
+            progress_cb(len(file_block))
+
+
+
+@contextmanager
+def open_usb_device(need_data_card: bool = True) -> Generator[SkyboundDevice, None, None]:
+    with usb1.USBContext() as usbcontext:
+        try:
+            usbdev = usbcontext.getByVendorIDAndProductID(SkyboundDevice.VID, SkyboundDevice.PID)
+            if usbdev is None:
+                raise ProgrammingException("Device not found")
+
+            print(f"Found device: {usbdev}")
+            handle = usbdev.open()
+        except usb1.USBError as ex:
+            raise ProgrammingException(f"Could not open device: {ex}") from ex
+
+        handle.setAutoDetachKernelDriver(True)
+        with handle.claimInterface(0):
+            handle.resetDevice()
+            dev = SkyboundDevice(handle)
+            dev.init()
+
+            if need_data_card:
+                dev.init_data_card()
+
+            try:
+                yield dev
+            finally:
+                dev.set_led(False)

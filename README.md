@@ -34,7 +34,7 @@ pip3 install "git+https://github.com/dimaryaz/jdmtool.git#egg=jdmtool"
 
 ### IFD 400 and G1000
 
-You should install an optional Just-in-Time compiler by running:
+You should install an optional (but strongly recommended) Just-in-Time compiler by running:
 ```
 pip3 install jdmtool[jit]
 ```
@@ -42,6 +42,11 @@ pip3 install jdmtool[jit]
 This should significantly improve transfer speeds.
 
 ### GNS 400/500
+
+You will also need to install USB support by running:
+```
+pip3 install jdmtool[usb]
+```
 
 Make sure you have access to the USB device. On Linux, you should copy `udev/50-skybound.rules` to `/etc/udev/rules.d/` and possibly reload the rules.
 

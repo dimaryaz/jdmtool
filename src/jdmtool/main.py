@@ -1,7 +1,6 @@
 import argparse 
 from dataclasses import dataclass
 from datetime import datetime
-from functools import wraps
 from getpass import getpass
 try:
     from importlib import metadata as importlib_metadata
@@ -17,11 +16,10 @@ import zipfile
 
 import psutil
 import tqdm
-import usb1
 
-from .skybound import SkyboundDevice, SkyboundException
 from .downloader import Downloader, DownloaderException, GRM_FEAT_KEY
 from .service import Service, ServiceException, SimpleService, get_data_dir, get_downloads_dir, load_services
+from .util import ProgrammingException
 
 
 CARD_TYPE_SD = 2
@@ -55,69 +53,6 @@ DETAILED_INFO_MAP = [
     ("Next Version Available Date", "next_version_avail_date"),
     ("Next Version Start Date", "next_version_start_date"),
 ]
-
-
-def with_usb(f: T.Callable):
-    @wraps(f)
-    def wrapper(*args, **kwargs):
-        with usb1.USBContext() as usbcontext:
-            try:
-                usbdev = usbcontext.getByVendorIDAndProductID(SkyboundDevice.VID, SkyboundDevice.PID)
-                if usbdev is None:
-                    raise SkyboundException("Device not found")
-
-                print(f"Found device: {usbdev}")
-                handle = usbdev.open()
-            except usb1.USBError as ex:
-                raise SkyboundException(f"Could not open device: {ex}") from ex
-
-            handle.setAutoDetachKernelDriver(True)
-            with handle.claimInterface(0):
-                handle.resetDevice()
-                dev = SkyboundDevice(handle)
-                dev.init()
-                try:
-                    f(dev, *args, **kwargs)
-                finally:
-                    dev.set_led(False)
-
-    return wrapper
-
-
-def with_data_card(f: T.Callable):
-    @wraps(f)
-    @with_usb
-    def wrapper(dev: SkyboundDevice, *args, **kwargs):
-        if not dev.has_card():
-            raise SkyboundException("Card is missing!")
-
-        dev.select_page(0)
-        dev.before_read()
-
-        # TODO: Figure out the actual meaning of the iid and the "unknown" value.
-        iid = dev.get_iid()
-        if iid == 0x01004100:
-            # 16MB WAAS card
-            print("Detected data card: 16MB WAAS")
-            dev.set_memory_layout(SkyboundDevice.MEMORY_LAYOUT_16MB)
-        elif iid == 0x0100ad00:
-            # 4MB non-WAAS card
-            print("Detected data card: 4MB non-WAAS")
-            dev.set_memory_layout(SkyboundDevice.MEMORY_LAYOUT_4MB)
-        else:
-            raise SkyboundException(
-                f"Unknown data card IID: 0x{iid:08x} (possibly 8MB non-WAAS?). Please file a bug!"
-            )
-
-        f(dev, *args, **kwargs)
-
-    return wrapper
-
-
-def _loop_helper(dev, i):
-    dev.set_led(i % 2 == 0)
-    if not dev.has_card():
-        raise SkyboundException("Data card has disappeared!")
 
 
 def _find_obsolete_downloads(services: T.List[Service]) -> T.Tuple[T.List[pathlib.Path], int]:
@@ -675,38 +610,40 @@ def _transfer_sd_card(services: T.List[Service], path: pathlib.Path, vol_id_over
         update_dot_jdm(service, path, dot_jdm_config)
 
 
-@with_data_card
-def _transfer_skybound(dev: SkyboundDevice, service: Service) -> None:
-    databases = service.get_databases()
-    assert len(databases) == 1, databases
+def _transfer_skybound(service: Service) -> None:
+    from .skybound import open_usb_device
 
-    card_size_min = int(service.get_property('media/card_size_min'))
-    card_size_max = int(service.get_property('media/card_size_max'))
+    with open_usb_device() as dev:
+        databases = service.get_databases()
+        assert len(databases) == 1, databases
 
-    if not card_size_min <= dev.get_total_size() <= card_size_max:
+        card_size_min = int(service.get_property('media/card_size_min'))
+        card_size_max = int(service.get_property('media/card_size_max'))
+
+        if not card_size_min <= dev.get_total_size() <= card_size_max:
+            print()
+            print(
+                f"WARNING: This service requires a data card between "
+                f"{card_size_min // 2**20}MB and {card_size_max // 2**20}MB, "
+                f"but yours is {dev.get_total_size() // 2**20}MB!"
+            )
+            print()
+
         print()
-        print(
-            f"WARNING: This service requires a data card between "
-            f"{card_size_min // 2**20}MB and {card_size_max // 2**20}MB, "
-            f"but yours is {dev.get_total_size() // 2**20}MB!"
-        )
+        print("Selected service:")
+        print("  " + _format_service_name(service, datetime.now()))
         print()
+        prompt = input("Transfer to the data card? (y/n) ")
+        if prompt.lower() != 'y':
+            raise DownloaderException("Cancelled")
 
-    print()
-    print("Selected service:")
-    print("  " + _format_service_name(service, datetime.now()))
-    print()
-    prompt = input("Transfer to the data card? (y/n) ")
-    if prompt.lower() != 'y':
-        raise DownloaderException("Cancelled")
+        if not all(f.exists() for f in service.get_download_paths()):
+            downloader = Downloader()
+            _download(downloader, service)
 
-    if not all(f.exists() for f in service.get_download_paths()):
-        downloader = Downloader()
-        _download(downloader, service)
+        path = databases[0].dest_path
 
-    path = databases[0].dest_path
-
-    _write_database(dev, str(path))
+        _write_database(dev, str(path))
 
 
 def cmd_transfer(ids: T.List[int], device: T.Optional[str], no_download: bool, vol_id: T.Optional[str]) -> None:
@@ -775,121 +712,92 @@ def cmd_clean() -> None:
         print("No obsolete downloads found.")
 
 
-@with_usb
-def cmd_detect(dev: SkyboundDevice) -> None:
-    version = dev.get_version()
-    print(f"Firmware version: {version}")
-    if dev.has_card():
-        print("Card inserted:")
-        dev.select_page(0)
-        dev.before_read()
-        iid = dev.get_iid()
-        print(f"  IID: 0x{iid:08x}")
-        unknown = dev.get_unknown()
-        print(f"  Unknown identifier: 0x{unknown:08x}")
-    else:
-        print("No card")
+def cmd_detect() -> None:
+    from .skybound import open_usb_device
 
-@with_data_card
-def cmd_read_database(dev: SkyboundDevice, path: str) -> None:
-    with open(path, 'w+b') as fd:
-        with tqdm.tqdm(desc="Reading the database", total=dev.get_total_size(), unit='B', unit_scale=True) as t:
-            dev.before_read()
-            for i in range(dev.get_total_pages() * SkyboundDevice.BLOCKS_PER_PAGE):
-                _loop_helper(dev, i)
+    with open_usb_device(need_data_card=False) as dev:
+        version = dev.get_version()
+        print(f"Firmware version: {version}")
+        if dev.has_card():
+            print("Card inserted:")
+            iid = dev.get_iid()
+            print(f"  IID: 0x{iid:08x}")
+            unknown = dev.get_unknown()
+            print(f"  Unknown identifier: 0x{unknown:08x}")
+        else:
+            print("No card")
 
-                if i % SkyboundDevice.BLOCKS_PER_PAGE == 0:
-                    dev.select_page(i // SkyboundDevice.BLOCKS_PER_PAGE)
 
-                block = dev.read_block()
+def cmd_read_database(path: str) -> None:
+    from .skybound import open_usb_device, SkyboundDevice
 
-                if block == b'\xFF' * SkyboundDevice.BLOCK_SIZE:
+    with open_usb_device() as dev:
+        total = dev.get_total_size()
+
+        with open(path, 'w+b') as fd:
+            with tqdm.tqdm(desc="Reading the database", total=total, unit='B', unit_scale=True) as t:
+                dev.read_database(dev.get_total_pages(), fd, t.update)
+
+            # Garmin card has no concept of size of the data,
+            # so we need to remove the trailing "\xFF"s.
+            print("Truncating the file...")
+            fd.seek(0, os.SEEK_END)
+            pos = fd.tell()
+            while pos > 0:
+                pos -= SkyboundDevice.BLOCK_SIZE
+                fd.seek(pos)
+                block = fd.read(SkyboundDevice.BLOCK_SIZE)
+                if block != b'\xFF' * SkyboundDevice.BLOCK_SIZE:
                     break
-
-                fd.write(block)
-                t.update(len(block))
-
-        # Garmin card has no concept of size of the data,
-        # so we need to remove the trailing "\xFF"s.
-        print("Truncating the file...")
-        fd.seek(0, os.SEEK_END)
-        pos = fd.tell()
-        while pos > 0:
-            pos -= SkyboundDevice.BLOCK_SIZE
-            fd.seek(pos)
-            block = fd.read(SkyboundDevice.BLOCK_SIZE)
-            if block != b'\xFF' * SkyboundDevice.BLOCK_SIZE:
-                break
-        fd.truncate()
+            fd.truncate()
 
     print("Done")
 
-def _write_database(dev: SkyboundDevice, path: str) -> None:
+
+def _write_database(dev: object, path: str) -> None:
+    from .skybound import SkyboundDevice
+
+    assert isinstance(dev, SkyboundDevice)
+
     max_size = dev.get_total_size()
 
     with open(path, 'rb') as fd:
         size = os.fstat(fd.fileno()).st_size
 
         if size > max_size:
-            raise SkyboundException(f"Database file is too big: {size}! The maximum size is {max_size}.")
+            raise ProgrammingException(f"Database file is too big: {size}! The maximum size is {max_size}.")
 
         pages_required = min(size // SkyboundDevice.PAGE_SIZE + 3, dev.get_total_pages())
         total_size = pages_required * SkyboundDevice.PAGE_SIZE
 
-        dev.before_write()
-
         # Data card can only write by changing 1s to 0s (effectively doing a bit-wise AND with
         # the existing contents), so all data needs to be "erased" first to reset everything to 1s.
         with tqdm.tqdm(desc="Erasing the database", total=total_size, unit='B', unit_scale=True) as t:
-            for i in range(pages_required):
-                _loop_helper(dev, i)
-                dev.select_page(i)
-                dev.erase_page()
-                t.update(SkyboundDevice.PAGE_SIZE)
+            dev.erase_database(pages_required, t.update)
 
         with tqdm.tqdm(desc="Writing the database", total=total_size, unit='B', unit_scale=True) as t:
-            for i in range(pages_required * SkyboundDevice.BLOCKS_PER_PAGE):
-                block = fd.read(SkyboundDevice.BLOCK_SIZE).ljust(SkyboundDevice.BLOCK_SIZE, b'\xFF')
-
-                _loop_helper(dev, i)
-
-                if i % SkyboundDevice.BLOCKS_PER_PAGE == 0:
-                    dev.select_page(i // SkyboundDevice.BLOCKS_PER_PAGE)
-
-                dev.write_block(block)
-                t.update(len(block))
+            dev.write_database(pages_required, fd, t.update)
 
         fd.seek(0)
 
         with tqdm.tqdm(desc="Verifying the database", total=total_size, unit='B', unit_scale=True) as t:
-            dev.before_read()
-            for i in range(pages_required * SkyboundDevice.BLOCKS_PER_PAGE):
-                file_block = fd.read(SkyboundDevice.BLOCK_SIZE).ljust(SkyboundDevice.BLOCK_SIZE, b'\xFF')
+            dev.verify_database(pages_required, fd, t.update)
 
-                _loop_helper(dev, i)
 
-                if i % SkyboundDevice.BLOCKS_PER_PAGE == 0:
-                    dev.select_page(i // SkyboundDevice.BLOCKS_PER_PAGE)
+def cmd_write_database(path: str) -> None:
+    from .skybound import open_usb_device
 
-                card_block = dev.read_block()
+    with open_usb_device() as dev:
+        prompt = input(f"Transfer {path} to the data card? (y/n) ")
+        if prompt.lower() != 'y':
+            raise DownloaderException("Cancelled")
 
-                if card_block != file_block:
-                    raise SkyboundException(f"Verification failed! Block {i} is incorrect.")
+        try:
+            _write_database(dev, path)
+        except IOError as ex:
+            raise ProgrammingException(f"Could not read the database file: {ex}") from ex
 
-                t.update(len(file_block))
-
-@with_data_card
-def cmd_write_database(dev: SkyboundDevice, path: str) -> None:
-    prompt = input(f"Transfer {path} to the data card? (y/n) ")
-    if prompt.lower() != 'y':
-        raise DownloaderException("Cancelled")
-
-    try:
-        _write_database(dev, path)
-    except IOError as ex:
-        raise SkyboundException(f"Could not read the database file: {ex}")
-
-    print("Done")
+        print("Done")
 
 
 def _parse_ids(ids: str) -> T.List[int]:
@@ -1016,7 +924,7 @@ def main():
     except ServiceException as ex:
         print(ex)
         return 1
-    except SkyboundException as ex:
+    except ProgrammingException as ex:
         print(ex)
         return 1
 
