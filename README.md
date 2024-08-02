@@ -43,7 +43,7 @@ This should significantly improve transfer speeds.
 
 ### GNS 400/500
 
-Make sure you have access to the USB device. On Linux, you should copy `udev/50-garmin.rules` to `/etc/udev/rules.d/` and possibly reload the rules.
+Make sure you have access to the USB device. On Linux, you should copy `udev/50-skybound.rules` to `/etc/udev/rules.d/` and possibly reload the rules.
 
 ## Basic Usage
 
