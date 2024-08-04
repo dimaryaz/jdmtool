@@ -1,0 +1,2 @@
+ATTRS{idVendor}=="091e", ATTRS{idProduct}=="0500", MODE="0666"
+ATTRS{idVendor}=="091e", ATTRS{idProduct}=="1300", MODE="0666"

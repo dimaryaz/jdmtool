@@ -610,10 +610,10 @@ def _transfer_sd_card(services: T.List[Service], path: pathlib.Path, vol_id_over
         update_dot_jdm(service, path, dot_jdm_config)
 
 
-def _transfer_skybound(service: Service) -> None:
-    from .skybound import open_usb_device
+def _transfer_data_card(service: Service) -> None:
+    from .data_card import open_programming_device
 
-    with open_usb_device() as dev:
+    with open_programming_device() as dev:
         databases = service.get_databases()
         assert len(databases) == 1, databases
 
@@ -679,7 +679,7 @@ def cmd_transfer(ids: T.List[int], device: T.Optional[str], no_download: bool, v
         if vol_id:
             raise DownloaderException("--vol-id only makes sense for SD cards / USB drives")
 
-        _transfer_skybound(services[0])  # pylint: disable=no-value-for-parameter
+        _transfer_data_card(services[0])  # pylint: disable=no-value-for-parameter
 
     print("Done")
 
@@ -713,9 +713,9 @@ def cmd_clean() -> None:
 
 
 def cmd_detect() -> None:
-    from .skybound import open_usb_device
+    from .data_card import open_programming_device
 
-    with open_usb_device(need_data_card=False) as dev:
+    with open_programming_device(need_data_card=False) as dev:
         version = dev.get_version()
         print(f"Firmware version: {version}")
         if dev.has_card():
@@ -729,9 +729,9 @@ def cmd_detect() -> None:
 
 
 def cmd_read_database(path: str) -> None:
-    from .skybound import open_usb_device, SkyboundDevice
+    from .data_card import open_programming_device, ProgrammingDevice
 
-    with open_usb_device() as dev:
+    with open_programming_device() as dev:
         total = dev.get_total_size()
 
         with open(path, 'w+b') as fd:
@@ -744,10 +744,10 @@ def cmd_read_database(path: str) -> None:
             fd.seek(0, os.SEEK_END)
             pos = fd.tell()
             while pos > 0:
-                pos -= SkyboundDevice.BLOCK_SIZE
+                pos -= ProgrammingDevice.BLOCK_SIZE
                 fd.seek(pos)
-                block = fd.read(SkyboundDevice.BLOCK_SIZE)
-                if block != b'\xFF' * SkyboundDevice.BLOCK_SIZE:
+                block = fd.read(ProgrammingDevice.BLOCK_SIZE)
+                if block != b'\xFF' * ProgrammingDevice.BLOCK_SIZE:
                     break
             fd.truncate()
 
@@ -755,9 +755,9 @@ def cmd_read_database(path: str) -> None:
 
 
 def _write_database(dev: object, path: str) -> None:
-    from .skybound import SkyboundDevice
+    from .data_card import ProgrammingDevice
 
-    assert isinstance(dev, SkyboundDevice)
+    assert isinstance(dev, ProgrammingDevice)
 
     max_size = dev.get_total_size()
 
@@ -767,8 +767,8 @@ def _write_database(dev: object, path: str) -> None:
         if size > max_size:
             raise ProgrammingException(f"Database file is too big: {size}! The maximum size is {max_size}.")
 
-        pages_required = min(size // SkyboundDevice.PAGE_SIZE + 3, dev.get_total_pages())
-        total_size = pages_required * SkyboundDevice.PAGE_SIZE
+        pages_required = min(size // ProgrammingDevice.PAGE_SIZE + 3, dev.get_total_pages())
+        total_size = pages_required * ProgrammingDevice.PAGE_SIZE
 
         # Data card can only write by changing 1s to 0s (effectively doing a bit-wise AND with
         # the existing contents), so all data needs to be "erased" first to reset everything to 1s.
@@ -785,9 +785,9 @@ def _write_database(dev: object, path: str) -> None:
 
 
 def cmd_write_database(path: str) -> None:
-    from .skybound import open_usb_device
+    from .data_card import open_programming_device
 
-    with open_usb_device() as dev:
+    with open_programming_device() as dev:
         prompt = input(f"Transfer {path} to the data card? (y/n) ")
         if prompt.lower() != 'y':
             raise DownloaderException("Cancelled")
