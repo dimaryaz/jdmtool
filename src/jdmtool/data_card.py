@@ -1,6 +1,7 @@
 import time
 
 from contextlib import contextmanager
+from enum import Enum
 from pathlib import Path
 from struct import unpack
 from typing import BinaryIO, Callable, Generator, Iterable, Optional, Type, Tuple
@@ -15,6 +16,14 @@ except ImportError:
 
 
 FIRMWARE_DIR = Path(__file__).parent / 'firmware'
+
+
+class CardType(Enum):
+    NONE = "No card"
+    WAAS_16MB = "16MB WAAS"
+    NON_WAAS_8MB = "8MB non-WAAS"
+    NON_WAAS_4MB = "4MB non-WAAS"
+    TAWS_TERRAIN = "TAWS/Terrain"
 
 
 class BasicUsbDevice():
@@ -42,7 +51,7 @@ class BasicUsbDevice():
 
     def validate_read(self, expected: bytes, actual: bytes) -> None:
         if expected != actual:
-            raise ProgrammingException("Unexpected response")
+            raise ProgrammingException(f"Unexpected response: {expected} != {actual}")
 
     def control_get_device(self, length: int) -> bytes:
         return self.control_read(0x80, 0x06, 0x0100, 0x0000, length)
@@ -64,9 +73,9 @@ class BasicUsbDevice():
 
 
 class ProgrammingDevice(BasicUsbDevice):
-    BLOCK_SIZE = 0x1000
-    BLOCKS_PER_PAGE = 0x10
-    PAGE_SIZE = BLOCK_SIZE * BLOCKS_PER_PAGE
+    PAGE_SIZE = 0x10000
+
+    card_type: CardType = CardType.NONE
 
     def init(self) -> None:
         pass
@@ -81,18 +90,19 @@ class ProgrammingDevice(BasicUsbDevice):
         raise NotImplementedError()
 
     def get_total_pages(self) -> int:
-        raise NotImplementedError()
+        if self.card_type is CardType.NON_WAAS_4MB:
+            return 64
+        elif self.card_type is CardType.NON_WAAS_8MB:
+            return 128
+        elif self.card_type in (CardType.WAAS_16MB, CardType.TAWS_TERRAIN):
+            return 256
+        else:
+            assert False, f"Unexpected card type: {self.card_type}"
 
     def get_total_size(self) -> int:
         return self.get_total_pages() * self.PAGE_SIZE
 
-    def get_version(self) -> str:
-        raise NotImplementedError()
-
-    def get_iid(self) -> int:
-        raise NotImplementedError()
-
-    def get_unknown(self) -> int:
+    def get_firmware_version(self) -> str:
         raise NotImplementedError()
 
     def read_database(self, pages: int, fd: BinaryIO, progress_cb: Callable[[int], None]) -> None:
@@ -111,6 +121,9 @@ class ProgrammingDevice(BasicUsbDevice):
 class SkyboundDevice(ProgrammingDevice):
     WRITE_ENDPOINT = 0x02
     READ_ENDPOINT = 0x81
+
+    BLOCK_SIZE = 0x1000
+    BLOCKS_PER_PAGE = 0x10
 
     MEMORY_OFFSETS = [0x00E0, 0x02E0, 0x0160, 0x0360, 0x01A0, 0x03A0, 0x01C0, 0x03C0]
     PAGES_PER_OFFSET = 0x20
@@ -162,7 +175,7 @@ class SkyboundDevice(ProgrammingDevice):
         else:
             raise ProgrammingException(f"Unexpected response: {buf}")
 
-    def get_version(self) -> str:
+    def get_firmware_version(self) -> str:
         self.write(b"\x60")
         return self.read(0x0040).decode()
 
@@ -222,12 +235,9 @@ class SkyboundDevice(ProgrammingDevice):
         # Same as above.
         self.write(b"\x42")
 
-    def get_total_pages(self) -> int:
-        return len(self.memory_layout) * self.PAGES_PER_OFFSET
-
-    def init_data_card(self) -> None:
+    def init_data_card(self) -> CardType:
         if not self.has_card():
-            raise ProgrammingException("Card is missing!")
+            return
 
         self.select_page(0)
         self.before_read()
@@ -235,12 +245,12 @@ class SkyboundDevice(ProgrammingDevice):
         # TODO: Figure out the actual meaning of the iid and the "unknown" value.
         iid = self.get_iid()
         if iid == 0x01004100:
-            # 16MB WAAS card
-            print("Detected data card: 16MB WAAS")
+            self.card_type = CardType.WAAS_16MB
+            # print("Detected data card: 16MB WAAS")
             self.set_memory_layout(SkyboundDevice.MEMORY_LAYOUT_16MB)
         elif iid == 0x0100ad00:
-            # 4MB non-WAAS card
-            print("Detected data card: 4MB non-WAAS")
+            self.card_type = CardType.NON_WAAS_4MB
+            # print("Detected data card: 4MB non-WAAS")
             self.set_memory_layout(SkyboundDevice.MEMORY_LAYOUT_4MB)
         else:
             raise ProgrammingException(
@@ -372,7 +382,8 @@ class GarminFirmwareWriter(BasicUsbDevice):
         self.control_set_configuration(0x0001, 0x0000)
 
         buf = self.control_get_device(64)
-        self.validate_read(b"\x12\x01\x00\x02\xFF\xFF\xFF\x40\x1E\x09\x00\x13\x01\x00\x01\x02\x00\x01", buf)
+        self.validate_read(
+                b"\x12\x01\x00\x02\xFF\xFF\xFF\x40\x1E\x09\x00\x13\x01\x00\x01\x02\x00\x01", buf)
 
         buf = self.control_get_configuration(255)
         self.validate_read(
@@ -412,6 +423,120 @@ class GarminFirmwareWriter(BasicUsbDevice):
                 break
 
             self.control_write(0x40, 0xA0, addr, 0x0000, buf[:data_len])
+
+
+class GarminProgrammingDevice(ProgrammingDevice):
+    WRITE_ENDPOINT = 0x02
+    READ_ENDPOINT = 0x86
+
+    BLOCK_SIZE = 0x8000
+
+    firmware_version: str = ''
+
+    def init(self) -> None:
+        super().init()
+
+        buf = self.control_get_device(18)
+        self.validate_read(
+                b"\x12\x01\x00\x02\xFF\xFF\xFF\x40\x1E\x09\x00\x13\x01\x00\x01\x02\x00\x01", buf)
+
+        buf = self.control_get_configuration(9)
+        self.validate_read(b"\x09\x02\x20\x00\x01\x01\x00\x80\x64", buf)
+
+        buf = self.control_get_configuration(32)
+        self.validate_read(
+                b"\x09\x02\x20\x00\x01\x01\x00\x80\x64\x09\x04\x00\x00\x02\xFF\xFF"
+                b"\xFF\x00\x07\x05\x86\x02\x00\x02\x00\x07\x05\x02\x02\x00\x02\x00", buf)
+
+        buf = self.control_get_status(0x0000, 0x0000, 2)
+        self.validate_read(b"\x02\x00", buf)
+
+        buf = self.control_get_string(0, 0x0000, 255)
+        self.validate_read(b"\x04\x03\x09\x04", buf)
+
+        buf = self.control_get_string(1, 0x0409, 255)
+        self.validate_read(b"\x1A\x03" + "GARMIN Corp.".encode("utf-16le"), buf)
+
+        buf = self.control_get_string(2, 0x0409, 255)
+        self.validate_read(b"\x32\x03" + "USB Data Card Programmer".encode("utf-16le"), buf)
+
+        buf = self.control_read(0xC0, 0x8A, 0x0000, 0x0000, 512)
+        self.firmware_version = buf.rstrip(b'\x00').decode()
+
+        buf = self.control_read(0xC0, 0xD2, 0x0000, 0x0000, 512)
+        self.validate_read(b"\xC0\x1E\x09\x00\x05\x00\x00\x00\xCF\x39\x87\x49\xFF\xFF\xFF\xFF", buf)
+
+    def get_card_type(self) -> CardType:
+        card_id = int.from_bytes(self.control_read(0xC0, 0x82, 0x0000, 0x0000, 4), 'little')
+        if card_id == 0x00091ec0:
+            return CardType.NONE
+        elif card_id == 0x01044101:
+            return CardType.WAAS_16MB
+        elif card_id == 0x0101daec:
+            return CardType.TAWS_TERRAIN
+        else:
+            raise ProgrammingException(
+                f"Unknown data card ID: 0x{card_id:08x} (possibly non-WAAS?). Please file a bug!"
+            )
+
+    def init_data_card(self) -> None:
+        self.card_type = self.get_card_type()
+
+    def has_card(self) -> bool:
+        return self.get_card_type() is not CardType.NONE
+
+    def get_firmware_version(self) -> str:
+        return self.firmware_version
+
+    def erase_database(self, pages: int, progress_cb: Callable[[int], None]) -> None:
+        self.control_write(0x40, 0x83, 0x0000, 0x0000, b"")
+
+        pages_byte = pages.to_bytes(1, 'little')
+        buf = b"\x00\x00\x00\x00\x00\x00\x00\x00\x00" + pages_byte + b"\x00\x01\x00\x00"
+        self.control_write(0x40, 0x85, 0x0000, 0x0000, buf)
+
+        for idx in range(pages):
+            buf = self.read(0x000C)
+            if buf[:-1] != b"\x42\x6C\x4B\x65\x00\x00\x00\x00\x00\x00\x00":
+                raise ProgrammingException(f"Unexpected response: {buf}")
+            if buf[-1] != idx:
+                raise ProgrammingException(f"Unexpected response: {buf}")
+
+            progress_cb(self.PAGE_SIZE)
+
+    def write_database(self, pages: int, fd: BinaryIO, progress_cb: Callable[[int], None]) -> None:
+        self.control_write(0x40, 0x83, 0x0000, 0x0000, b"")
+        self.control_write(0x40, 0x87, 0x0000, 0x0000, b"")
+        self.control_write(0x40, 0x86, 0x0000, 0x0000, b"\x00\x04\x00\x00\x00\x00\x00\x00\x00\x00")
+        for _ in range(pages * 2):
+            block = fd.read(self.BLOCK_SIZE).ljust(self.BLOCK_SIZE, b'\xFF')
+            self.write(block)
+            progress_cb(len(block))
+
+    def read_database(self, pages: int, fd: BinaryIO, progress_cb: Callable[[int], None]) -> None:
+        self.control_write(0x40, 0x83, 0x0000, 0x0000, b"")
+        self.control_write(0x40, 0x87, 0x0000, 0x0000, b"")
+        self.control_write(0x40, 0x81, 0x0000, 0x0000, b"\x00\x04\x00\x00\x00\x00\x00\x00\x00\x00")
+        for _ in range(pages * 2):
+            block = self.read(self.BLOCK_SIZE)
+            if block == b'\xFF' * self.BLOCK_SIZE:
+                break
+
+            fd.write(block)
+            progress_cb(len(block))
+
+    def verify_database(self, pages: int, fd: BinaryIO, progress_cb: Callable[[int], None]) -> None:
+        self.control_write(0x40, 0x83, 0x0000, 0x0000, b"")
+        self.control_write(0x40, 0x87, 0x0000, 0x0000, b"")
+        self.control_write(0x40, 0x81, 0x0000, 0x0000, b"\x00\x04\x00\x00\x00\x00\x00\x00\x00\x00")
+        for i in range(pages * 2):
+            file_block = fd.read(self.BLOCK_SIZE).ljust(self.BLOCK_SIZE, b'\xFF')
+            card_block = self.read(self.BLOCK_SIZE)
+
+            if card_block != file_block:
+                raise ProgrammingException(f"Verification failed! Block {i} is incorrect.")
+
+            progress_cb(len(file_block))
 
 
 @contextmanager
@@ -480,28 +605,30 @@ def open_programming_device(need_data_card: bool = True) -> Generator[SkyboundDe
                 else:
                     raise ProgrammingException("Could not find the new device!")
 
-                raise ProgrammingException("TODO: Implement GarminProgrammingDevice")
+                dev_cls = GarminProgrammingDevice
                 break
 
             elif vid_pid == GARMIN_VID_PID:
                 print(f"Found a Garmin device at {usbdev}")
 
-                # TODO: Check if this is needed?
-                print("Writing stage 2 firmware...")
-                with _open_usb_device(usbdev) as handle:
-                    GarminFirmwareWriter(handle).init_stage2()
-                    GarminFirmwareWriter(handle).write_firmware_stage2()
+                print("Trying to update stage 2 firmware...")
+                try:
+                    with _open_usb_device(usbdev) as handle:
+                        GarminFirmwareWriter(handle).init_stage2()
+                        GarminFirmwareWriter(handle).write_firmware_stage2()
+                except ProgrammingException:
+                    print("Looks like we're good")
+                else:
+                    print("Re-scanning devices...")
+                    for _ in range(5):
+                        time.sleep(0.5)
+                        new_usbdev = usbcontext.getByVendorIDAndProductID(GARMIN_VID_PID[0], GARMIN_VID_PID[1])
+                        if new_usbdev is not None:
+                            print(f"Found at {new_usbdev}")
+                            usbdev = new_usbdev
+                            break
 
-                print("Re-scanning devices...")
-                for _ in range(5):
-                    time.sleep(0.5)
-                    new_usbdev = usbcontext.getByVendorIDAndProductID(GARMIN_VID_PID[0], GARMIN_VID_PID[1])
-                    if new_usbdev is not None:
-                        print(f"Found at {new_usbdev}")
-                        usbdev = new_usbdev
-                        break
-
-                raise ProgrammingException("TODO: Implement GarminProgrammingDevice")
+                dev_cls = GarminProgrammingDevice
                 break
         else:
             raise ProgrammingException("Device not found")
@@ -512,6 +639,8 @@ def open_programming_device(need_data_card: bool = True) -> Generator[SkyboundDe
 
             if need_data_card:
                 dev.init_data_card()
+                if not dev.has_card():
+                    raise ProgrammingException("Card is missing!")
 
             try:
                 yield dev

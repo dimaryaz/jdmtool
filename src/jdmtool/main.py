@@ -713,23 +713,20 @@ def cmd_clean() -> None:
 
 
 def cmd_detect() -> None:
-    from .data_card import open_programming_device
+    from .data_card import CardType, open_programming_device
 
     with open_programming_device(need_data_card=False) as dev:
-        version = dev.get_version()
+        version = dev.get_firmware_version()
         print(f"Firmware version: {version}")
-        if dev.has_card():
-            print("Card inserted:")
-            iid = dev.get_iid()
-            print(f"  IID: 0x{iid:08x}")
-            unknown = dev.get_unknown()
-            print(f"  Unknown identifier: 0x{unknown:08x}")
+        dev.init_data_card()
+        if dev.card_type is not CardType.NONE:
+            print(f"Card inserted: {dev.card_type}")
         else:
             print("No card")
 
 
 def cmd_read_database(path: str) -> None:
-    from .data_card import open_programming_device, ProgrammingDevice
+    from .data_card import open_programming_device
 
     with open_programming_device() as dev:
         total = dev.get_total_size()
@@ -743,11 +740,12 @@ def cmd_read_database(path: str) -> None:
             print("Truncating the file...")
             fd.seek(0, os.SEEK_END)
             pos = fd.tell()
+            chunk_size = 0x1000  # Somewhat arbitrary
             while pos > 0:
-                pos -= ProgrammingDevice.BLOCK_SIZE
+                pos -= chunk_size
                 fd.seek(pos)
-                block = fd.read(ProgrammingDevice.BLOCK_SIZE)
-                if block != b'\xFF' * ProgrammingDevice.BLOCK_SIZE:
+                block = fd.read(chunk_size)
+                if block != b'\xFF' * chunk_size:
                     break
             fd.truncate()
 
