@@ -803,12 +803,12 @@ def cmd_detect(dev: SkyboundDevice) -> None:
 def cmd_read_metadata(dev: SkyboundDevice) -> None:
     dev.before_read()
     dev.select_page(dev.get_total_pages() - 1)
-    blocks = []
-    for i in range(SkyboundDevice.BLOCKS_PER_PAGE):
-        _loop_helper(dev, i)
-        blocks.append(dev.read_block())
-    value = b''.join(blocks).rstrip(b"\xFF").decode()
-    print(f"Database metadata: {value}")
+    block = dev.read_block().strip(b"\xFF")
+    try:
+        value = block.decode()
+        print(f"Database metadata: {value}")
+    except ValueError:
+        print("Failed to parse metadata")
 
 def _clear_metadata(dev: SkyboundDevice) -> None:
     dev.before_write()
