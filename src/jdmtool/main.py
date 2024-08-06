@@ -680,9 +680,6 @@ def _transfer_skybound(dev: SkyboundDevice, service: Service) -> None:
     databases = service.get_databases()
     assert len(databases) == 1, databases
 
-    version = service.get_property('version')
-    unique_service_id = service.get_property('unique_service_id')
-
     card_size_min = int(service.get_property('media/card_size_min'))
     card_size_max = int(service.get_property('media/card_size_max'))
 
@@ -709,14 +706,7 @@ def _transfer_skybound(dev: SkyboundDevice, service: Service) -> None:
 
     path = databases[0].dest_path
 
-    _clear_metadata(dev)
     _write_database(dev, str(path))
-
-    # TODO: 4MB cards don't seem to have metadata?
-    if dev.memory_layout == dev.MEMORY_LAYOUT_16MB:
-        new_metadata = f'{{{version}~{unique_service_id}}}'  # E.g. {2303~12345678}
-        print(f"Writing new metadata: {new_metadata}")
-        _write_metadata(dev, new_metadata)
 
 
 def cmd_transfer(ids: T.List[int], device: T.Optional[str], no_download: bool, vol_id: T.Optional[str]) -> None:
@@ -799,44 +789,6 @@ def cmd_detect(dev: SkyboundDevice) -> None:
         print(f"  Unknown identifier: 0x{unknown:08x}")
     else:
         print("No card")
-
-@with_data_card
-def cmd_read_metadata(dev: SkyboundDevice) -> None:
-    dev.before_read()
-    dev.select_page(dev.get_total_pages() - 1)
-    block = dev.read_block().strip(b"\xFF")
-    try:
-        value = block.decode()
-        print(f"Database metadata: {value}")
-    except ValueError:
-        print("Failed to parse metadata")
-
-def _clear_metadata(dev: SkyboundDevice) -> None:
-    dev.before_write()
-    dev.select_page(dev.get_total_pages() - 1)
-    dev.erase_page()
-
-def _write_metadata(dev: SkyboundDevice, metadata: str) -> None:
-    dev.before_write()
-    page = metadata.encode().ljust(SkyboundDevice.PAGE_SIZE, b'\xFF')
-
-    dev.select_page(dev.get_total_pages() - 1)
-
-    # Data card can only write by changing 1s to 0s (effectively doing a bit-wise AND with
-    # the existing contents), so all data needs to be "erased" first to reset everything to 1s.
-    dev.erase_page()
-
-    for i in range(SkyboundDevice.BLOCKS_PER_PAGE):
-        _loop_helper(dev, i)
-
-        block = page[i*SkyboundDevice.BLOCK_SIZE:(i+1)*SkyboundDevice.BLOCK_SIZE]
-
-        dev.write_block(block)
-
-@with_data_card
-def cmd_write_metadata(dev: SkyboundDevice, metadata: str) -> None:
-    _write_metadata(dev, metadata)
-    print("Done")
 
 @with_data_card
 def cmd_read_database(dev: SkyboundDevice, path: str) -> None:
@@ -1030,22 +982,6 @@ def main():
         help="Detect a card programmer device",
     )
     detect_p.set_defaults(func=cmd_detect)
-
-    read_metadata_p = subparsers.add_parser(
-        "read-metadata",
-        help="Read the database metadata from a data card",
-    )
-    read_metadata_p.set_defaults(func=cmd_read_metadata)
-
-    write_metadata_p = subparsers.add_parser(
-        "write-metadata",
-        help="Write the database metadata to a data card",
-    )
-    write_metadata_p.add_argument(
-        "metadata",
-        help="Metadata string, e.g. {2303~12345678}",
-    )
-    write_metadata_p.set_defaults(func=cmd_write_metadata)
 
     read_database_p = subparsers.add_parser(
         "read-database",
