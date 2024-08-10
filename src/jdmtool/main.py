@@ -963,6 +963,71 @@ def cmd_config_file() -> None:
     print(get_config_file())
 
 
+def cmd_extract_taw(input_file: str, verbose: bool, list_only: bool) -> None:
+    from .taw import TAW_DATABASE_TYPES, TAW_REGION_PATHS, parse_taw_metadata, read_taw_header, read_taw_sections
+
+    input_file_path = pathlib.Path(input_file)
+
+    debug = print if verbose else lambda *_: None
+
+    with open(input_file_path, 'rb') as fd_in:
+        sqa1, meta_bytes, sqa2 = read_taw_header(fd_in)
+        debug(f"SQA1: {sqa1}")
+        debug(f"SQA2: {sqa2}")
+
+        try:
+            m = parse_taw_metadata(meta_bytes)
+            database_type_name = TAW_DATABASE_TYPES.get(m.database_type, "Unknown")
+            print(f"Database type: {m.database_type:x} ({database_type_name})")
+            print(f"Year: {m.year}")
+            print(f"Cycle: {m.cycle}")
+            print(f"Avionics: {m.avionics!r}")
+            print(f"Coverage: {m.coverage!r}")
+            print(f"Type: {m.type.upper()!r}")
+        except ValueError as ex:
+            print(ex)
+
+        print()
+
+        databases: list[tuple[str, int]] = []
+        for s in read_taw_sections(fd_in):
+            debug(f"Section start: {s.sect_start:x}")
+            debug(f"Section size: {s.sect_size:x}")
+
+            dest_path = TAW_REGION_PATHS.get(s.region)
+            debug(f"Region: {s.region:02x} ({dest_path or 'unknown'})")
+            debug(f"Unknown: {s.unknown}")
+            debug(f"Database start: {s.data_start}")
+            debug(f"Database size: {s.data_size}")
+
+            if dest_path:
+                output_file = pathlib.PurePosixPath(dest_path).name
+            else:
+                output_file = f"region_{s.region:02x}.bin"
+
+            databases.append((output_file, s.data_size))
+
+            if not list_only:
+                print(f"Extracting {output_file}... ", end='')
+                assert fd_in.tell() == s.data_start
+                block_size = 0x1000
+                with open(output_file, 'wb') as fd_out:
+                    for offset in range(0, s.data_size, block_size):
+                        block = fd_in.read(min(s.data_size - offset, block_size))
+                        fd_out.write(block)
+                print("Done")
+            debug()
+
+        tail = fd_in.read()
+        debug(f"Tail: {tail}")
+
+        if list_only:
+            debug()
+            print(f"{len(databases)} database(s):")
+            for database, database_size in databases:
+                print(f"{database_size:>10} {database}")
+
+
 def _parse_ids(ids: str) -> list[int] | IdPreset:
     try:
         return IdPreset(ids)
@@ -1114,6 +1179,26 @@ def main():
         help="Print the path of config.ini",
     )
     config_file_p.set_defaults(func=cmd_config_file)
+
+    extract_taw_p = subparsers.add_parser(
+        "extract-taw",
+        help="Extract the database from a Garmin .awp or .taw file",
+    )
+    extract_taw_p.add_argument(
+        "input_file",
+        help="Input .awp or .taw file",
+    )
+    extract_taw_p.add_argument(
+        "-v", "--verbose",
+        action="store_true",
+        help="Increase output verbosity",
+    )
+    extract_taw_p.add_argument(
+        "-l", "--list-only",
+        action="store_true",
+        help="List databases without extracting",
+    )
+    extract_taw_p.set_defaults(func=cmd_extract_taw)
 
     args = parser.parse_args()
 
