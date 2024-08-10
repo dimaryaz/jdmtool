@@ -959,6 +959,59 @@ def cmd_config_file() -> None:
     print(get_config_file())
 
 
+def cmd_extract_awp(input: str, output: str) -> None:
+    with open(input, 'rb') as fd_in:
+        magic = fd_in.read(4)
+        if magic != b'pWa.':
+            raise ProgrammingException(f"Unexpected bytes: {magic}")
+        unknown = fd_in.read(16)
+        print(f"Unknown: {unknown}")
+        unknown = [s.decode() for s in fd_in.read(25).split(b'\x00') if s]
+        print(f"Unknown: {unknown}")
+
+        metadata_len = int.from_bytes(fd_in.read(4), 'little')
+        metadata = fd_in.read(metadata_len + 1)
+        print(f"Unknown: {metadata[:4]}")
+        parts = metadata[4:].split(b'\x00')
+        if len(parts) != 6:
+            raise ProgrammingException(f"Unexpected bytes: {metadata}")
+        print(f"Year: {ord(parts[1])}")
+        print(f"Month: {ord(parts[2])}")
+        print(f"Avionics: {parts[3].decode()!r}")
+        print(f"Coverage: {parts[4].decode()!r}")
+
+        size1 = int.from_bytes(fd_in.read(4), 'little')
+        print(f"Size of the remaining content: {size1}")
+        unknown = fd_in.read(5)
+        print(f"Unknown: {unknown}")
+
+        unknown = fd_in.read(16)
+        print(f"Unknown: {unknown}")
+        unknown = [s.decode() for s in fd_in.read(25).split(b'\x00') if s]
+        print(f"Unknown: {unknown}")
+
+        size2 = int.from_bytes(fd_in.read(4), 'little')
+        print(f"Size of the remaining content: {size2}")
+        unknown = fd_in.read(7)
+        print(f"Unknown: {unknown}")
+        database_size = int.from_bytes(fd_in.read(4), 'little')
+        print(f"Database size: {database_size}")
+
+        block_size = 0x1000
+        if database_size % block_size != 0:
+            print("Database is not block-aligned!")
+
+        print("Writing database...")
+        with open(output, 'wb') as fd_out:
+            for _ in range(0, database_size, block_size):
+                block = fd_in.read(block_size)
+                fd_out.write(block)
+        print("Done")
+
+        tail = fd_in.read()
+        print(f"Unknown: {tail}")
+
+
 def _parse_ids(ids: str) -> list[int] | IdPreset:
     try:
         return IdPreset(ids)
@@ -1110,6 +1163,20 @@ def main():
         help="Print the path of config.ini",
     )
     config_file_p.set_defaults(func=cmd_config_file)
+
+    extract_awp_p = subparsers.add_parser(
+        "extract-awp",
+        help="Extract the database from a Garmin .awp file",
+    )
+    extract_awp_p.add_argument(
+        "input",
+        help="Input .awp file",
+    )
+    extract_awp_p.add_argument(
+        "output",
+        help="Output database file",
+    )
+    extract_awp_p.set_defaults(func=cmd_extract_awp)
 
     args = parser.parse_args()
 
