@@ -129,7 +129,7 @@ Found device: Bus 001 Device 052: ID 0e39:1250
 Detected data card: 16MB WAAS
 
 Selected service:
-  Garmin GNS 400/500 Series WAAS - NavData
+  Garmin GNS 400/500 Series WAAS - NavData                              2408    2024-08-08 - 2024-09-05
 
 Transfer to the data card? (y/n) y
 Erasing the database: 100%|████████████████████████████████████████| 8.59M/8.59M [02:15<00:00, 63.1KB/s]
@@ -141,7 +141,7 @@ Done
 
 ### Transfer the database to the USB drive (IFD 440 or G1000)
 
-You can specify a single service ID, or multiple IDs separated by commas.
+You can specify a single service ID, multiple IDs separated by commas, `curr` for all services that are current, or `next` for all services that are not yet current.
 
 Note: the final database file requires the FAT32 volume ID of the USB drive. `jdmtool` will attempt to find it automatically - which requires the destination to be an actual FAT32-formatted device, not any random directory. Alternatively, you may set the volume ID manually using the `--vol-id` parameter.
 
@@ -152,8 +152,8 @@ $ jdmtool transfer 0,1 /run/media/user/USB/
 Found volume ID: 1234abcd
 
 Selected services:
-  Avidyne IFD 400 Series, Bendix King AeroNav Series - NavData
-  Avidyne IFD 400 Series, Bendix King AeroNav Series - Obstacles
+  Avidyne IFD 400 Series, Bendix King AeroNav Series - NavData          2405      2024-05-17  2024-06-16
+  Avidyne IFD 400 Series, Bendix King AeroNav Series - Obstacles        2405      2024-05-17  2024-06-16
 
 Transfer to /run/media/user/USB/? (y/n) y
 Writing to /run/media/user/USB/navdata.dsf: 100%|██████████████████| 32.2M/32.2M [00:10<00:00, 3.18MB/s]

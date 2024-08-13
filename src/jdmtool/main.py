@@ -1,6 +1,7 @@
-import argparse 
+import argparse
 from dataclasses import dataclass
 from datetime import datetime
+from enum import Enum
 from functools import wraps
 from getpass import getpass
 try:
@@ -56,6 +57,11 @@ DETAILED_INFO_MAP = [
     ("Next Version Available Date", "next_version_avail_date"),
     ("Next Version Start Date", "next_version_start_date"),
 ]
+
+
+class IdPreset(Enum):
+    CURRENT = 'curr'
+    NEXT = 'next'
 
 
 def with_usb(f: T.Callable):
@@ -718,16 +724,35 @@ def _transfer_skybound(dev: SkyboundDevice, service: Service) -> None:
         _write_metadata(dev, new_metadata)
 
 
-def cmd_transfer(ids: T.List[int], device: T.Optional[str], no_download: bool, vol_id: T.Optional[str]) -> None:
+def cmd_transfer(
+    ids: T.Union[T.List[int], IdPreset],
+    device: T.Optional[str],
+    no_download: bool,
+    vol_id: T.Optional[str],
+) -> None:
     if not ids:
         raise DownloaderException("Need at least one download ID")
 
     all_services = load_services()
 
-    try:
-        services = [all_services[id] for id in ids]
-    except IndexError:
-        raise DownloaderException("Invalid service ID") from None
+    if isinstance(ids, list):
+        try:
+            services = [all_services[id] for id in ids]
+        except IndexError:
+            raise DownloaderException("Invalid service ID") from None
+    else:
+        services: T.List[Service] = []
+        now = datetime.now()
+        for service in all_services:
+            if ids is IdPreset.CURRENT:
+                if service.get_start_date() <= now <= service.get_end_date():
+                    services.append(service)
+            elif ids is IdPreset.NEXT:
+                if now < service.get_start_date():
+                    services.append(service)
+
+        if not services:
+            raise DownloaderException("Did not match any services")
 
     if no_download and not all(f.exists() for s in services for f in s.get_download_paths()):
         raise DownloaderException("Need to download the data, but --no-download was specified")
@@ -939,8 +964,11 @@ def cmd_write_database(dev: SkyboundDevice, path: str) -> None:
     print("Done")
 
 
-def _parse_ids(ids: str) -> T.List[int]:
-    return [int(s) for s in ids.split(',')]
+def _parse_ids(ids: str) -> T.Union[T.List[int], IdPreset]:
+    try:
+        return IdPreset(ids)
+    except ValueError:
+        return [int(s) for s in ids.split(',')]
 
 
 def main():
@@ -1007,7 +1035,7 @@ def main():
     )
     transfer_p.add_argument(
         "ids",
-        help="Comma-separated list of service IDs",
+        help="Comma-separated list of service IDs, 'curr' for all current versions, or 'next' for all future versions",
         type=_parse_ids,
     )
     transfer_p.add_argument(
