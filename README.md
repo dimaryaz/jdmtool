@@ -163,6 +163,19 @@ Updating .jdm...
 Done
 ```
 
+### Delete expired downloads
+
+You can delete expired downloads by running `clean`:
+
+```
+$ jdmtool clean
+Found 1 obsolete downloads (8.2MB total):
+  /home/user/.local/share/jdmtool/downloads/dgrw72_2408_d1dc1d8c.bin
+
+Delete? (y/n) y
+Deleted.
+```
+
 ## More Information
 
 - [Experimental support for G1000 Electronic Charts](ElectronicCharts.md)
