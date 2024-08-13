@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.3.2 (2024-08-12)
+- Add a "clean" command
+- Add --version
+- Add shortcuts for transferring all current or all future versions
+
 ## 0.3.1 (2024-07-28)
 - Fix the download location of grm_feat_key.zip
 - Update docs
