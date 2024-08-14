@@ -1,5 +1,4 @@
-from jdmtool.avidyne import sfx_checksum
-from jdmtool.checksum import crc32q_checksum
+from jdmtool.checksum import crc32q_checksum, sfx_checksum
 from jdmtool.g1000 import feat_unlk_checksum
 
 
