@@ -82,8 +82,7 @@ LOOKUP_TABLE: List[int] = [int.from_bytes(binascii.a2b_hex(v), 'little') for v i
 '''.split()]
 
 
-def sfx_checksum(data: bytes) -> int:
-    value = 0
+def sfx_checksum(data: bytes, value: int = 0) -> int:
     for b in data:
         x = (value & 0x00FFFFFF) << 8
         value >>= 24
