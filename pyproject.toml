@@ -19,7 +19,6 @@ classifiers = [
 dependencies = [
     'importlib-metadata; python_version < "3.8"',
     'libusb1>=2.0.1',
-    'libscrc>=1.8.0',
     'platformdirs>=2.6.2',
     'psutil>=5.9.4',
     'pyudev>=0.24.3; sys_platform == "linux"',
