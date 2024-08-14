@@ -8,10 +8,16 @@ CRC32Q_POLYNOMIAL = 0x814141AB
 # Jeppesen Distribution Manager Version 3.14.0 (Build 60)
 SFX_POLYNOMIAL = 0x04C11DB7
 
+# Full lookup table can be found in:
+# "objdump -s --start-address=0x10028108 --stop-address=0x10028508 plugins/oem_garmin/GrmNavdata.dll"
+# Jeppesen Distribution Manager Version 3.14.0 (Build 60)
+FEAT_UNLK_POLYNOMIAL_1 = 0x076dc419
+FEAT_UNLK_POLYNOMIAL_2 = 0x77073096
 
-def _create_lookup_table(polynomial: int) -> List[int]:
+
+def _create_lookup_table(polynomial: int, length: int) -> List[int]:
     lookup_table: List[int] = []
-    for index in range(256):
+    for index in range(length):
         value = index << 24
         for _ in range(8):
             if value & (1 << 31):
@@ -24,8 +30,13 @@ def _create_lookup_table(polynomial: int) -> List[int]:
     return lookup_table
 
 
-_crc32q_lookup_table = _create_lookup_table(CRC32Q_POLYNOMIAL)
-_sfx_lookup_table = _create_lookup_table(SFX_POLYNOMIAL)
+_crc32q_lookup_table = _create_lookup_table(CRC32Q_POLYNOMIAL, 256)
+_sfx_lookup_table = _create_lookup_table(SFX_POLYNOMIAL, 256)
+_feat_unlk_lookup_table = [
+    x ^ y
+    for x in _create_lookup_table(FEAT_UNLK_POLYNOMIAL_1, 64)
+    for y in _create_lookup_table(FEAT_UNLK_POLYNOMIAL_2, 4)
+]
 
 
 def crc32q_checksum(data: bytes, value: int = 0) -> int:
@@ -42,6 +53,13 @@ def sfx_checksum(data: bytes, value: int = 0) -> int:
     return value
 
 
+def feat_unlk_checksum(data: bytes, value: int = 0xFFFFFFFF) -> int:
+    for b in data:
+        index = b ^ (value & 0xFF)
+        value = _feat_unlk_lookup_table[index] ^ (value >> 8)
+    return value
+
+
 try:
     import numpy as np  # type: ignore
     from numba import jit  # type: ignore
@@ -51,5 +69,8 @@ try:
 
     _sfx_lookup_table = np.array(_sfx_lookup_table)
     sfx_checksum = jit(nopython=True, nogil=True)(sfx_checksum)
+
+    _feat_unlk_lookup_table = np.array(_feat_unlk_lookup_table)
+    feat_unlk_checksum = jit(nopython=True, nogil=True)(feat_unlk_checksum)
 except ImportError as ex:
     print("Using a slow checksum implementation; consider installing jdmtool[jit]")
