@@ -906,15 +906,19 @@ def _write_database(dev: SkyboundDevice, path: str) -> None:
         if size > max_size:
             raise SkyboundException(f"Database file is too big: {size}! The maximum size is {max_size}.")
 
-        pages_required = min(size // SkyboundDevice.PAGE_SIZE + 3, dev.get_total_pages())
+        pages_required = -(-size // SkyboundDevice.PAGE_SIZE)
         total_size = pages_required * SkyboundDevice.PAGE_SIZE
+
+        # Erase an extra page just to be safe.
+        pages_to_erase = min(pages_required + 1, dev.get_total_pages())
+        total_erase_size = pages_to_erase * SkyboundDevice.PAGE_SIZE
 
         dev.before_write()
 
         # Data card can only write by changing 1s to 0s (effectively doing a bit-wise AND with
         # the existing contents), so all data needs to be "erased" first to reset everything to 1s.
-        with tqdm.tqdm(desc="Erasing the database", total=total_size, unit='B', unit_scale=True) as t:
-            for i in range(pages_required):
+        with tqdm.tqdm(desc="Erasing the database", total=total_erase_size, unit='B', unit_scale=True) as t:
+            for i in range(pages_to_erase):
                 _loop_helper(dev, i)
                 dev.select_page(i)
                 dev.erase_page()
