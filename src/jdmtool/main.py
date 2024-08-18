@@ -18,7 +18,6 @@ import zipfile
 
 import psutil
 import tqdm
-import usb1
 
 from .skybound import SkyboundDevice, SkyboundException
 from .downloader import Downloader, DownloaderException, GRM_FEAT_KEY
@@ -66,7 +65,12 @@ class IdPreset(Enum):
 def with_usb(f: Callable):
     @wraps(f)
     def wrapper(*args, **kwargs):
-        with usb1.USBContext() as usbcontext:
+        try:
+            from usb1 import USBContext, USBError
+        except ImportError:
+            raise SkyboundException("Please install USB support by running `pip3 install jdmtool[usb]") from None
+
+        with USBContext() as usbcontext:
             try:
                 usbdev = usbcontext.getByVendorIDAndProductID(SkyboundDevice.VID, SkyboundDevice.PID)
                 if usbdev is None:
@@ -74,7 +78,7 @@ def with_usb(f: Callable):
 
                 print(f"Found device: {usbdev}")
                 handle = usbdev.open()
-            except usb1.USBError as ex:
+            except USBError as ex:
                 raise SkyboundException(f"Could not open device: {ex}") from ex
 
             handle.setAutoDetachKernelDriver(True)

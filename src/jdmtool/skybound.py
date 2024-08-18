@@ -1,6 +1,7 @@
-from typing import Iterable
+from typing import TYPE_CHECKING, Iterable
 
-import usb1
+if TYPE_CHECKING:
+    from usb1 import USBDeviceHandle
 
 
 class SkyboundException(Exception):
@@ -27,7 +28,7 @@ class SkyboundDevice():
     MEMORY_LAYOUT_4MB = [0, 2]
     MEMORY_LAYOUT_16MB = [0, 1, 2, 3, 4, 5, 6, 7]
 
-    def __init__(self, handle: usb1.USBDeviceHandle) -> None:
+    def __init__(self, handle: 'USBDeviceHandle') -> None:
         self.handle = handle
         self.memory_layout = self.MEMORY_LAYOUT_UNKNOWN
 
