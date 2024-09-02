@@ -64,8 +64,8 @@ class SkyboundDevice():
 
     def init(self) -> None:
         buf = self.control_read(0x80, 0x06, 0x0100, 0x0000, 18)
-        log.info(f"Response 0: {buf.hex(' ')}")
-        log.info(f"          : {KNOWN_FIRMWARE_RESPONSES['20071203']['responses'][0].hex(' ')}")
+        log.info(f"Response 0: {buf.hex('\x')}")
+        log.info(f"          : {KNOWN_FIRMWARE_RESPONSES['20071203']['responses'][0].hex('\x')}")
 
         if buf != b"\x12\x01\x10\x01\xFF\x83\xFF\x40\x39\x0E\x50\x12\x00\x00\x00\x00\x00\x01":
             log.warning(f"Unexpected response 0 {buf}")
