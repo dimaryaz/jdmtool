@@ -17,10 +17,21 @@ KNOWN_FIRMWARE_RESPONSES={
     },
     "20140530": {
         "responses": [
-
+            b"\x12\x01\x10\x01\xFF\x83\xFF\x40\x39\x0E\x50\x12\x00\x00\x00\x00\x00\x01",
+            b"\x09\x02\x20\x00\x01\x01\x00\x80\x32",
+            b"\x09\x02\x20\x00\x01\x01\x00\x80\x32\x09\x04\x00\x00\x02\x00\x00"
+            b"\x00\x00\x07\x05\x81\x02\x40\x00\x05\x07\x05\x02\x02\x40\x00\x05"
         ]
     }
 }
+
+def _hexify(b: bytes) -> str:
+    return f"\\x{b.hex(' ')}".replace(" ", "\\x")
+
+
+def _debug_hex_response(i: int, buf: bytes, expected: bytes) -> None:
+    log.debug(f"  Response[{i}]: {buf.hex(' ')}")
+    log.debug(f"  Expected[{i}]: {expected.hex(' ')}")
 
 class SkyboundException(Exception):
     pass
@@ -63,34 +74,33 @@ class SkyboundDevice():
         return self.handle.controlRead(bRequestType, bRequest, wValue, wIndex, wLength, self.TIMEOUT)
 
     def init(self) -> None:
+        responses=[]
         buf = self.control_read(0x80, 0x06, 0x0100, 0x0000, 18)
-        log.info(f"Response 0: {buf.hex('\x')}")
-        log.info(f"          : {KNOWN_FIRMWARE_RESPONSES['20071203']['responses'][0].hex('\x')}")
-
-        if buf != b"\x12\x01\x10\x01\xFF\x83\xFF\x40\x39\x0E\x50\x12\x00\x00\x00\x00\x00\x01":
-            log.warning(f"Unexpected response 0 {buf}")
-            #raise SkyboundException("Unexpected response")
-        
+        responses.append(buf)
         
         buf = self.control_read(0x80, 0x06, 0x0200, 0x0000, 9)
-        log.info(f"Response 1: {buf.hex(' ')}")
-        log.info(f"          : {KNOWN_FIRMWARE_RESPONSES['20071203']['responses'][1].hex(' ')}")
-
-        if buf != b"\x09\x02\x20\x00\x01\x01\x00\x80\x0F":
-            log.warning(f"Unexpected response 1 {buf}")
-            #raise SkyboundException("Unexpected response")
-
+        responses.append(buf)
 
         buf = self.control_read(0x80, 0x06, 0x0200, 0x0000, 32)
-        log.info(f"Response 2: {buf.hex(' ')}")
-        log.info(f"          : {KNOWN_FIRMWARE_RESPONSES['20071203']['responses'][2].hex(' ')}")
-        if buf != (
-            b"\x09\x02\x20\x00\x01\x01\x00\x80\x0F\x09\x04\x00\x00\x02\x00\x00"
-            b"\x00\x00\x07\x05\x81\x02\x40\x00\x05\x07\x05\x02\x02\x40\x00\x05"
-        ):
-            log.warning(f"Unexpected response 2 {buf}")
-            #raise SkyboundException("Unexpected response")
+        responses.append(buf)
+        
+        self._validate_init_responses(responses=responses)
 
+
+    def _validate_init_responses(self, responses: list[bytes]) -> None:
+        for k, v in KNOWN_FIRMWARE_RESPONSES.items():
+            if log.isEnabledFor(level=logging.DEBUG):
+                log.debug(f"Checking known responses from {k}")
+                for i, buf in enumerate(responses): 
+                    _debug_hex_response(i, buf, v["responses"][i])
+                log.debug("----------")
+            
+            if responses == v["responses"]:
+                log.info(f"Response array matches {k}, responses are valid")
+                return
+        
+        raise SkyboundException("Unexpected responses from initialization reads") 
+    
     def set_led(self, on: bool) -> None:
         if on:
             self.write(b'\x12')
