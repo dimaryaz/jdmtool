@@ -1,7 +1,19 @@
 from typing import Iterable
 
+import logging
 import usb1
 
+
+log = logging.getLogger(__name__)
+
+KNOWN_FIRMWARE_RESPONSES={
+    "20071203": {
+
+    },
+    "": {
+        
+    }
+}
 
 class SkyboundException(Exception):
     pass
