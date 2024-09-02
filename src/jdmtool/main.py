@@ -10,6 +10,7 @@ except ImportError:
     import importlib_metadata
 from io import TextIOWrapper
 import json
+import logging
 import os
 import pathlib
 import shutil
@@ -56,6 +57,8 @@ DETAILED_INFO_MAP = [
     ("Next Version Available Date", "next_version_avail_date"),
     ("Next Version Start Date", "next_version_start_date"),
 ]
+
+log = logging.getLogger("main")
 
 
 class IdPreset(Enum):
@@ -980,6 +983,7 @@ def main():
     parser = argparse.ArgumentParser(description="Download and transfer Jeppesen databases")
 
     parser.add_argument('--version', action='version', version=importlib_metadata.version('jdmtool'))
+    parser.add_argument('-v', "--verbose", action='store_true', help="set verbose logging")
 
     subparsers = parser.add_subparsers(metavar="<command>")
     subparsers.required = True
@@ -1102,6 +1106,14 @@ def main():
     args = parser.parse_args()
 
     kwargs = vars(args)
+
+    verbose = kwargs.pop('verbose')
+    if verbose: 
+        logging.basicConfig(level=logging.DEBUG)
+        log.info("Log level set to DEBUG")
+    else:
+        logging.basicConfig(level=logging.WARNING)
+
     func = kwargs.pop('func')
 
     try:
