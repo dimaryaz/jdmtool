@@ -1,0 +1,11 @@
+
+# https://github.com/jdx/mise
+[tools]
+yq = 'latest'
+python = "3.12.3"
+
+[env]
+_.python.venv = { path = "{{config_root}}/venv", create = false }
+
+PYTHONPATH="{{config_root}}/src"
+
