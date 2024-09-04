@@ -13,12 +13,11 @@ import json
 import os
 import pathlib
 import shutil
-import typing as T
+from typing import Any, Callable, Dict, List, Optional, Set, Tuple, Union
 import zipfile
 
 import psutil
 import tqdm
-import usb1
 
 from .skybound import SkyboundDevice, SkyboundException
 from .downloader import Downloader, DownloaderException, GRM_FEAT_KEY
@@ -63,10 +62,15 @@ class IdPreset(Enum):
     NEXT = 'next'
 
 
-def with_usb(f: T.Callable):
+def with_usb(f: Callable):
     @wraps(f)
     def wrapper(*args, **kwargs):
-        with usb1.USBContext() as usbcontext:
+        try:
+            from usb1 import USBContext, USBError
+        except ImportError:
+            raise SkyboundException("Please install USB support by running `pip3 install jdmtool[usb]") from None
+
+        with USBContext() as usbcontext:
             try:
                 usbdev = usbcontext.getByVendorIDAndProductID(SkyboundDevice.VID, SkyboundDevice.PID)
                 if usbdev is None:
@@ -74,14 +78,13 @@ def with_usb(f: T.Callable):
 
                 print(f"Found device: {usbdev}")
                 handle = usbdev.open()
-            except usb1.USBError as ex:
+            except USBError as ex:
                 raise SkyboundException(f"Could not open device: {ex}") from ex
 
             handle.setAutoDetachKernelDriver(True)
             with handle.claimInterface(0):
                 handle.resetDevice()
                 dev = SkyboundDevice(handle)
-                dev.init()
                 try:
                     f(dev, *args, **kwargs)
                 finally:
@@ -90,7 +93,7 @@ def with_usb(f: T.Callable):
     return wrapper
 
 
-def with_data_card(f: T.Callable):
+def with_data_card(f: Callable):
     @wraps(f)
     @with_usb
     def wrapper(dev: SkyboundDevice, *args, **kwargs):
@@ -126,10 +129,10 @@ def _loop_helper(dev, i):
         raise SkyboundException("Data card has disappeared!")
 
 
-def _find_obsolete_downloads(services: T.List[Service]) -> T.Tuple[T.List[pathlib.Path], int]:
+def _find_obsolete_downloads(services: List[Service]) -> Tuple[List[pathlib.Path], int]:
     good_downloads = set(f for s in services for f in s.get_download_paths())
 
-    obsolete_downloads: T.List[pathlib.Path] = []
+    obsolete_downloads: List[pathlib.Path] = []
     total_size = 0
 
     for path in get_downloads_dir().rglob('*'):
@@ -184,7 +187,7 @@ def cmd_refresh() -> None:
         )
 
 
-def _list(services: T.List[Service]) -> None:
+def _list(services: List[Service]) -> None:
     row_format = "{:>2}  {:<70}  {:<25}  {:<8}  {:<10}  {:<10}  {:<10}"
 
     header = row_format.format("ID", "Name", "Coverage", "Version", "Start Date", "End Date", "Downloaded")
@@ -286,7 +289,7 @@ def cmd_download(id: int) -> None:
 @dataclass
 class DotJdmConfig:
     sh_size: int
-    files: T.List[pathlib.Path]
+    files: List[pathlib.Path]
 
 
 def update_dot_jdm(service: Service, path: pathlib.Path, config: DotJdmConfig) -> None:
@@ -299,8 +302,8 @@ def update_dot_jdm(service: Service, path: pathlib.Path, config: DotJdmConfig) -
         data = {}
 
     # Calculate new file hashes
-    file_info: T.List[T.Dict[str, T.Any]] = []
-    file_path_set: T.Set[str] = set()
+    file_info: List[Dict[str, Any]] = []
+    file_path_set: Set[str] = set()
 
     for f in config.files:
         size = f.stat().st_size
@@ -502,7 +505,7 @@ def _transfer_g1000_chartview(service: Service, path: pathlib.Path, volume_id: i
     charts_path = path / 'Charts'
     charts_path.mkdir(exist_ok=True)
 
-    charts_files: T.List[str] = []
+    charts_files: List[str] = []
 
     zip_files = [d.dest_path for d in service.get_databases()]
     with ChartView(zip_files) as cv:
@@ -518,15 +521,15 @@ def _transfer_g1000_chartview(service: Service, path: pathlib.Path, volume_id: i
         airports_by_filename = cv.get_airports_by_filename()
         airports_by_key = cv.get_airports_by_key()
 
-        ifr_airports: T.Set[str] = set()
-        vfr_airports: T.Set[str] = set()
+        ifr_airports: Set[str] = set()
+        vfr_airports: Set[str] = set()
 
         for (code, is_vfr), filenames in filenames_by_chart.items():
             print(f"Guessing subscription for code {code}...")
 
             subscription_airports = vfr_airports if is_vfr else ifr_airports
 
-            airports: T.Set[str] = set()
+            airports: Set[str] = set()
             for filename in filenames:
                 airport = airports_by_filename.get(filename.split('.')[0].upper())
                 if airport is None:
@@ -595,8 +598,8 @@ def _transfer_g1000_chartview(service: Service, path: pathlib.Path, volume_id: i
     return DotJdmConfig(0x2000, dot_jdm_files)
 
 
-def _transfer_sd_card(services: T.List[Service], path: pathlib.Path, vol_id_override: T.Optional[str]) -> None:
-    transfer_funcs: T.List[T.Callable[[Service, pathlib.Path, int], DotJdmConfig]] = []
+def _transfer_sd_card(services: List[Service], path: pathlib.Path, vol_id_override: Optional[str]) -> None:
+    transfer_funcs: List[Callable[[Service, pathlib.Path, int], DotJdmConfig]] = []
 
     for service in services:
         if isinstance(service, SimpleService):
@@ -726,10 +729,10 @@ def _transfer_skybound(dev: SkyboundDevice, service: Service) -> None:
 
 
 def cmd_transfer(
-    ids: T.Union[T.List[int], IdPreset],
-    device: T.Optional[str],
+    ids: Union[List[int], IdPreset],
+    device: Optional[str],
     no_download: bool,
-    vol_id: T.Optional[str],
+    vol_id: Optional[str],
 ) -> None:
     if not ids:
         raise DownloaderException("Need at least one download ID")
@@ -742,7 +745,7 @@ def cmd_transfer(
         except IndexError:
             raise DownloaderException("Invalid service ID") from None
     else:
-        services: T.List[Service] = []
+        services: List[Service] = []
         now = datetime.now()
         for service in all_services:
             if ids is IdPreset.CURRENT:
@@ -969,7 +972,7 @@ def cmd_write_database(dev: SkyboundDevice, path: str) -> None:
     print("Done")
 
 
-def _parse_ids(ids: str) -> T.Union[T.List[int], IdPreset]:
+def _parse_ids(ids: str) -> Union[List[int], IdPreset]:
     try:
         return IdPreset(ids)
     except ValueError:
