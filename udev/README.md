@@ -1,7 +1,7 @@
 
-# Installing udev
+# Installing udev rules
 
-## Ubuntu 22.04 (likely other debian variants)
+## Ubuntu (likely other debian variants), and Fedora
 
 To install and reload udev rules on ubuntu:
 
