@@ -20,7 +20,7 @@ import zipfile
 import psutil
 import tqdm
 
-from .skybound import SkyboundDevice, SkyboundException, CARDS
+from .skybound import SkyboundDevice, SkyboundException
 from .downloader import Downloader, DownloaderException, GRM_FEAT_KEY
 from .service import Service, ServiceException, SimpleService, get_data_dir, get_downloads_dir, load_services
 
@@ -107,9 +107,7 @@ def with_data_card(f: Callable):
         dev.before_read()
 
         # TODO: Figure out the actual meaning of the iid and the "unknown" value.
-        iid = dev.get_iid()
-
-        card = CARDS.get(iid)
+        card = dev.get_card()
 
         log.debug(f"Detected card: {card}")
 
@@ -118,7 +116,7 @@ def with_data_card(f: Callable):
             dev.set_memory_layout(card.memory_layout)
         else:
             raise SkyboundException(
-                f"Unknown data card IID: 0x{iid:08x} (possibly 8MB non-WAAS?). Please file a bug!"
+                f"Unknown data card IID: 0x{dev.get_iid():08x} (possibly 8MB non-WAAS?). Please file a bug!"
             )
 
         f(dev, *args, **kwargs)
@@ -826,7 +824,7 @@ def cmd_detect(dev: SkyboundDevice) -> None:
         dev.before_read()
         iid = dev.get_iid()
         print(f"  IID: 0x{iid:08x}")
-        card = CARDS.get(iid)
+        card = SkyboundDevice.CARDS.get(iid)
         print(f"  Type: {card.type if card else 'non-recognized'}")
 
         unknown = dev.get_unknown()

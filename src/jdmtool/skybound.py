@@ -17,25 +17,6 @@ class MemoryCard:
     def __repr__(self) -> str:
         return f"iid: {self.iid}, type: {self.type}"
 
-CARDS = {
-    card.iid: card for card in [
-        MemoryCard(
-            type="16mb IFRW (WAAS) Orange", 
-            iid=0x89007e00,
-            memory_layout=[0, 1, 2, 3, 4, 5, 6, 7],
-        ),
-        MemoryCard(
-            type="16Mb IFRW (WAAS) Silver",
-            iid=0x01004100,
-            memory_layout=[0, 1, 2, 3, 4, 5, 6, 7],
-        ),
-        MemoryCard(
-            type="4Mb IFR (non-WAAS)",
-            iid= 0x0100ad00,
-            memory_layout=[0, 2],
-        ),
-    ]
-}
 
 class SkyboundDevice():
     VID = 0x0E39
@@ -56,6 +37,27 @@ class SkyboundDevice():
     MEMORY_LAYOUT_UNKNOWN = [0]
     MEMORY_LAYOUT_4MB = [0, 2]
     MEMORY_LAYOUT_16MB = [0, 1, 2, 3, 4, 5, 6, 7]
+
+    CARDS = {
+        card.iid: card for card in [
+            MemoryCard(
+                type="16mb IFRW (WAAS) Orange", 
+                iid=0x89007e00,
+                memory_layout=[0, 1, 2, 3, 4, 5, 6, 7],
+            ),
+            MemoryCard(
+                type="16Mb IFRW (WAAS) Silver",
+                iid=0x01004100,
+                memory_layout=[0, 1, 2, 3, 4, 5, 6, 7],
+            ),
+            MemoryCard(
+                type="4Mb IFR (non-WAAS)",
+                iid= 0x0100ad00,
+                memory_layout=[0, 2],
+            ),
+        ]
+    }
+
 
     def __init__(self, handle: 'USBDeviceHandle') -> None:
         self.handle = handle
@@ -101,7 +103,7 @@ class SkyboundDevice():
         return int.from_bytes(buf, 'little')
     
     def get_card(self) -> MemoryCard | None:
-        return CARDS.get(self.get_iid())
+        return self.CARDS.get(self.get_iid())
 
     def read_block(self) -> bytes:
         self.write(b"\x28")
