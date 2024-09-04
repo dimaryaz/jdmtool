@@ -1,4 +1,5 @@
 from typing import TYPE_CHECKING, Iterable
+from dataclasses import dataclass
 
 if TYPE_CHECKING:
     from usb1 import USBDeviceHandle
@@ -7,6 +8,31 @@ if TYPE_CHECKING:
 class SkyboundException(Exception):
     pass
 
+@dataclass
+class MemoryCard:
+    name: str
+    iid: int
+    memory_layout: list[int]
+
+CARDS = {
+    card.iid: card for cards in [
+        MemoryCard(
+            name="16mb IFRW (WAAS) Orange", 
+            iid=0x89007e00,
+            memory_layout=[0, 1, 2, 3, 4, 5, 6, 7],
+        ),
+        MemoryCard(
+            name="16Mb IFRW (WAAS) Silver",
+            iid=0x01004100,
+            memory_layout=[0, 1, 2, 3, 4, 5, 6, 7],
+        ),
+        MemoryCard(
+            name="4Mb IFR (non-WAAS)",
+            iid= 0x0100ad00,
+            memory_layout=[0, 1, 2, 3, 4, 5, 6, 7],
+        ),
+    ]
+}
 
 class SkyboundDevice():
     VID = 0x0E39
