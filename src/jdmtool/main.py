@@ -85,7 +85,6 @@ def with_usb(f: Callable):
             with handle.claimInterface(0):
                 handle.resetDevice()
                 dev = SkyboundDevice(handle)
-                dev.init()
                 try:
                     f(dev, *args, **kwargs)
                 finally:
