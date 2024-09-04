@@ -1,4 +1,4 @@
-from typing import TYPE_CHECKING, Iterable
+from typing import TYPE_CHECKING, Any, Iterable
 from dataclasses import dataclass
 
 if TYPE_CHECKING:
@@ -10,26 +10,29 @@ class SkyboundException(Exception):
 
 @dataclass
 class MemoryCard:
-    name: str
+    type: str
     iid: int
     memory_layout: list[int]
 
+    def __repr__(self) -> str:
+        return f"iid: {self.iid}, type: {self.type}"
+
 CARDS = {
-    card.iid: card for cards in [
+    card.iid: card for card in [
         MemoryCard(
-            name="16mb IFRW (WAAS) Orange", 
+            type="16mb IFRW (WAAS) Orange", 
             iid=0x89007e00,
             memory_layout=[0, 1, 2, 3, 4, 5, 6, 7],
         ),
         MemoryCard(
-            name="16Mb IFRW (WAAS) Silver",
+            type="16Mb IFRW (WAAS) Silver",
             iid=0x01004100,
             memory_layout=[0, 1, 2, 3, 4, 5, 6, 7],
         ),
         MemoryCard(
-            name="4Mb IFR (non-WAAS)",
+            type="4Mb IFR (non-WAAS)",
             iid= 0x0100ad00,
-            memory_layout=[0, 1, 2, 3, 4, 5, 6, 7],
+            memory_layout=[0, 2],
         ),
     ]
 }
@@ -96,6 +99,9 @@ class SkyboundDevice():
         self.write(b"\x50\x04")
         buf = self.read(0x0040)
         return int.from_bytes(buf, 'little')
+    
+    def get_card(self) -> MemoryCard | None:
+        return CARDS.get(self.get_iid())
 
     def read_block(self) -> bytes:
         self.write(b"\x28")

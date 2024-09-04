@@ -10,6 +10,7 @@ except ImportError:
     import importlib_metadata
 from io import TextIOWrapper
 import json
+import logging
 import os
 import pathlib
 import shutil
@@ -19,7 +20,7 @@ import zipfile
 import psutil
 import tqdm
 
-from .skybound import SkyboundDevice, SkyboundException
+from .skybound import SkyboundDevice, SkyboundException, CARDS
 from .downloader import Downloader, DownloaderException, GRM_FEAT_KEY
 from .service import Service, ServiceException, SimpleService, get_data_dir, get_downloads_dir, load_services
 
@@ -55,6 +56,8 @@ DETAILED_INFO_MAP = [
     ("Next Version Available Date", "next_version_avail_date"),
     ("Next Version Start Date", "next_version_start_date"),
 ]
+
+log = logging.getLogger("main")
 
 
 class IdPreset(Enum):
@@ -93,9 +96,6 @@ def with_usb(f: Callable):
     return wrapper
 
 
-
-
-
 def with_data_card(f: Callable):
     @wraps(f)
     @with_usb
@@ -108,14 +108,14 @@ def with_data_card(f: Callable):
 
         # TODO: Figure out the actual meaning of the iid and the "unknown" value.
         iid = dev.get_iid()
-        if iid == 0x01004100:
-            # 16MB WAAS card
-            print("Detected data card: 16MB WAAS")
-            dev.set_memory_layout(SkyboundDevice.MEMORY_LAYOUT_16MB)
-        elif iid == 0x0100ad00:
-            # 4MB non-WAAS card
-            print("Detected data card: 4MB non-WAAS")
-            dev.set_memory_layout(SkyboundDevice.MEMORY_LAYOUT_4MB)
+
+        card = CARDS.get(iid)
+
+        log.debug(f"Detected card: {card}")
+
+        if card:
+            print(f"Detected data card: {card}")
+            dev.set_memory_layout(card.memory_layout)
         else:
             raise SkyboundException(
                 f"Unknown data card IID: 0x{iid:08x} (possibly 8MB non-WAAS?). Please file a bug!"
@@ -826,6 +826,9 @@ def cmd_detect(dev: SkyboundDevice) -> None:
         dev.before_read()
         iid = dev.get_iid()
         print(f"  IID: 0x{iid:08x}")
+        card = CARDS.get(iid)
+        print(f"  Type: {card.type if card else 'non-recognized'}")
+
         unknown = dev.get_unknown()
         print(f"  Unknown identifier: 0x{unknown:08x}")
     else:
@@ -986,6 +989,7 @@ def main():
     parser = argparse.ArgumentParser(description="Download and transfer Jeppesen databases")
 
     parser.add_argument('--version', action='version', version=importlib_metadata.version('jdmtool'))
+    parser.add_argument('-v', "--verbose", action='store_true', help="set verbose logging")
 
     subparsers = parser.add_subparsers(metavar="<command>")
     subparsers.required = True
@@ -1108,6 +1112,14 @@ def main():
     args = parser.parse_args()
 
     kwargs = vars(args)
+
+    verbose = kwargs.pop('verbose')
+    if verbose: 
+        logging.basicConfig(level=logging.DEBUG)
+        log.info("Log level set to DEBUG")
+    else:
+        logging.basicConfig(level=logging.WARNING)
+
     func = kwargs.pop('func')
 
     try:
