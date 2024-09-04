@@ -15,7 +15,7 @@ class MemoryCard:
     memory_layout: list[int]
 
     def __repr__(self) -> str:
-        return f"iid: {self.iid}, type: {self.type}"
+        return f"iid: 0x{self.iid:08x}, type: {self.type}"
 
 
 class SkyboundDevice():
