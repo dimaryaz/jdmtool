@@ -43,6 +43,11 @@ This should significantly improve transfer speeds.
 
 ### GNS 400/500
 
+You must install usb library: 
+```
+pip3 install jdmtool[usb]
+```
+
 Make sure you have access to the USB device. 
 
 On Linux, see [Installing udev rules on Linux](udev/README.md). 
