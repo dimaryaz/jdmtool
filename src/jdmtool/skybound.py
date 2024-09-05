@@ -1,6 +1,7 @@
-from typing import Iterable
+from typing import TYPE_CHECKING, Iterable
 
-import usb1
+if TYPE_CHECKING:
+    from usb1 import USBDeviceHandle
 
 
 class SkyboundException(Exception):
@@ -27,7 +28,7 @@ class SkyboundDevice():
     MEMORY_LAYOUT_4MB = [0, 2]
     MEMORY_LAYOUT_16MB = [0, 1, 2, 3, 4, 5, 6, 7]
 
-    def __init__(self, handle: usb1.USBDeviceHandle) -> None:
+    def __init__(self, handle: 'USBDeviceHandle') -> None:
         self.handle = handle
         self.memory_layout = self.MEMORY_LAYOUT_UNKNOWN
 
@@ -39,23 +40,6 @@ class SkyboundDevice():
 
     def read(self, length: int) -> bytes:
         return self.handle.bulkRead(self.READ_ENDPOINT, length, self.TIMEOUT)
-
-    def control_read(self, bRequestType: int, bRequest: int, wValue: int, wIndex: int, wLength: int) -> bytes:
-        return self.handle.controlRead(bRequestType, bRequest, wValue, wIndex, wLength, self.TIMEOUT)
-
-    def init(self) -> None:
-        buf = self.control_read(0x80, 0x06, 0x0100, 0x0000, 18)
-        if buf != b"\x12\x01\x10\x01\xFF\x83\xFF\x40\x39\x0E\x50\x12\x00\x00\x00\x00\x00\x01":
-            raise SkyboundException("Unexpected response")
-        buf = self.control_read(0x80, 0x06, 0x0200, 0x0000, 9)
-        if buf != b"\x09\x02\x20\x00\x01\x01\x00\x80\x0F":
-            raise SkyboundException("Unexpected response")
-        buf = self.control_read(0x80, 0x06, 0x0200, 0x0000, 32)
-        if buf != (
-            b"\x09\x02\x20\x00\x01\x01\x00\x80\x0F\x09\x04\x00\x00\x02\x00\x00"
-            b"\x00\x00\x07\x05\x81\x02\x40\x00\x05\x07\x05\x02\x02\x40\x00\x05"
-        ):
-            raise SkyboundException("Unexpected response")
 
     def set_led(self, on: bool) -> None:
         if on:

@@ -4,7 +4,7 @@ from collections import defaultdict
 from dataclasses import dataclass
 from datetime import datetime
 import pathlib
-import typing as T
+from typing import DefaultDict, Dict, List, Optional, Tuple
 import xml.etree.ElementTree as ET
 
 import platformdirs
@@ -17,9 +17,9 @@ class ServiceException(Exception):
 @dataclass
 class DownloadConfig:
     dest_path: pathlib.Path
-    size: T.Optional[int]
-    crc32: T.Optional[int]
-    params: T.Dict[str, str]
+    size: Optional[int]
+    crc32: Optional[int]
+    params: Dict[str, str]
 
 
 def get_data_dir() -> pathlib.Path:
@@ -38,26 +38,26 @@ def get_services_path() -> pathlib.Path:
 
 class Service(ABC):
     @abstractmethod
-    def get_optional_property(self, name: str, default: T.Optional[str] = None) -> T.Optional[str]:
+    def get_optional_property(self, name: str, default: Optional[str] = None) -> Optional[str]:
         ...
 
     @abstractmethod
-    def get_media(self) -> T.List[ET.Element]:
+    def get_media(self) -> List[ET.Element]:
         ...
 
     @abstractmethod
-    def get_databases(self) -> T.List[DownloadConfig]:
+    def get_databases(self) -> List[DownloadConfig]:
         ...
 
     @abstractmethod
-    def get_sffs(self) -> T.List[DownloadConfig]:
+    def get_sffs(self) -> List[DownloadConfig]:
         ...
 
     @abstractmethod
-    def get_oems(self) -> T.List[DownloadConfig]:
+    def get_oems(self) -> List[DownloadConfig]:
         ...
 
-    def get_download_paths(self) -> T.List[pathlib.Path]:
+    def get_download_paths(self) -> List[pathlib.Path]:
         return [cfg.dest_path for cfg in self.get_databases() + self.get_sffs() + self.get_oems()]
 
     def get_property(self, name: str) -> str:
@@ -68,7 +68,7 @@ class Service(ABC):
 
         return value
 
-    def get_fingerprint(self) -> T.Tuple[str, str, str]:
+    def get_fingerprint(self) -> Tuple[str, str, str]:
         return (
             self.get_property('unique_service_id'),
             self.get_property('service_code'),
@@ -89,10 +89,10 @@ class SimpleService(Service):
         super().__init__()
         self._xml = xml
 
-    def get_optional_property(self, name: str, default: T.Optional[str] = None) -> T.Optional[str]:
+    def get_optional_property(self, name: str, default: Optional[str] = None) -> Optional[str]:
         return self._xml.findtext(f'./{name}', default)
 
-    def get_media(self) -> T.List[ET.Element]:
+    def get_media(self) -> List[ET.Element]:
         return self._xml.findall('./media')
 
     @classmethod
@@ -121,10 +121,10 @@ class SimpleService(Service):
             ),
         )
 
-    def get_databases(self) -> T.List[DownloadConfig]:
+    def get_databases(self) -> List[DownloadConfig]:
         return [self.get_database()]
 
-    def get_sffs(self) -> T.List[DownloadConfig]:
+    def get_sffs(self) -> List[DownloadConfig]:
         sff_filenames_str = self.get_optional_property('./oem_garmin_sff_filenames')
         if not sff_filenames_str:
             return []
@@ -143,7 +143,7 @@ class SimpleService(Service):
             avionics_id=self.get_property('avionics_id'),
         )
 
-        cfgs: T.List[DownloadConfig] = []
+        cfgs: List[DownloadConfig] = []
         sff_filenames = sff_filenames_str.split(',')
         for sff_filename in sff_filenames:
             self._check_filename(sff_filename)
@@ -159,7 +159,7 @@ class SimpleService(Service):
 
         return cfgs
 
-    def get_oems(self) -> T.List[DownloadConfig]:
+    def get_oems(self) -> List[DownloadConfig]:
         size_str = self.get_optional_property('oem_package_filesize')
         version = self.get_property('version')
 
@@ -178,11 +178,11 @@ class SimpleService(Service):
 
 
 class ChartViewService(Service):
-    def __init__(self, subservices: T.List[SimpleService]) -> None:
+    def __init__(self, subservices: List[SimpleService]) -> None:
         super().__init__()
         self._subservices = subservices
 
-    def get_optional_property(self, name: str, default: T.Optional[str] = None) -> T.Optional[str]:
+    def get_optional_property(self, name: str, default: Optional[str] = None) -> Optional[str]:
         if name == 'coverage_desc':
             values = [s.get_property(name) for s in self._subservices]
             return ', '.join(values)
@@ -192,17 +192,17 @@ class ChartViewService(Service):
     def get_media(self):
         return self._subservices[0].get_media()
 
-    def get_databases(self) -> T.List[DownloadConfig]:
+    def get_databases(self) -> List[DownloadConfig]:
         return [s.get_database() for s in self._subservices]
 
-    def get_sffs(self) -> T.List[DownloadConfig]:
+    def get_sffs(self) -> List[DownloadConfig]:
         return self._subservices[0].get_sffs()
 
-    def get_oems(self) -> T.List[DownloadConfig]:
+    def get_oems(self) -> List[DownloadConfig]:
         return self._subservices[0].get_oems()
 
 
-def load_services() -> T.List[Service]:
+def load_services() -> List[Service]:
     try:
         root = ET.parse(get_services_path())
     except FileNotFoundError:
@@ -210,8 +210,8 @@ def load_services() -> T.List[Service]:
 
     xml_services = root.findall('./service')
 
-    services: T.List[Service] = []
-    chartview_by_sn_version: T.Mapping[T.Tuple[str, str], T.List[SimpleService]] = defaultdict(list)
+    services: List[Service] = []
+    chartview_by_sn_version: DefaultDict[Tuple[str, str], List[SimpleService]] = defaultdict(list)
 
     for xml_service in xml_services:
         category = xml_service.findtext('./category', '')
