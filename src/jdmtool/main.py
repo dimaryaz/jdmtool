@@ -110,6 +110,10 @@ def with_data_card(f: T.Callable):
             # 4MB non-WAAS card
             print("Detected data card: 4MB non-WAAS")
             dev.set_memory_layout(SkyboundDevice.MEMORY_LAYOUT_4MB)
+        elif iid == 0x89007e00:
+            # 16MB WAAS card, the orange one.
+            print("Detected data card: 16MB WAAS (orange)")
+            dev.set_memory_layout(SkyboundDevice.MEMORY_LAYOUT_16MB)
         else:
             raise SkyboundException(
                 f"Unknown data card IID: 0x{iid:08x} (possibly 8MB non-WAAS?). Please file a bug!"
