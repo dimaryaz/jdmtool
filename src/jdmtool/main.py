@@ -355,9 +355,9 @@ def update_dot_jdm(service: Service, path: pathlib.Path, config: DotJdmConfig) -
         "filter_applied": "no",
         "gsi": f"0x{gsi}" if gsi else "",
         "jvsn": service.get_optional_property('serial_number', ""),
-        "ndv": service.get_property('next_display_version'),
-        "nvad": service.get_property('next_version_avail_date'),
-        "nvsd": service.get_property('next_version_start_date'),
+        "ndv": service.get_optional_property('next_display_version', ""),
+        "nvad": service.get_optional_property('next_version_avail_date', ""),
+        "nvsd": service.get_optional_property('next_version_start_date', ""),
         "oatn": service.get_property('oracle_aircraft_tail_number'),
         "pi": service.get_property('product_item'),
         "s": service.get_property('service_type'),  # ?
