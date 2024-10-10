@@ -26,6 +26,7 @@ class SkyboundDevice():
 
     MEMORY_LAYOUT_UNKNOWN = [0]
     MEMORY_LAYOUT_4MB = [0, 2]
+    MEMORY_LAYOUT_8MB = [0, 2, 4, 6]
     MEMORY_LAYOUT_16MB = [0, 1, 2, 3, 4, 5, 6, 7]
 
     def __init__(self, handle: 'USBDeviceHandle') -> None:
