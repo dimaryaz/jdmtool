@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.3.3 (2024-10-10)
+- Add support for orange 16MB WAAS cards (thanks [@bemowski](https://github.com/bemowski)!)
+- Fix a crash when transferring G1000 basemaps
+- Make libusb1 an optional dependency
+- Remove libscrc dependency
+
 ## 0.3.2 (2024-08-12)
 - Add a "clean" command
 - Add --version
