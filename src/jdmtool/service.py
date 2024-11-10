@@ -221,6 +221,9 @@ def load_services() -> List[Service]:
             serial_number = xml_service.findtext('./serial_number', '')
             version = xml_service.findtext('./version', '')
             chartview_by_sn_version[(serial_number, version)].append(SimpleService(xml_service))
+        elif category == '2':
+            # Update to JDM itself; ignore.
+            pass
         else:
             raise ServiceException(f"Unsupported service category: {category!r}")
 
