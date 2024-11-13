@@ -81,7 +81,12 @@ def with_usb(f: Callable):
             except USBError as ex:
                 raise SkyboundException(f"Could not open device: {ex}") from ex
 
-            handle.setAutoDetachKernelDriver(True)
+            try:
+                handle.setAutoDetachKernelDriver(True)
+            except USBError:
+                # Safe to ignore if it's not supported.
+                pass
+
             with handle.claimInterface(0):
                 handle.resetDevice()
                 dev = SkyboundDevice(handle)
