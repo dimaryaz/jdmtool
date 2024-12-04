@@ -440,7 +440,7 @@ def _format_service_name(service: Service, now: datetime) -> str:
     return f'{name:<70}{version:<8}{start.date()} - {end.date()}{note}'
 
 
-def _transfer_avidyne(service: Service, path: pathlib.Path, volume_id: int) -> DotJdmConfig:
+def _transfer_avidyne_e2(service: Service, path: pathlib.Path, volume_id: int) -> DotJdmConfig:
     from .avidyne import SFXFile, SecurityContext
 
     databases = service.get_databases()
@@ -475,6 +475,23 @@ def _transfer_avidyne(service: Service, path: pathlib.Path, volume_id: int) -> D
                 script.run(dsf_fd, database_zip, ctx, t.update)
 
         dot_jdm.files.append(dest)
+
+    return dot_jdm
+
+
+def _transfer_avidyne_basic(service: Service, path: pathlib.Path, _: int) -> DotJdmConfig:
+    databases = service.get_databases()
+    assert len(databases) == 1
+    database_path = databases[0].dest_path
+
+    dot_jdm = DotJdmConfig(0x2000, [])
+
+    with zipfile.ZipFile(database_path) as database_zip:
+        infolist = database_zip.infolist()
+        for info in infolist:
+            print(f"Extracting {info.filename}...")
+            database_zip.extract(info, path)
+            dot_jdm.files.append(path / info.filename)
 
     return dot_jdm
 
@@ -613,7 +630,9 @@ def _transfer_sd_card(services: List[Service], path: pathlib.Path, vol_id_overri
     for service in services:
         if isinstance(service, SimpleService):
             if service.get_optional_property("oem_avidyne_e2") == '1':
-                transfer_func = _transfer_avidyne
+                transfer_func = _transfer_avidyne_e2
+            elif service.get_optional_property("oem_avidyne") == '1':
+                transfer_func = _transfer_avidyne_basic
             elif service.get_optional_property("oem_garmin") == '1':
                 transfer_func = _transfer_g1000_basic
             else:
