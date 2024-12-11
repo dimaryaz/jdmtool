@@ -365,13 +365,17 @@ class ChartView:
                 ('notams', ifr_airports, ifr_countries),
                 ('vfrntms', vfr_airports, vfr_countries)
             ):
-                with self._open(f'{name}.dbf') as dbf_in, self._open(f'{name}.dbt') as dbt_in:
+                # XXX: Work around a bug in Python's zipfile:
+                # open files one at a time, or else data can get corrupted!
+                with self._open(f'{name}.dbf') as dbf_in:
                     header, fields = DbfFile.read_header(dbf_in)
+                    orig_records = [DbfFile.read_record(dbf_in, fields) for _ in range(header.num_records)]
+
+                with self._open(f'{name}.dbt') as dbt_in:
                     dbt_header = DbtFile.read_header(dbt_in)
                     if dbt_out_header is None:
                         dbt_out_header = dbt_header
-                    for _ in range(header.num_records):
-                        record = DbfFile.read_record(dbf_in, fields)
+                    for record in orig_records:
                         country = record[0]
                         airport = record[2]
                         include = (airport in airports) if airport else (country in countries)
