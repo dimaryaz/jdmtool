@@ -14,7 +14,7 @@ MAGIC_BYTES = b'1.00!AVIDYNE_SFX!'
 def debug(input_file: str):
     with open(input_file, 'rb') as fd:
         exe = fd.read(EXE_SIZE)
-        md5 = hashlib.md5(exe, usedforsecurity=False).hexdigest()
+        md5 = hashlib.md5(exe).hexdigest()
         if md5 != EXE_MD5:
             raise ValueError("Unexpected .exe prefix")
 
