@@ -44,3 +44,4 @@ Changelog = "https://github.com/dimaryaz/jdmtool/blob/main/CHANGELOG.md"
 [project.scripts]
 jdmtool = "jdmtool.main:main"
 chartview = "jdmtool.chartview:main"
+aviutil = "jdmtool.aviutil:main"
