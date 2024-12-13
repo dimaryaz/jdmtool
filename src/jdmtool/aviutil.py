@@ -1,6 +1,7 @@
+import argparse
 import hashlib
 import os
-import sys
+import pathlib
 import zlib
 
 
@@ -11,7 +12,7 @@ EXE_MD5 = '6e6d1a3494aa60827c4e83e0834439e5'
 MAGIC_BYTES = b'1.00!AVIDYNE_SFX!'
 
 
-def debug(input_file: str):
+def debug(input_file: str, extract: bool):
     with open(input_file, 'rb') as fd:
         exe = fd.read(EXE_SIZE)
         md5 = hashlib.md5(exe).hexdigest()
@@ -87,6 +88,11 @@ def debug(input_file: str):
 
                     print(f"  {src:<30} {is_font} {orig_size:>10} {content_hash}")
 
+                    if extract:
+                        dest = pathlib.Path(src.replace('\\', '/').lstrip('/'))
+                        dest.parent.mkdir(parents=True, exist_ok=True)
+                        dest.write_bytes(uncompressed_content)
+
             elif section_type == 2:
                 path = read_string()
                 print(f"Path: {path}")
@@ -115,11 +121,20 @@ def debug(input_file: str):
 
 
 def main():
-    if len(sys.argv) != 2:
-        print(f"Usage: {sys.argv[0]} AviUtility.exe")
-        return
+    parser = argparse.ArgumentParser(description="Read the payload of AviUtility.exe")
+    parser.add_argument(
+        '-x',
+        '--extract',
+        action='store_true',
+        help="Extract the files into the current directory",
+    )
+    parser.add_argument(
+        "path",
+        help="Path to the AviUtility.exe file",
+    )
+    args = parser.parse_args()
 
-    debug(sys.argv[1])
+    debug(args.path, args.extract)
 
 
 if __name__ == '__main__':
