@@ -155,8 +155,6 @@ def append_jepp_extractor_payload(
     write_string("D:\\AviData\\JeppViewTMP\\DATA\\")
     end_section(1, "Copying CMax Data")
 
-    print()
-
     for fonts_record in fonts_records:
         write_int32(fonts_record.offset)
         write_int32(fonts_record.orig_size)
