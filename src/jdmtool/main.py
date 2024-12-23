@@ -110,21 +110,36 @@ def with_data_card(f: Callable):
 
         # TODO: Figure out the actual meaning of the iid and the "unknown" value.
         iid = dev.get_iid()
+        unknown = dev.get_unknown()
+
         if iid == 0x01004100:
             # 16MB WAAS card
             print("Detected data card: 16MB WAAS")
             dev.set_memory_layout(SkyboundDevice.MEMORY_LAYOUT_16MB)
         elif iid == 0x0100ad00:
-            # 4MB non-WAAS card
-            print("Detected data card: 4MB non-WAAS")
-            dev.set_memory_layout(SkyboundDevice.MEMORY_LAYOUT_4MB)
+            if unknown >> 30 == 0x00:
+                # 8MB non-WAAS card
+                print("Detected data card: 8MB non-WAAS")
+                dev.set_memory_layout(SkyboundDevice.MEMORY_LAYOUT_8MB)
+            elif unknown >> 30 == 0x03:
+                # 4MB non-WAAS card
+                print("Detected data card: 4MB non-WAAS")
+                dev.set_memory_layout(SkyboundDevice.MEMORY_LAYOUT_4MB)
+            else:
+                raise SkyboundException(
+                    f"Unexpected identifier 0x{unknown:08x} for a 4MB/8MB card. Please file a bug!"
+                )
         elif iid == 0x89007e00:
             # 16MB WAAS card, the orange one.
             print("Detected data card: 16MB WAAS (orange)")
             dev.set_memory_layout(SkyboundDevice.MEMORY_LAYOUT_16MB)
+        elif iid == 0x90009000:
+            raise SkyboundException(
+                "This looks like a Terrain/Obstacles card. It is not supported by Skybound Programmer."
+            )
         else:
             raise SkyboundException(
-                f"Unknown data card IID: 0x{iid:08x} (possibly 8MB non-WAAS?). Please file a bug!"
+                f"Unknown data card IID: 0x{iid:08x}. Please file a bug!"
             )
 
         f(dev, *args, **kwargs)
