@@ -701,8 +701,8 @@ def _transfer_avidyne_ex_chartview(service: Service, path: pathlib.Path, _: int)
                 )
 
         dot_jdm_files = [
-            avi_util_dest,
             jepp_extractor_dest,
+            avi_util_dest,
         ]
 
         return DotJdmConfig(0x2000, dot_jdm_files)
