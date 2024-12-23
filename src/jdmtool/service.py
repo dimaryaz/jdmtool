@@ -83,7 +83,7 @@ class Service(ABC):
 
 
 class SimpleService(Service):
-    OEM = 'Garmin'  # TODO?
+    DEFAULT_OEM = 'Garmin'
 
     def __init__(self, xml: ET.Element) -> None:
         super().__init__()
@@ -162,16 +162,17 @@ class SimpleService(Service):
     def get_oems(self) -> List[DownloadConfig]:
         size_str = self.get_optional_property('oem_package_filesize')
         version = self.get_property('version')
+        oem_package_name = self.get_optional_property('oem_package_name', self.DEFAULT_OEM)
 
         if size_str is None:
             return []
         else:
             return [DownloadConfig(
-                dest_path=get_downloads_dir() / 'oem' / f'{self.OEM}_{version}.zip',
+                dest_path=get_downloads_dir() / 'oem' / f'{oem_package_name}_{version}.zip',
                 size=int(size_str),
                 crc32=None,
                 params=dict(
-                    oem=self.OEM,
+                    oem=oem_package_name,
                     version=version,
                 ),
             )]
