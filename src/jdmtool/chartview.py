@@ -224,15 +224,15 @@ class ChartView:
 
         return filenames
 
-    def get_airports_by_filename(self) -> Dict[str, str]:
-        airports: Dict[str, str] = {}
-        for chart_filename in ['charts.dbf', 'vfrchrts.dbf']:
-            with self._open(chart_filename) as fd:
-                header, fields = DbfFile.read_header(fd)
-                for _ in range(header.num_records):
-                    record = DbfFile.read_record(fd, fields)
-                    airports[record[1]] = record[0]
-        return airports
+    def get_charts_by_airport(self, vfr: bool) -> Dict[str, List[str]]:
+        charts: defaultdict[str, List[str]] = defaultdict(list)
+        chart_filename = 'vfrchrts.dbf' if vfr else 'charts.dbf'
+        with self._open(chart_filename) as fd:
+            header, fields = DbfFile.read_header(fd)
+            for _ in range(header.num_records):
+                record = DbfFile.read_record(fd, fields)
+                charts[record[0]].append(record[1])
+        return charts
 
     def get_airports_by_key(self) -> Dict[int, Set[str]]:
         result: defaultdict[int, Set[str]] = defaultdict(set)

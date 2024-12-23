@@ -559,7 +559,10 @@ def _transfer_g1000_chartview(service: Service, path: pathlib.Path, volume_id: i
         with tqdm.tqdm(desc="Processing charts.bin", total=charts_bin_size, unit='B', unit_scale=True) as t:
             filenames_by_chart = cv.process_charts_bin(charts_path, db_begin_date, t.update)
 
-        airports_by_filename = cv.get_airports_by_filename()
+        print("Reading airports...")
+        ifr_charts_by_airport = cv.get_charts_by_airport(False)
+        vfr_charts_by_airport = cv.get_charts_by_airport(True)
+
         airports_by_key = cv.get_airports_by_key()
 
         ifr_airports: Set[str] = set()
@@ -569,13 +572,14 @@ def _transfer_g1000_chartview(service: Service, path: pathlib.Path, volume_id: i
             print(f"Guessing subscription for code {code}...")
 
             subscription_airports = vfr_airports if is_vfr else ifr_airports
+            charts_by_airport = vfr_charts_by_airport if is_vfr else ifr_charts_by_airport
 
-            airports: Set[str] = set()
-            for filename in filenames:
-                airport = airports_by_filename.get(filename.split('.')[0].upper())
-                if airport is None:
-                    raise ValueError(f"Failed to find the airport for {filename}!")
-                airports.add(airport)
+            subscription_charts = {filename.split('.')[0].upper() for filename in filenames}
+
+            airports = {
+                airport for airport, charts in charts_by_airport.items()
+                if subscription_charts.issuperset(charts)
+            }
 
             matches = []
             for key, key_airports in airports_by_key.items():
