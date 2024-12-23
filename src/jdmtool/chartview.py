@@ -429,14 +429,7 @@ class ChartView:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description="Read the contents of a charts.bin file")
-    group = parser.add_mutually_exclusive_group(required=True)
-    group.add_argument(
-        '-l',
-        '--list',
-        action='store_true',
-        help="List the files",
-    )
-    group.add_argument(
+    parser.add_argument(
         '-x',
         '--extract',
         action='store_true',
@@ -468,6 +461,6 @@ def main() -> int:
                 with open(record.name, 'wb') as fd:
                     fd.write(uncompresed)
 
-            elif args.list:
+            else:
                 metadata = binascii.hexlify(record.metadata).decode()
                 print(f"{record.name:<26}  {record.size:>8}  {metadata:<12}")
