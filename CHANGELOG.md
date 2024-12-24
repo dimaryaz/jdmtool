@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.3.5 (2024-12-24)
+- Support for Navdata for Avidyne EX5000
+- Support for 8MB non-WAAS data cards for GNS 400/500 series
+- Electronic Charts bug fixes
+
 ## 0.3.4 (2024-11-15)
 - Fix an `Unsupported service category: '2'` error
 - Fix a `LIBUSB_ERROR_NOT_SUPPORTED` error on Windows

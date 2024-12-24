@@ -5,9 +5,9 @@ A command-line tool for downloading and transferring Jeppesen databases aiming t
 It requires a Jeppesen subscription, and currenty supports the following services:
 - NavData for Garmin GNS 400/500 Series
   - Requires a Skybound data card programmer (USB ID `0e39:1250`)
-  - Requires a 16MB NavData WAAS card or a 4MB NavData non-WAAS card
-    - If you have an 8MB data card, please [file a bug](https://github.com/dimaryaz/jdmtool/issues/)!
+  - Requires a NavData card (16MB WAAS, 8MB non-WAAS, or 4MB non-WAAS)
 - NavData and Obstacles for Avidyne IFD 400 Series
+- NavData for Avidyne EX5000
 - (Very experimental) Garmin G1000 support
   - If you try it, please [file a bug](https://github.com/dimaryaz/jdmtool/issues/) to report your results - even just to say "it worked".
   - Services other than Electronic Charts should produce byte-for-byte identical results to JDM, and are expected to work.
