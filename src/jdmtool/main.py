@@ -419,7 +419,14 @@ def get_device_volume_id(path: pathlib.Path) -> int:
         if not devices:
             raise DownloaderException(f"Could not find the device for {partition.device}")
 
-        volume_id_str = devices[0].properties['ID_FS_UUID'].replace('-', '')
+        volume_id_str = devices[0].properties.get('ID_FS_UUID')
+        if volume_id_str is None:
+            raise DownloaderException(
+                f"Could not find the volume ID for {partition.device}; "
+                "this shouldn't really happen - try re-mounting it"
+            )
+
+        volume_id_str = volume_id_str.replace('-', '')
         if len(volume_id_str) != 8:
             raise DownloaderException(f"Unexpected volume ID: {volume_id_str}")
 
