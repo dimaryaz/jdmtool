@@ -982,6 +982,31 @@ def cmd_write_database(dev: SkyboundDevice, path: str, full_erase: bool) -> None
     print("Done")
 
 
+def _clear_card(dev: SkyboundDevice) -> None:
+    pages_to_erase = dev.get_total_pages()
+    total_erase_size = pages_to_erase * SkyboundDevice.PAGE_SIZE
+
+    dev.before_write()
+
+    with tqdm.tqdm(desc="Erasing the database", total=total_erase_size, unit='B', unit_scale=True) as t:
+        for i in range(pages_to_erase):
+            _loop_helper(dev, i)
+            dev.select_page(i)
+            dev.erase_page()
+            t.update(SkyboundDevice.PAGE_SIZE)
+
+
+@with_data_card
+def cmd_clear_card(dev: SkyboundDevice) -> None:
+    prompt = input("Clear all bytes on the data card? (y/n) ")
+    if prompt.lower() != 'y':
+        raise DownloaderException("Cancelled")
+
+    _clear_card(dev)
+
+    print("Done")
+
+
 def _parse_ids(ids: str) -> Union[List[int], IdPreset]:
     try:
         return IdPreset(ids)
@@ -1126,6 +1151,12 @@ def main():
         help="Erase the whole card, regardless of the database size",
     )
     write_database_p.set_defaults(func=cmd_write_database)
+
+    clear_card_p = subparsers.add_parser(
+        "clear-card",
+        help="Clear all bytes on a data card",
+    )
+    clear_card_p.set_defaults(func=cmd_clear_card)
 
     args = parser.parse_args()
 
