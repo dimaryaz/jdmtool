@@ -101,7 +101,7 @@ def with_usb(f: Callable):
 def with_data_card(f: Callable):
     @wraps(f)
     @with_usb
-    def wrapper(dev: SkyboundDevice, *args, **kwargs):
+    def wrapper(dev: SkyboundDevice, *args, force_4mb=False, force_8mb=False, **kwargs):
         if not dev.has_card():
             raise SkyboundException("Card is missing!")
 
@@ -110,25 +110,23 @@ def with_data_card(f: Callable):
 
         # TODO: Figure out the actual meaning of the iid and the "unknown" value.
         iid = dev.get_iid()
-        unknown = dev.get_unknown()
 
         if iid == 0x01004100:
             # 16MB WAAS card
             print("Detected data card: 16MB WAAS")
             dev.set_memory_layout(SkyboundDevice.MEMORY_LAYOUT_16MB)
+            if force_4mb or force_8mb:
+                raise SkyboundException("Cannot force 4MB or 8MB on a 16MB card!")
         elif iid == 0x0100ad00:
-            if unknown >> 30 == 0x00:
-                # 8MB non-WAAS card
-                print("Detected data card: 8MB non-WAAS")
-                dev.set_memory_layout(SkyboundDevice.MEMORY_LAYOUT_8MB)
-            elif unknown >> 30 == 0x03:
-                # 4MB non-WAAS card
-                print("Detected data card: 4MB non-WAAS")
+            print("Detected data card: either 4MB or 8MB non-WAAS")
+            if force_4mb:
+                print("Forcing 4MB")
                 dev.set_memory_layout(SkyboundDevice.MEMORY_LAYOUT_4MB)
+            elif force_8mb:
+                print("Forcing 8MB")
+                dev.set_memory_layout(SkyboundDevice.MEMORY_LAYOUT_8MB)
             else:
-                raise SkyboundException(
-                    f"Unexpected identifier 0x{unknown:08x} for a 4MB/8MB card. Please file a bug!"
-                )
+                raise SkyboundException("Please use --4mb or --8mb to force a specific size")
         elif iid == 0x89007e00:
             # 16MB WAAS card, the orange one.
             print("Detected data card: 16MB WAAS (orange)")
@@ -143,6 +141,8 @@ def with_data_card(f: Callable):
             )
 
         f(dev, *args, **kwargs)
+
+    wrapper.data_card = True
 
     return wrapper
 
@@ -1066,6 +1066,10 @@ def main():
     subparsers = parser.add_subparsers(metavar="<command>")
     subparsers.required = True
 
+    group = parser.add_mutually_exclusive_group()
+    group.add_argument('--4mb', '-4', action="store_true", dest='force_4mb')
+    group.add_argument('--8mb', '-8', action="store_true", dest='force_8mb')
+
     login_p = subparsers.add_parser(
         "login",
         help="Log into Jeppesen",
@@ -1191,6 +1195,12 @@ def main():
 
     kwargs = vars(args)
     func = kwargs.pop('func')
+
+    if not hasattr(func, 'data_card'):
+        if args.force_4mb or args.force_8mb:
+            print("--4mb and --8mb only make sense for data card commands")
+        kwargs.pop('force_4mb', None)
+        kwargs.pop('force_8mb', None)
 
     try:
         func(**kwargs)
