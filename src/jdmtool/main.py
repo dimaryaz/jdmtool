@@ -108,26 +108,24 @@ def with_data_card(f: Callable):
         dev.select_page(0)
         dev.before_read()
 
-        # TODO: Figure out the actual meaning of the iid and the "unknown" value.
         iid = dev.get_iid()
-        unknown = dev.get_unknown()
 
         if iid == 0x01004100:
             # 16MB WAAS card
             print("Detected data card: 16MB WAAS")
             dev.set_memory_layout(SkyboundDevice.MEMORY_LAYOUT_16MB)
         elif iid == 0x0100ad00:
-            if unknown >> 30 == 0x00:
-                # 8MB non-WAAS card
+            # It's either a 4MB or an 8MB card.
+            # Try reading the IID again at a memory offset that only exists for 8MB cards.
+            dev.select_physical_page(dev.MEMORY_OFFSETS[4])
+            iid2 = dev.get_iid()
+            if iid2 == iid:
                 print("Detected data card: 8MB non-WAAS")
-                dev.set_memory_layout(SkyboundDevice.MEMORY_LAYOUT_8MB)
-            elif unknown >> 30 == 0x03:
-                # 4MB non-WAAS card
+            elif iid2 == 0x90009000:
                 print("Detected data card: 4MB non-WAAS")
-                dev.set_memory_layout(SkyboundDevice.MEMORY_LAYOUT_4MB)
             else:
                 raise SkyboundException(
-                    f"Unexpected identifier 0x{unknown:08x} for a 4MB/8MB card. Please file a bug!"
+                    f"Unexpected identifier 0x{iid2:08x} for a 4MB/8MB card. Please file a bug!"
                 )
         elif iid == 0x89007e00:
             # 16MB WAAS card, the orange one.
@@ -866,12 +864,12 @@ def cmd_detect(dev: SkyboundDevice) -> None:
     print(f"Firmware version: {version}")
     if dev.has_card():
         print("Card inserted:")
-        dev.select_page(0)
-        dev.before_read()
-        iid = dev.get_iid()
-        print(f"  IID: 0x{iid:08x}")
-        unknown = dev.get_unknown()
-        print(f"  Unknown identifier: 0x{unknown:08x}")
+        for offset_id in [0, 2, 4, 6]:
+            offset = dev.MEMORY_OFFSETS[offset_id]
+            dev.select_physical_page(offset)
+            dev.before_read()
+            iid = dev.get_iid()
+            print(f"  IID at offset 0x{offset:04x}: 0x{iid:08x}")
     else:
         print("No card")
 
