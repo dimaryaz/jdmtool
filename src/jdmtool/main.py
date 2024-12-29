@@ -105,42 +105,8 @@ def with_data_card(f: Callable):
         if not dev.has_card():
             raise SkyboundException("Card is missing!")
 
-        dev.select_page(0)
-        dev.before_read()
-
-        # TODO: Figure out the actual meaning of the iid and the "unknown" value.
-        iid = dev.get_iid()
-        unknown = dev.get_unknown()
-
-        if iid == 0x01004100:
-            # 16MB WAAS card
-            print("Detected data card: 16MB WAAS")
-            dev.set_memory_layout(SkyboundDevice.MEMORY_LAYOUT_16MB)
-        elif iid == 0x0100ad00:
-            if unknown >> 30 == 0x00:
-                # 8MB non-WAAS card
-                print("Detected data card: 8MB non-WAAS")
-                dev.set_memory_layout(SkyboundDevice.MEMORY_LAYOUT_8MB)
-            elif unknown >> 30 == 0x03:
-                # 4MB non-WAAS card
-                print("Detected data card: 4MB non-WAAS")
-                dev.set_memory_layout(SkyboundDevice.MEMORY_LAYOUT_4MB)
-            else:
-                raise SkyboundException(
-                    f"Unexpected identifier 0x{unknown:08x} for a 4MB/8MB card. Please file a bug!"
-                )
-        elif iid == 0x89007e00:
-            # 16MB WAAS card, the orange one.
-            print("Detected data card: 16MB WAAS (orange)")
-            dev.set_memory_layout(SkyboundDevice.MEMORY_LAYOUT_16MB)
-        elif iid == 0x90009000:
-            raise SkyboundException(
-                "This looks like a Terrain/Obstacles card. It is not supported by Skybound Programmer."
-            )
-        else:
-            raise SkyboundException(
-                f"Unknown data card IID: 0x{iid:08x}. Please file a bug!"
-            )
+        dev.init_data_card()
+        print(f"Detected data card: {dev.card_name}")
 
         f(dev, *args, **kwargs)
 
@@ -866,12 +832,12 @@ def cmd_detect(dev: SkyboundDevice) -> None:
     print(f"Firmware version: {version}")
     if dev.has_card():
         print("Card inserted:")
-        dev.select_page(0)
-        dev.before_read()
-        iid = dev.get_iid()
-        print(f"  IID: 0x{iid:08x}")
-        unknown = dev.get_unknown()
-        print(f"  Unknown identifier: 0x{unknown:08x}")
+        for chip_idx in [0, 1, 2, 3]:
+            offset = dev.MEMORY_OFFSETS[chip_idx * 2]
+            dev.select_physical_page(offset)
+            dev.before_read()
+            iid = dev.get_iid()
+            print(f"  IID at offset 0x{offset:04x}: 0x{iid:08x}")
     else:
         print("No card")
 
