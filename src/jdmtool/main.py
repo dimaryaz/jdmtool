@@ -1026,6 +1026,31 @@ def cmd_write_database(dev: SkyboundDevice, path: str) -> None:
     print("Done")
 
 
+def _erase(dev: SkyboundDevice) -> None:
+    pages = dev.get_total_pages()
+    total_size = pages * SkyboundDevice.PAGE_SIZE
+
+    dev.before_write()
+
+    with tqdm.tqdm(desc="Erasing", total=total_size, unit='B', unit_scale=True) as t:
+        for i in range(pages):
+            _loop_helper(dev, i)
+            dev.select_page(i)
+            dev.erase_page()
+            t.update(SkyboundDevice.PAGE_SIZE)
+
+
+@with_data_card
+def cmd_erase(dev: SkyboundDevice) -> None:
+    prompt = input("Erase the data card? (y/n) ")
+    if prompt.lower() != 'y':
+        raise DownloaderException("Cancelled")
+
+    _erase(dev)
+
+    print("Done")
+
+
 def _parse_ids(ids: str) -> Union[List[int], IdPreset]:
     try:
         return IdPreset(ids)
@@ -1155,6 +1180,12 @@ def main():
         help="Database file, e.g. dgrw72_2302_742ae60e.bin",
     )
     write_database_p.set_defaults(func=cmd_write_database)
+
+    erase_p = subparsers.add_parser(
+        "erase",
+        help="Erase the data card",
+    )
+    erase_p.set_defaults(func=cmd_erase)
 
     args = parser.parse_args()
 
