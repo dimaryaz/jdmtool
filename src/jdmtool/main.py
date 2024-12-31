@@ -864,8 +864,7 @@ def cmd_detect(dev: SkyboundDevice) -> None:
     print(f"Firmware version: {version}")
     if dev.has_card():
         print("Card inserted:")
-        for offset_id in [0, 2, 4, 6]:
-            offset = dev.MEMORY_OFFSETS[offset_id]
+        for offset in dev.MEMORY_OFFSETS:
             dev.select_physical_page(offset)
             dev.before_read()
             iid = dev.get_iid()
