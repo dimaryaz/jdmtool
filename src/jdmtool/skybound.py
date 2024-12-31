@@ -1,4 +1,4 @@
-from typing import TYPE_CHECKING, List
+from typing import TYPE_CHECKING, List, Tuple
 
 if TYPE_CHECKING:
     from usb1 import USBDeviceHandle
@@ -29,6 +29,11 @@ class SkyboundDevice():
     MEMORY_LAYOUT_6MB = [0, 2, 4]
     MEMORY_LAYOUT_8MB = [0, 2, 4, 6]
     MEMORY_LAYOUT_16MB = [0, 1, 2, 3, 4, 5, 6, 7]
+
+    FIRMWARE_NAME = {
+        "20071203": "G2 Black",
+        "20140530": "G2 Orange",
+    }
 
     def __init__(self, handle: 'USBDeviceHandle') -> None:
         self.handle = handle
@@ -78,7 +83,7 @@ class SkyboundDevice():
                 chip_iid = self.get_iid()
                 if chip_iid == iid:
                     chip_config.append(1)
-                elif chip_iid == 0x90009000:
+                elif chip_iid == 0x90009000 or chip_iid == 0xff00ff00:
                     chip_config.append(0)
                 else:
                     raise SkyboundException(f"Unexpected IID 0x{chip_iid:08x} for chip {chip_idx}")
@@ -105,14 +110,16 @@ class SkyboundDevice():
             # 451: 16MB AMD Series C/D (4 MB x 4)
             self.memory_layout = SkyboundDevice.MEMORY_LAYOUT_16MB
             self.card_name = "16MB WAAS (orange)"
-        elif iid == 0x90009000:
+        elif iid == 0x90009000 or iid == 0xff00ff00:
             raise SkyboundException("Unsupported data card - possibly Terrain/Obstacles")
         else:
             raise SkyboundException(f"Unknown data card IID: 0x{iid:08x}. Please file a bug!")
 
-    def get_version(self) -> str:
+    def get_firmware_version_name(self) -> Tuple[str, str]:
         self.write(b"\x60")
-        return self.read(0x0040).decode()
+        version = self.read(0x0040).decode()
+        name = self.FIRMWARE_NAME.get(version, "unknown")
+        return version, name
 
     def get_unknown(self) -> int: # TODO: what is this?
         self.write(b"\x50\x03")

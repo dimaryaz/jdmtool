@@ -828,8 +828,8 @@ def cmd_clean() -> None:
 
 @with_usb
 def cmd_detect(dev: SkyboundDevice) -> None:
-    version = dev.get_version()
-    print(f"Firmware version: {version}")
+    version, name = dev.get_firmware_version_name()
+    print(f"Firmware version: {version} ({name})")
     if dev.has_card():
         print("Card inserted:")
         for chip_idx in [0, 1, 2, 3]:

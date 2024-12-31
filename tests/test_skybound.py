@@ -9,10 +9,11 @@ class UsbHandleMock:
     led: bool
     page: int
 
-    def __init__(self, iid: int, n_chips: int):
+    def __init__(self, iid: int, n_chips: int, g2_orange: bool):
         self.pending_response = None
         self.iid = iid
         self.n_chips = n_chips
+        self.g2_orange = g2_orange
         self.led = False
         self.page = -1
 
@@ -50,28 +51,30 @@ class UsbHandleMock:
         if chip_idx < self.n_chips:
             iid = self.iid
         else:
-            iid = 0x90009000
+            iid = 0xff00ff00 if self.g2_orange else 0x90009000
         return iid.to_bytes(4, 'little')
 
 
 class UsbHandleMockNoCard(UsbHandleMock):
-    def __init__(self):
-        super().__init__(0, 0)
+    def __init__(self, g2_orange: bool):
+        super().__init__(0, 0, g2_orange)
 
     def has_card(self) -> bytes:
         return b'\x01'
 
 
-def test_no_card():
-    mock = UsbHandleMockNoCard()
+@pytest.mark.parametrize("g2_orange", [False, True])
+def test_no_card(g2_orange):
+    mock = UsbHandleMockNoCard(g2_orange)
 
     device = SkyboundDevice(mock)
     with pytest.raises(SkyboundException, match="Card is missing"):
         device.init_data_card()
 
 
-def test_2mb():
-    mock = UsbHandleMock(0x8900a200, 1)
+@pytest.mark.parametrize("g2_orange", [False, True])
+def test_2mb(g2_orange):
+    mock = UsbHandleMock(0x8900a200, 1, g2_orange)
 
     device = SkyboundDevice(mock)
     device.init_data_card()
@@ -80,8 +83,9 @@ def test_2mb():
     assert device.card_name == '2MB'
 
 
-def test_4mb():
-    mock = UsbHandleMock(0x0100ad00, 2)
+@pytest.mark.parametrize("g2_orange", [False, True])
+def test_4mb(g2_orange):
+    mock = UsbHandleMock(0x0100ad00, 2, g2_orange)
 
     device = SkyboundDevice(mock)
     device.init_data_card()
@@ -90,8 +94,9 @@ def test_4mb():
     assert device.card_name == '4MB'
 
 
-def test_6mb():
-    mock = UsbHandleMock(0x0100ad00, 3)
+@pytest.mark.parametrize("g2_orange", [False, True])
+def test_6mb(g2_orange):
+    mock = UsbHandleMock(0x0100ad00, 3, g2_orange)
 
     device = SkyboundDevice(mock)
     device.init_data_card()
@@ -100,8 +105,9 @@ def test_6mb():
     assert device.card_name == '6MB'
 
 
-def test_8mb():
-    mock = UsbHandleMock(0x0100ad00, 4)
+@pytest.mark.parametrize("g2_orange", [False, True])
+def test_8mb(g2_orange):
+    mock = UsbHandleMock(0x0100ad00, 4, g2_orange)
 
     device = SkyboundDevice(mock)
     device.init_data_card()
@@ -110,8 +116,9 @@ def test_8mb():
     assert device.card_name == '8MB'
 
 
-def test_16mb():
-    mock = UsbHandleMock(0x01004100, 4)
+@pytest.mark.parametrize("g2_orange", [False, True])
+def test_16mb(g2_orange):
+    mock = UsbHandleMock(0x01004100, 4, g2_orange)
 
     device = SkyboundDevice(mock)
     device.init_data_card()
@@ -120,7 +127,7 @@ def test_16mb():
     assert device.card_name == '16MB WAAS (silver)'
 
 
-    mock = UsbHandleMock(0x89007E00, 4)
+    mock = UsbHandleMock(0x89007E00, 4, g2_orange)
 
     device = SkyboundDevice(mock)
     device.init_data_card()
@@ -129,20 +136,21 @@ def test_16mb():
     assert device.card_name == '16MB WAAS (orange)'
 
 
-def test_errors():
-    mock = UsbHandleMock(0x90009000, 4)
+@pytest.mark.parametrize("g2_orange", [False, True])
+def test_errors(g2_orange):
+    mock = UsbHandleMock(0x00000000, 0, g2_orange)
 
     device = SkyboundDevice(mock)
     with pytest.raises(SkyboundException, match="Unsupported"):
         device.init_data_card()
 
-    mock = UsbHandleMock(0x0100ad00, 1)
+    mock = UsbHandleMock(0x0100ad00, 1, g2_orange)
 
     device = SkyboundDevice(mock)
     with pytest.raises(SkyboundException, match="Unexpected"):
         device.init_data_card()
 
-    mock = UsbHandleMock(0x12345678, 4)
+    mock = UsbHandleMock(0x12345678, 4, g2_orange)
 
     device = SkyboundDevice(mock)
     with pytest.raises(SkyboundException, match="Unknown"):
