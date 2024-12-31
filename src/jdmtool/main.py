@@ -882,7 +882,7 @@ def cmd_write_metadata(dev: SkyboundDevice, metadata: str) -> None:
     print("Done")
 
 @with_data_card
-def cmd_read_database(dev: SkyboundDevice, path: str) -> None:
+def cmd_read_database(dev: SkyboundDevice, path: str, full_card: bool) -> None:
     with open(path, 'w+b') as fd:
         with tqdm.tqdm(desc="Reading the database", total=dev.get_total_size(), unit='B', unit_scale=True) as t:
             dev.before_read()
@@ -894,7 +894,7 @@ def cmd_read_database(dev: SkyboundDevice, path: str) -> None:
 
                 block = dev.read_block()
 
-                if block == b'\xFF' * SkyboundDevice.BLOCK_SIZE:
+                if not full_card and block == b'\xFF' * SkyboundDevice.BLOCK_SIZE:
                     # Garmin card has no concept of size of the data,
                     # so we stop when we see a completely empty block.
                     break
@@ -1093,6 +1093,11 @@ def main():
     read_database_p.add_argument(
         "path",
         help="File to write the database to",
+    )
+    read_database_p.add_argument(
+        "--full-card",
+        action="store_true",
+        help="Read the full contents of the card instead of stopping at the first empty block",
     )
     read_database_p.set_defaults(func=cmd_read_database)
 
