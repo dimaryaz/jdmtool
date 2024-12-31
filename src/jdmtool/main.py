@@ -698,7 +698,7 @@ def _transfer_sd_card(services: List[Service], path: pathlib.Path, vol_id_overri
 
 
 @with_data_card
-def _transfer_skybound(dev: SkyboundDevice, service: Service) -> None:
+def _transfer_skybound(dev: SkyboundDevice, service: Service, full_erase: bool) -> None:
     databases = service.get_databases()
     assert len(databases) == 1, databases
 
@@ -732,7 +732,7 @@ def _transfer_skybound(dev: SkyboundDevice, service: Service) -> None:
     path = databases[0].dest_path
 
     _clear_metadata(dev)
-    _write_database(dev, str(path))
+    _write_database(dev, str(path), full_erase)
 
     # TODO: 4MB cards don't seem to have metadata?
     if dev.memory_layout == dev.MEMORY_LAYOUT_16MB:
@@ -746,6 +746,7 @@ def cmd_transfer(
     device: Optional[str],
     no_download: bool,
     vol_id: Optional[str],
+    full_erase: bool,
 ) -> None:
     if not ids:
         raise DownloaderException("Need at least one download ID")
@@ -783,6 +784,9 @@ def cmd_transfer(
         if not device:
             raise DownloaderException("This database requires a path to an SD card")
 
+        if full_erase:
+            raise DownloaderException("--full-erase only makes sense for data cards")
+
         _transfer_sd_card(services, pathlib.Path(device), vol_id)
     elif card_type == CARD_TYPE_SKYBOUND:
         if device:
@@ -793,7 +797,7 @@ def cmd_transfer(
         if vol_id:
             raise DownloaderException("--vol-id only makes sense for SD cards / USB drives")
 
-        _transfer_skybound(services[0])  # pylint: disable=no-value-for-parameter
+        _transfer_skybound(services[0], full_erase)  # pylint: disable=no-value-for-parameter
 
     print("Done")
 
@@ -904,7 +908,7 @@ def cmd_read_database(dev: SkyboundDevice, path: str, full_card: bool) -> None:
 
     print("Done")
 
-def _write_database(dev: SkyboundDevice, path: str) -> None:
+def _write_database(dev: SkyboundDevice, path: str, full_erase: bool) -> None:
     max_size = dev.get_total_size()
 
     with open(path, 'rb') as fd:
@@ -916,8 +920,11 @@ def _write_database(dev: SkyboundDevice, path: str) -> None:
         pages_required = -(-size // SkyboundDevice.PAGE_SIZE)
         total_size = pages_required * SkyboundDevice.PAGE_SIZE
 
-        # Erase an extra page just to be safe.
-        pages_to_erase = min(pages_required + 1, dev.get_total_pages())
+        if full_erase:
+            pages_to_erase = dev.get_total_pages()
+        else:
+            # Erase an extra page just to be safe.
+            pages_to_erase = min(pages_required + 1, dev.get_total_pages())
         total_erase_size = pages_to_erase * SkyboundDevice.PAGE_SIZE
 
         dev.before_write()
@@ -963,13 +970,13 @@ def _write_database(dev: SkyboundDevice, path: str) -> None:
                 t.update(len(file_block))
 
 @with_data_card
-def cmd_write_database(dev: SkyboundDevice, path: str) -> None:
+def cmd_write_database(dev: SkyboundDevice, path: str, full_erase: bool) -> None:
     prompt = input(f"Transfer {path} to the data card? (y/n) ")
     if prompt.lower() != 'y':
         raise DownloaderException("Cancelled")
 
     try:
-        _write_database(dev, path)
+        _write_database(dev, path, full_erase)
     except IOError as ex:
         raise SkyboundException(f"Could not read the database file: {ex}")
 
@@ -1046,6 +1053,11 @@ def main():
         type=str,
     )
     transfer_p.add_argument(
+        "--full-erase",
+        action="store_true",
+        help="Erase the whole card, regardless of the database size (only for data cards)",
+    )
+    transfer_p.add_argument(
         "ids",
         help="Comma-separated list of service IDs, 'curr' for all current versions, or 'next' for all future versions",
         type=_parse_ids,
@@ -1108,6 +1120,11 @@ def main():
     write_database_p.add_argument(
         "path",
         help="Database file, e.g. dgrw72_2302_742ae60e.bin",
+    )
+    write_database_p.add_argument(
+        "--full-erase",
+        action="store_true",
+        help="Erase the whole card, regardless of the database size",
     )
     write_database_p.set_defaults(func=cmd_write_database)
 
