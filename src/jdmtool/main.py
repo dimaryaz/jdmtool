@@ -828,6 +828,7 @@ def cmd_clean() -> None:
 
 @with_usb
 def cmd_detect(dev: SkyboundDevice) -> None:
+    dev.set_led(True)
     version, name = dev.get_firmware_version_name()
     print(f"Firmware version: {version} ({name})")
     if dev.has_card():
@@ -843,6 +844,7 @@ def cmd_detect(dev: SkyboundDevice) -> None:
 
 @with_data_card
 def cmd_read_metadata(dev: SkyboundDevice) -> None:
+    dev.set_led(True)
     dev.before_read()
     dev.select_page(dev.get_total_pages() - 1)
     block = dev.read_block().strip(b"\xFF")
