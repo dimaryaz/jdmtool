@@ -895,23 +895,12 @@ def cmd_read_database(dev: SkyboundDevice, path: str) -> None:
                 block = dev.read_block()
 
                 if block == b'\xFF' * SkyboundDevice.BLOCK_SIZE:
+                    # Garmin card has no concept of size of the data,
+                    # so we stop when we see a completely empty block.
                     break
 
                 fd.write(block)
                 t.update(len(block))
-
-        # Garmin card has no concept of size of the data,
-        # so we need to remove the trailing "\xFF"s.
-        print("Truncating the file...")
-        fd.seek(0, os.SEEK_END)
-        pos = fd.tell()
-        while pos > 0:
-            pos -= SkyboundDevice.BLOCK_SIZE
-            fd.seek(pos)
-            block = fd.read(SkyboundDevice.BLOCK_SIZE)
-            if block != b'\xFF' * SkyboundDevice.BLOCK_SIZE:
-                break
-        fd.truncate()
 
     print("Done")
 
