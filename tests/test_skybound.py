@@ -1,21 +1,59 @@
+from dataclasses import dataclass
+from enum import Enum
 from typing import Optional
 
 import pytest
 
 from jdmtool.skybound import SkyboundDevice, SkyboundException
 
-class UsbHandleMock:
-    pending_response: Optional[bytes]
-    led: bool
-    page: int
 
-    def __init__(self, iid: int, n_chips: int, g2_orange: bool):
+class WriteFormat(Enum):
+    FORMAT_1 = 1  # Used by 1MB chips (or possibly by Intel chips)
+    FORMAT_2 = 2  # Used by 2MB and 4MB chips (or possibly by AMD chips)
+
+
+@dataclass
+class ChipConfig:
+    iid: int
+    sectors: int
+    write_format: WriteFormat
+
+
+CHIP_INTEL_1MB      = ChipConfig(0x8900a200, 0x10, WriteFormat.FORMAT_1)
+CHIP_AMD_2MB        = ChipConfig(0x0100ad00, 0x20, WriteFormat.FORMAT_2)
+CHIP_AMD_4MB_SILVER = ChipConfig(0x01004100, 0x40, WriteFormat.FORMAT_2)
+CHIP_AMD_4MB_ORANGE = ChipConfig(0x89007e00, 0x40, WriteFormat.FORMAT_2)
+
+
+SUPPORTED_CARDS = [
+    (CHIP_INTEL_1MB, 2, "2MB"),
+    (CHIP_INTEL_1MB, 3, "3MB"),
+    # (CHIP_INTEL_1MB, 4, "4MB"),
+    (CHIP_AMD_2MB, 2, "4MB"),
+    (CHIP_AMD_2MB, 3, "6MB"),
+    (CHIP_AMD_2MB, 4, "8MB"),
+    (CHIP_AMD_4MB_SILVER, 4, "16MB WAAS (silver)"),
+    (CHIP_AMD_4MB_ORANGE, 4, "16MB WAAS (orange)"),
+]
+
+FAKE_CHIP = ChipConfig(0x12345678, 0x20, WriteFormat.FORMAT_1)
+
+
+class UsbHandleMock:
+    EMPTY_BLOCK = b'\xFF' * 0x1000
+
+    pending_response: Optional[bytes]
+
+    def __init__(self, n_chips: int, chip: ChipConfig, g2_orange: bool):
         self.pending_response = None
-        self.iid = iid
-        self.n_chips = n_chips
+        self.offsets = [0x00E0, 0x0160, 0x01A0, 0x01C0][:n_chips]
+        self.chip = chip
         self.g2_orange = g2_orange
         self.led = False
-        self.page = -1
+        self.current_sector = -1
+        self.current_block = -1
+        self.writing = False
+        self.blocks = [self.EMPTY_BLOCK] * (n_chips * chip.sectors * 0x10)
 
     def bulkRead(self, endpoint: int, length: int, timeout=0) -> bytes:
         assert endpoint == 0x81
@@ -30,41 +68,82 @@ class UsbHandleMock:
         assert endpoint == 0x02
         assert self.pending_response is None
 
+        if self.writing:
+            assert len(data) == 0x1000, f"Invalid block size: {len(data)}"
+            block_idx = self.current_sector * 0x10 + self.current_block
+            assert self.blocks[block_idx] == self.EMPTY_BLOCK, "Block has not been erased!"
+            self.blocks[block_idx] = data
+            self.current_block += 1
+
+            if self.chip.write_format is WriteFormat.FORMAT_1:
+                self.pending_response = b"\x80\x00\x00\x00"
+            else:
+                self.pending_response = data[-1:] + b"\x00\x00\x00"
+
+            self.writing = False
+            return
+
         if data == b'\x18':
-            self.pending_response = self.has_card()
+            self.pending_response = self._has_card()
         elif data.startswith(b'\x30\x00\x00'):
             assert len(data) == 5
-            self.page = int.from_bytes(data[3:], 'little')
+            physical_sector = int.from_bytes(data[3:], 'little')
+
+            self.current_sector = -1
+            self.current_block = -1
+
+            sectors = min(self.chip.sectors, 0x20)
+
+            for chip_idx, offset in enumerate(self.offsets):
+                if offset <= physical_sector < offset + sectors:
+                    self.current_sector = chip_idx * self.chip.sectors + (physical_sector - offset)
+                    self.current_block = 0
+                    break
+                if self.chip.sectors > 0x20:
+                    if offset + 0x200 <= physical_sector < offset + 0x200 + sectors:
+                        self.current_sector = chip_idx * self.chip.sectors + (physical_sector - offset - 0x200 + 0x20)
+                        self.current_block = 0
+                        break
         elif data == b'\x40':
             pass
         elif data == b'\x50\x04':
-            assert self.page in [0x00E0, 0x0160, 0x01A0, 0x01C0]
-            self.pending_response = self.get_iid()
+            if self.current_sector >= 0:
+                iid = self.chip.iid
+            else:
+                iid = 0xff00ff00 if self.g2_orange else 0x90009000
+            self.pending_response = iid.to_bytes(4, 'little')
+        elif data == b"\x2A\x03":
+            assert self.chip.write_format is WriteFormat.FORMAT_1
+            assert self.current_sector >= 0
+            assert 0 <= self.current_block < 0x10
+            assert not self.writing
+            self.writing = True
+        elif data == b"\x2A\x04":
+            assert self.chip.write_format is WriteFormat.FORMAT_2
+            assert self.current_sector >= 0
+            assert 0 <= self.current_block < 0x10
+            assert not self.writing
+            self.writing = True
         else:
-            assert False
+            assert False, data
 
-    def has_card(self) -> bytes:
+    def _has_card(self) -> bytes:
         return b'\x00'
 
-    def get_iid(self) -> bytes:
-        chip_idx = SkyboundDevice.MEMORY_OFFSETS.index(self.page) // 2
-        if chip_idx < self.n_chips:
-            iid = self.iid
-        else:
-            iid = 0xff00ff00 if self.g2_orange else 0x90009000
-        return iid.to_bytes(4, 'little')
+    def get_contents(self) -> bytes:
+        return b''.join(self.blocks)
 
 
 class UsbHandleMockNoCard(UsbHandleMock):
     def __init__(self, g2_orange: bool):
-        super().__init__(0, 0, g2_orange)
+        super().__init__(0, ChipConfig(0, 0, WriteFormat.FORMAT_1), g2_orange)
 
-    def has_card(self) -> bytes:
+    def _has_card(self) -> bytes:
         return b'\x01'
 
 
 @pytest.mark.parametrize("g2_orange", [False, True])
-def test_no_card(g2_orange):
+def test_init_no_card(g2_orange):
     mock = UsbHandleMockNoCard(g2_orange)
 
     device = SkyboundDevice(mock)
@@ -73,85 +152,74 @@ def test_no_card(g2_orange):
 
 
 @pytest.mark.parametrize("g2_orange", [False, True])
-def test_2mb(g2_orange):
-    mock = UsbHandleMock(0x8900a200, 1, g2_orange)
+@pytest.mark.parametrize(["chip", "n_chips", "name"], SUPPORTED_CARDS)
+def test_init_card(g2_orange, chip, n_chips, name):
+    mock = UsbHandleMock(n_chips, chip, g2_orange)
 
     device = SkyboundDevice(mock)
     device.init_data_card()
 
-    assert device.memory_layout == device.MEMORY_LAYOUT_2MB
-    assert device.card_name == '2MB'
+    assert device.sectors_per_chip == chip.sectors
+    assert device.card_name == name
 
 
 @pytest.mark.parametrize("g2_orange", [False, True])
-def test_4mb(g2_orange):
-    mock = UsbHandleMock(0x0100ad00, 2, g2_orange)
-
-    device = SkyboundDevice(mock)
-    device.init_data_card()
-
-    assert device.memory_layout == device.MEMORY_LAYOUT_4MB
-    assert device.card_name == '4MB'
-
-
-@pytest.mark.parametrize("g2_orange", [False, True])
-def test_6mb(g2_orange):
-    mock = UsbHandleMock(0x0100ad00, 3, g2_orange)
-
-    device = SkyboundDevice(mock)
-    device.init_data_card()
-
-    assert device.memory_layout == device.MEMORY_LAYOUT_6MB
-    assert device.card_name == '6MB'
-
-
-@pytest.mark.parametrize("g2_orange", [False, True])
-def test_8mb(g2_orange):
-    mock = UsbHandleMock(0x0100ad00, 4, g2_orange)
-
-    device = SkyboundDevice(mock)
-    device.init_data_card()
-
-    assert device.memory_layout == device.MEMORY_LAYOUT_8MB
-    assert device.card_name == '8MB'
-
-
-@pytest.mark.parametrize("g2_orange", [False, True])
-def test_16mb(g2_orange):
-    mock = UsbHandleMock(0x01004100, 4, g2_orange)
-
-    device = SkyboundDevice(mock)
-    device.init_data_card()
-
-    assert device.memory_layout == device.MEMORY_LAYOUT_16MB
-    assert device.card_name == '16MB WAAS (silver)'
-
-
-    mock = UsbHandleMock(0x89007E00, 4, g2_orange)
-
-    device = SkyboundDevice(mock)
-    device.init_data_card()
-
-    assert device.memory_layout == device.MEMORY_LAYOUT_16MB
-    assert device.card_name == '16MB WAAS (orange)'
-
-
-@pytest.mark.parametrize("g2_orange", [False, True])
-def test_errors(g2_orange):
-    mock = UsbHandleMock(0x00000000, 0, g2_orange)
+def test_init_errors(g2_orange):
+    # No chips
+    mock = UsbHandleMock(0, FAKE_CHIP, g2_orange)
 
     device = SkyboundDevice(mock)
     with pytest.raises(SkyboundException, match="Unsupported"):
         device.init_data_card()
 
-    mock = UsbHandleMock(0x0100ad00, 1, g2_orange)
-
-    device = SkyboundDevice(mock)
-    with pytest.raises(SkyboundException, match="Unexpected"):
-        device.init_data_card()
-
-    mock = UsbHandleMock(0x12345678, 4, g2_orange)
+    # One chip (not supported, even if it's a real chip)
+    mock = UsbHandleMock(1, CHIP_AMD_2MB, g2_orange)
 
     device = SkyboundDevice(mock)
     with pytest.raises(SkyboundException, match="Unknown"):
         device.init_data_card()
+
+    # Four chips, but unknown ID
+    mock = UsbHandleMock(4, FAKE_CHIP, g2_orange)
+
+    device = SkyboundDevice(mock)
+    with pytest.raises(SkyboundException, match="Unknown"):
+        device.init_data_card()
+
+
+@pytest.mark.parametrize(["chip", "n_chips", "name"], SUPPORTED_CARDS)
+def test_simple_write(chip, n_chips, name):
+    mock = UsbHandleMock(n_chips, chip, True)
+
+    device = SkyboundDevice(mock)
+    device.init_data_card()
+
+    block1 = b"Hello, ".ljust(0x1000, b'\xff')
+    block2 = b"world!".ljust(0x1000, b'\xff')
+
+    device.select_page(3)
+    device.write_block(block1)
+    device.write_block(block2)
+
+    contents = mock.get_contents()
+    assert contents.startswith(b'\xff' * 3 * 0x10000 + block1 + block2)
+
+
+def test_write_16mb():
+    mock = UsbHandleMock(4, CHIP_AMD_4MB_SILVER, False)
+
+    device = SkyboundDevice(mock)
+    device.init_data_card()
+
+    blocks = []
+    for i in range(0x1000):
+        if i % 16 == 0:
+            device.select_page(i // 16)
+
+        # Fake but slightly different data for each block
+        block = bytes([i % 19] * 0x1000)
+        device.write_block(block)
+
+        blocks.append(block)
+
+    assert mock.blocks == blocks
