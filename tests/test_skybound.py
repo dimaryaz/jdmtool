@@ -39,6 +39,13 @@ SUPPORTED_CARDS = [
 FAKE_CHIP = ChipConfig(0x12345678, 0x20, WriteFormat.FORMAT_1)
 
 
+class State(Enum):
+    NONE = 0
+    READING = 1
+    WRITING = 2
+    ERASING = 3
+
+
 class UsbHandleMock:
     EMPTY_BLOCK = b'\xFF' * 0x1000
 
@@ -50,6 +57,7 @@ class UsbHandleMock:
         self.chip = chip
         self.g2_orange = g2_orange
         self.led = False
+        self.state = State.NONE
         self.current_sector = -1
         self.current_block = -1
         self.writing = False
@@ -104,24 +112,51 @@ class UsbHandleMock:
                         self.current_sector = chip_idx * self.chip.sectors + (physical_sector - offset - 0x200 + 0x20)
                         self.current_block = 0
                         break
+        elif data == b'\x16':
+            assert self.chip.write_format == WriteFormat.FORMAT_1
+            self.state = State.ERASING
         elif data == b'\x40':
-            pass
+            self.state = State.READING
+        elif data == b'\x42':
+            self.state = State.WRITING
         elif data == b'\x50\x04':
             if self.current_sector >= 0:
                 iid = self.chip.iid
             else:
                 iid = 0xff00ff00 if self.g2_orange else 0x90009000
             self.pending_response = iid.to_bytes(4, 'little')
-        elif data == b"\x2A\x03":
+        elif data == b'\x28':
+            assert self.current_sector >= 0
+            assert 0 <= self.current_block < 0x10
+            assert self.state is State.READING
+            block_idx = self.current_sector * 0x10 + self.current_block
+            self.current_block += 1
+            self.pending_response = self.blocks[block_idx]
+        elif data == b'\x52\x03':
+            assert self.chip.write_format is WriteFormat.FORMAT_1
+            assert self.state is State.ERASING
+            self.state = State.NONE
+            for idx in range(0x10):
+                self.blocks[self.current_sector * 0x10 + idx] = self.EMPTY_BLOCK
+            self.pending_response = b'\x03'
+        elif data == b'\x52\x04':
+            assert self.chip.write_format is WriteFormat.FORMAT_2
+            assert self.state is State.WRITING
+            for idx in range(0x10):
+                self.blocks[self.current_sector * 0x10 + idx] = self.EMPTY_BLOCK
+            self.pending_response = b'\x04'
+        elif data == b'\x2A\x03':
             assert self.chip.write_format is WriteFormat.FORMAT_1
             assert self.current_sector >= 0
             assert 0 <= self.current_block < 0x10
+            assert self.state is State.WRITING
             assert not self.writing
             self.writing = True
-        elif data == b"\x2A\x04":
+        elif data == b'\x2A\x04':
             assert self.chip.write_format is WriteFormat.FORMAT_2
             assert self.current_sector >= 0
             assert 0 <= self.current_block < 0x10
+            assert self.state is State.WRITING
             assert not self.writing
             self.writing = True
         else:
@@ -129,9 +164,6 @@ class UsbHandleMock:
 
     def _has_card(self) -> bytes:
         return b'\x00'
-
-    def get_contents(self) -> bytes:
-        return b''.join(self.blocks)
 
 
 class UsbHandleMockNoCard(UsbHandleMock):
@@ -188,21 +220,73 @@ def test_init_errors(g2_orange):
 
 
 @pytest.mark.parametrize(["chip", "n_chips", "name"], SUPPORTED_CARDS)
+def test_simple_read(chip, n_chips, name):
+    mock = UsbHandleMock(n_chips, chip, True)
+
+    device = SkyboundDevice(mock)
+    device.init_data_card()
+
+    block1 = b"a" * 0x1000
+    block2 = b"b" * 0x1000
+
+    mock.blocks[0x01] = block1
+    mock.blocks[0x40] = block2
+
+    device.before_read()
+    device.select_page(0)
+    assert device.read_block() == mock.EMPTY_BLOCK
+    assert device.read_block() == block1
+
+    device.select_page(4)
+    assert device.read_block() == block2
+    assert device.read_block() == mock.EMPTY_BLOCK
+
+
+@pytest.mark.parametrize(["chip", "n_chips", "name"], SUPPORTED_CARDS)
 def test_simple_write(chip, n_chips, name):
     mock = UsbHandleMock(n_chips, chip, True)
 
     device = SkyboundDevice(mock)
     device.init_data_card()
 
-    block1 = b"Hello, ".ljust(0x1000, b'\xff')
-    block2 = b"world!".ljust(0x1000, b'\xff')
+    block1 = b"a" * 0x1000
+    block2 = b"b" * 0x1000
 
+    device.before_write()
     device.select_page(3)
     device.write_block(block1)
     device.write_block(block2)
 
-    contents = mock.get_contents()
-    assert contents.startswith(b'\xff' * 3 * 0x10000 + block1 + block2)
+    assert mock.blocks[0x30] == block1
+    assert mock.blocks[0x31] == block2
+
+
+@pytest.mark.parametrize(["chip", "n_chips", "name"], SUPPORTED_CARDS)
+def test_read_write_erase(chip, n_chips, name):
+    mock = UsbHandleMock(n_chips, chip, True)
+
+    device = SkyboundDevice(mock)
+    device.init_data_card()
+
+    block1 = b"a" * 0x1000
+    block2 = b"b" * 0x1000
+
+    device.before_write()
+    device.select_page(3)
+    device.write_block(block1)
+    device.write_block(block1)
+
+    device.select_page(3)
+    device.erase_page()
+
+    device.before_write()
+    device.select_page(3)
+    device.write_block(block2)
+
+    device.before_read()
+    device.select_page(3)
+    assert device.read_block() == block2
+    assert device.read_block() == mock.EMPTY_BLOCK
 
 
 def test_write_16mb():
@@ -211,6 +295,7 @@ def test_write_16mb():
     device = SkyboundDevice(mock)
     device.init_data_card()
 
+    device.before_write()
     blocks = []
     for i in range(0x1000):
         if i % 16 == 0:
