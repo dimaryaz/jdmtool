@@ -26,9 +26,9 @@ CHIP_AMD_4MB_ORANGE = ChipConfig(0x89007e00, 0x40, WriteFormat.FORMAT_2)
 
 
 SUPPORTED_CARDS = [
-    # (CHIP_INTEL_1MB, 2, "2MB"),
-    # (CHIP_INTEL_1MB, 3, "3MB"),
-    # (CHIP_INTEL_1MB, 4, "4MB"),
+    (CHIP_INTEL_1MB, 2, "2MB"),
+    (CHIP_INTEL_1MB, 3, "3MB"),
+    (CHIP_INTEL_1MB, 4, "4MB"),
     (CHIP_AMD_2MB, 2, "4MB"),
     (CHIP_AMD_2MB, 3, "6MB"),
     (CHIP_AMD_2MB, 4, "8MB"),
@@ -191,7 +191,7 @@ def test_init_card(g2_orange, chip, n_chips, name):
     device = SkyboundDevice(mock)
     device.init_data_card()
 
-    # assert device.sectors_per_chip == chip.sectors
+    assert device.sectors_per_chip == chip.sectors
     assert device.card_name == name
 
 
