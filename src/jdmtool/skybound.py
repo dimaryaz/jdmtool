@@ -19,16 +19,9 @@ class SkyboundDevice():
 
     BLOCK_SIZE = 0x1000
     BLOCKS_PER_PAGE = 0x10
-    PAGE_SIZE = BLOCK_SIZE * BLOCKS_PER_PAGE
+    PAGE_SIZE = BLOCK_SIZE * BLOCKS_PER_PAGE  # 64KB
 
-    MEMORY_OFFSETS = [0x00E0, 0x02E0, 0x0160, 0x0360, 0x01A0, 0x03A0, 0x01C0, 0x03C0]
-    PAGES_PER_OFFSET = 0x20
-
-    MEMORY_LAYOUT_2MB = [0]
-    MEMORY_LAYOUT_4MB = [0, 2]
-    MEMORY_LAYOUT_6MB = [0, 2, 4]
-    MEMORY_LAYOUT_8MB = [0, 2, 4, 6]
-    MEMORY_LAYOUT_16MB = [0, 1, 2, 3, 4, 5, 6, 7]
+    MEMORY_OFFSETS = [0x00E0, 0x0160, 0x01A0, 0x01C0]
 
     FIRMWARE_NAME = {
         "20071203": "G2 Black",
@@ -37,8 +30,9 @@ class SkyboundDevice():
 
     def __init__(self, handle: 'USBDeviceHandle') -> None:
         self.handle = handle
-        self.memory_layout = []
         self.card_name = "undefined"
+        self.chips = 0
+        self.sectors_per_chip = 0x0
 
     def write(self, data: bytes) -> None:
         self.handle.bulkWrite(self.WRITE_ENDPOINT, data, self.TIMEOUT)
@@ -66,54 +60,53 @@ class SkyboundDevice():
         if not self.has_card():
             raise SkyboundException("Card is missing!")
 
-        self.select_physical_page(self.MEMORY_OFFSETS[0])
-        self.before_read()
+        chip_iids: List[int] = []
 
-        iid = self.get_iid()
+        for offset in self.MEMORY_OFFSETS:
+            self.select_physical_page(offset)
+            self.before_read()
+            chip_iid = self.get_iid()
+
+            if chip_iid == 0x90009000 or chip_iid == 0xff00ff00:  # depends on G2 firmware
+                break
+
+            chip_iids.append(chip_iid)
+
+        if not chip_iids:
+            raise SkyboundException("Unsupported data card - possibly Terrain/Obstacles")
+
+        hex_iids = [f"{chip_iid:08x}" for chip_iid in chip_iids]
+
+        self.chips = len(chip_iids)
+        iid = chip_iids[0]
+
+        if self.chips == 1 or len(set(chip_iids)) > 1:
+            # None of the known cards have a single chip or mixed chip types.
+            raise SkyboundException(f"Unknown data card with chip IIDs: {hex_iids}. Please file a bug!")
+
         if iid == 0x8900a200:
             # 032: 2 MB Intel Series 2 (1 MB x 2)
-            self.memory_layout = SkyboundDevice.MEMORY_LAYOUT_2MB
-            self.card_name = "2MB"
+            # 033: 3 MB Intel Series 2 (1 MB x 3)
+            # 034: 4 MB Intel Series 2 (1 MB x 4)
+            self.sectors_per_chip = 0x10
+            self.card_name = f"{self.chips}MB"
         elif iid == 0x0100ad00:
-            # 4MB, 6MB, or 8MB, depending on whether it has 2, 3, or 4 chips.
-            chip_config: List[int] = []
-            for chip_idx in [1, 2, 3]:
-                self.select_physical_page(self.MEMORY_OFFSETS[chip_idx * 2])
-                self.before_read()
-                chip_iid = self.get_iid()
-                if chip_iid == iid:
-                    chip_config.append(1)
-                elif chip_iid == 0x90009000 or chip_iid == 0xff00ff00:
-                    chip_config.append(0)
-                else:
-                    raise SkyboundException(f"Unexpected IID 0x{chip_iid:08x} for chip {chip_idx}")
-
-            if chip_config == [1, 0, 0]:
-                # 421: 4 MB AMD Series C/D (2 MB x 2)
-                self.memory_layout = SkyboundDevice.MEMORY_LAYOUT_4MB
-                self.card_name = "4MB"
-            elif chip_config == [1, 1, 0]:
-                # 431: 6 MB AMD Series C/D (2 MB x 3)
-                self.memory_layout = SkyboundDevice.MEMORY_LAYOUT_6MB
-                self.card_name = "6MB"
-            elif chip_config == [1, 1, 1]:
-                # 441: 8 MB AMD Series C/D (2 MB x 4)
-                self.memory_layout = SkyboundDevice.MEMORY_LAYOUT_8MB
-                self.card_name = "8MB"
-            else:
-                raise SkyboundException(f"Unexpected chip configuration: {chip_config}")
+            # 421: 4 MB AMD Series C/D (2 MB x 2)
+            # 431: 6 MB AMD Series C/D (2 MB x 3)
+            # 441: 8 MB AMD Series C/D (2 MB x 4)
+            self.sectors_per_chip = 0x20
+            self.card_name = f"{self.chips*2}MB"
         elif iid == 0x01004100:
             # 451: 16MB AMD Series C/D (4 MB x 4)
-            self.memory_layout = SkyboundDevice.MEMORY_LAYOUT_16MB
+            self.sectors_per_chip = 0x40
             self.card_name = "16MB WAAS (silver)"
         elif iid == 0x89007E00:
             # 451: 16MB AMD Series C/D (4 MB x 4)
-            self.memory_layout = SkyboundDevice.MEMORY_LAYOUT_16MB
+            self.sectors_per_chip = 0x40
             self.card_name = "16MB WAAS (orange)"
-        elif iid == 0x90009000 or iid == 0xff00ff00:
-            raise SkyboundException("Unsupported data card - possibly Terrain/Obstacles")
         else:
-            raise SkyboundException(f"Unknown data card IID: 0x{iid:08x}. Please file a bug!")
+            # Unknown IID
+            raise SkyboundException(f"Unknown data card with chip IIDs: {hex_iids}. Please file a bug!")
 
     def get_firmware_version_name(self) -> Tuple[str, str]:
         self.write(b"\x60")
@@ -121,7 +114,7 @@ class SkyboundDevice():
         name = self.FIRMWARE_NAME.get(version, "unknown")
         return version, name
 
-    def get_unknown(self) -> int: # TODO: what is this?
+    def get_1m_chip_version(self) -> int:
         self.write(b"\x50\x03")
         buf = self.read(0x0040)
         return int.from_bytes(buf, 'little')
@@ -139,11 +132,17 @@ class SkyboundDevice():
         if len(data) != 0x1000:
             raise ValueError("Data must be 4096 bytes")
 
-        self.write(b"\x2A\x04")
-        self.write(data)
+        if self.sectors_per_chip == 0x10:  # 1MB chip
+            self.write(b"\x2A\x03")
+            expected_byte = 0x80
+        else:
+            self.write(b"\x2A\x04")
+            expected_byte = data[-1]
 
+        self.write(data)
         buf = self.read(0x0040)
-        if buf[0] != data[-1] or buf[1:] != b"\x00\x00\x00":
+
+        if buf[0] != expected_byte or buf[1:] != b"\x00\x00\x00":
             raise SkyboundException(f"Unexpected response: {buf}")
 
     def select_physical_page(self, page_id: int) -> None:
@@ -152,16 +151,26 @@ class SkyboundDevice():
         self.write(b"\x30\x00\x00" + page_id.to_bytes(2, 'little'))
 
     def translate_page(self, page_id: int) -> int:
-        offset_id = self.memory_layout[page_id // self.PAGES_PER_OFFSET]
-        return self.MEMORY_OFFSETS[offset_id] + page_id % self.PAGES_PER_OFFSET
+        offset_id = page_id // self.sectors_per_chip
+        if self.sectors_per_chip > 0x20:  # 4MB chip
+            offset_for_16mb = 0x200 * (page_id // 0x20 % 2)
+            return self.MEMORY_OFFSETS[offset_id] + page_id % 0x20 + offset_for_16mb
+        else:
+            return self.MEMORY_OFFSETS[offset_id] + page_id % self.sectors_per_chip
 
     def select_page(self, page_id: int) -> None:
         self.select_physical_page(self.translate_page(page_id))
 
     def erase_page(self) -> None:
-        self.write(b"\x52\x04")
+        if self.sectors_per_chip == 0x10:  # 1MB chip
+            key = b"\x03"
+            self.write(b"\x16")
+            self.write(b"\x52" + key)
+        else:
+            key = b"\x04"
+            self.write(b"\x52" + key)
         buf = self.read(0x0040)
-        if buf != b"\x04":
+        if buf != key:
             raise SkyboundException(f"Unexpected response: {buf}")
 
     def before_read(self) -> None:
@@ -174,7 +183,7 @@ class SkyboundDevice():
         self.write(b"\x42")
 
     def get_total_pages(self) -> int:
-        return len(self.memory_layout) * self.PAGES_PER_OFFSET
+        return self.chips * self.sectors_per_chip
 
     def get_total_size(self) -> int:
-        return self.get_total_pages() * self.PAGE_SIZE
+        return self.get_total_pages() * self.PAGE_SIZE  # chips * sectors_per_chip * PAGE_SIZE
