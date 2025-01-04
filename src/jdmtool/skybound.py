@@ -18,8 +18,8 @@ class SkyboundDevice():
     TIMEOUT = 3000
 
     BLOCK_SIZE = 0x1000
-    BLOCKS_PER_SECTOR = 0x10
-    SECTOR_SIZE = BLOCK_SIZE * BLOCKS_PER_SECTOR  # 64KB
+    BLOCKS_PER_PAGE = 0x10
+    PAGE_SIZE = BLOCK_SIZE * BLOCKS_PER_PAGE  # 64KB
 
     MEMORY_OFFSETS = [0x00E0, 0x0160, 0x01A0, 0x01C0]
 
@@ -186,4 +186,4 @@ class SkyboundDevice():
         return self.chips * self.sectors_per_chip
 
     def get_total_size(self) -> int:
-        return self.get_total_pages() * self.SECTOR_SIZE  # chips * sectors_per_chip * SECTOR_SIZE
+        return self.get_total_pages() * self.PAGE_SIZE  # chips * sectors_per_chip * PAGE_SIZE
