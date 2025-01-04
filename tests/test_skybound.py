@@ -233,11 +233,11 @@ def test_simple_read(chip, n_chips, name):
     mock.blocks[0x40] = block2
 
     device.before_read()
-    device.select_page(0)
+    device.select_sector(0)
     assert device.read_block() == mock.EMPTY_BLOCK
     assert device.read_block() == block1
 
-    device.select_page(4)
+    device.select_sector(4)
     assert device.read_block() == block2
     assert device.read_block() == mock.EMPTY_BLOCK
 
@@ -253,7 +253,7 @@ def test_simple_write(chip, n_chips, name):
     block2 = b"b" * 0x1000
 
     device.before_write()
-    device.select_page(3)
+    device.select_sector(3)
     device.write_block(block1)
     device.write_block(block2)
 
@@ -272,19 +272,19 @@ def test_read_write_erase(chip, n_chips, name):
     block2 = b"b" * 0x1000
 
     device.before_write()
-    device.select_page(3)
+    device.select_sector(3)
     device.write_block(block1)
     device.write_block(block1)
 
-    device.select_page(3)
-    device.erase_page()
+    device.select_sector(3)
+    device.erase_sector()
 
     device.before_write()
-    device.select_page(3)
+    device.select_sector(3)
     device.write_block(block2)
 
     device.before_read()
-    device.select_page(3)
+    device.select_sector(3)
     assert device.read_block() == block2
     assert device.read_block() == mock.EMPTY_BLOCK
 
@@ -299,7 +299,7 @@ def test_write_16mb():
     blocks = []
     for i in range(0x1000):
         if i % 16 == 0:
-            device.select_page(i // 16)
+            device.select_sector(i // 16)
 
         # Fake but slightly different data for each block
         block = bytes([i % 19] * 0x1000)

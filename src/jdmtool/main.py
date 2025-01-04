@@ -846,7 +846,7 @@ def cmd_detect(dev: SkyboundDevice) -> None:
         # Print IIDs first, even if it's an unsupported card.
         print("Chip IIDs:")
         for chip_idx, offset in enumerate(dev.MEMORY_OFFSETS):
-            dev.select_physical_page(offset)
+            dev.select_physical_sector(offset)
             dev.before_read()
             iid = dev.get_iid()
             print(f"  Chip {chip_idx}: 0x{iid:08x}")
@@ -860,7 +860,7 @@ def cmd_detect(dev: SkyboundDevice) -> None:
 def cmd_read_metadata(dev: SkyboundDevice) -> None:
     dev.set_led(True)
     dev.before_read()
-    dev.select_page(dev.get_total_pages() - 1)
+    dev.select_sector(dev.get_total_sectors() - 1)
     block = dev.read_block().strip(b"\xFF")
     try:
         value = block.decode()
@@ -870,23 +870,23 @@ def cmd_read_metadata(dev: SkyboundDevice) -> None:
 
 def _clear_metadata(dev: SkyboundDevice) -> None:
     dev.before_write()
-    dev.select_page(dev.get_total_pages() - 1)
-    dev.erase_page()
+    dev.select_sector(dev.get_total_sectors() - 1)
+    dev.erase_sector()
 
 def _write_metadata(dev: SkyboundDevice, metadata: str) -> None:
     dev.before_write()
-    page = metadata.encode().ljust(SkyboundDevice.PAGE_SIZE, b'\xFF')
+    sector = metadata.encode().ljust(SkyboundDevice.SECTOR_SIZE, b'\xFF')
 
-    dev.select_page(dev.get_total_pages() - 1)
+    dev.select_sector(dev.get_total_sectors() - 1)
 
     # Data card can only write by changing 1s to 0s (effectively doing a bit-wise AND with
     # the existing contents), so all data needs to be "erased" first to reset everything to 1s.
-    dev.erase_page()
+    dev.erase_sector()
 
-    for i in range(SkyboundDevice.BLOCKS_PER_PAGE):
+    for i in range(SkyboundDevice.BLOCKS_PER_SECTOR):
         _loop_helper(dev, i)
 
-        block = page[i*SkyboundDevice.BLOCK_SIZE:(i+1)*SkyboundDevice.BLOCK_SIZE]
+        block = sector[i*SkyboundDevice.BLOCK_SIZE:(i+1)*SkyboundDevice.BLOCK_SIZE]
 
         dev.write_block(block)
 
@@ -900,11 +900,11 @@ def cmd_read_database(dev: SkyboundDevice, path: str, full_card: bool) -> None:
     with open(path, 'w+b') as fd:
         with tqdm.tqdm(desc="Reading the database", total=dev.get_total_size(), unit='B', unit_scale=True) as t:
             dev.before_read()
-            for i in range(dev.get_total_pages() * SkyboundDevice.BLOCKS_PER_PAGE):
+            for i in range(dev.get_total_sectors() * SkyboundDevice.BLOCKS_PER_SECTOR):
                 _loop_helper(dev, i)
 
-                if i % SkyboundDevice.BLOCKS_PER_PAGE == 0:
-                    dev.select_page(i // SkyboundDevice.BLOCKS_PER_PAGE)
+                if i % SkyboundDevice.BLOCKS_PER_SECTOR == 0:
+                    dev.select_sector(i // SkyboundDevice.BLOCKS_PER_SECTOR)
 
                 block = dev.read_block()
 
@@ -927,35 +927,35 @@ def _write_database(dev: SkyboundDevice, path: str, full_erase: bool) -> None:
         if size > max_size:
             raise SkyboundException(f"Database file is too big: {size}! The maximum size is {max_size}.")
 
-        pages_required = -(-size // SkyboundDevice.PAGE_SIZE)
-        total_size = pages_required * SkyboundDevice.PAGE_SIZE
+        sectors_required = -(-size // SkyboundDevice.SECTOR_SIZE)
+        total_size = sectors_required * SkyboundDevice.SECTOR_SIZE
 
         if full_erase:
-            pages_to_erase = dev.get_total_pages()
+            sectors_to_erase = dev.get_total_sectors()
         else:
-            # Erase an extra page just to be safe.
-            pages_to_erase = min(pages_required + 1, dev.get_total_pages())
-        total_erase_size = pages_to_erase * SkyboundDevice.PAGE_SIZE
+            # Erase an extra sector just to be safe.
+            sectors_to_erase = min(sectors_required + 1, dev.get_total_sectors())
+        total_erase_size = sectors_to_erase * SkyboundDevice.SECTOR_SIZE
 
         dev.before_write()
 
         # Data card can only write by changing 1s to 0s (effectively doing a bit-wise AND with
         # the existing contents), so all data needs to be "erased" first to reset everything to 1s.
         with tqdm.tqdm(desc="Erasing the database", total=total_erase_size, unit='B', unit_scale=True) as t:
-            for i in range(pages_to_erase):
+            for i in range(sectors_to_erase):
                 _loop_helper(dev, i)
-                dev.select_page(i)
-                dev.erase_page()
-                t.update(SkyboundDevice.PAGE_SIZE)
+                dev.select_sector(i)
+                dev.erase_sector()
+                t.update(SkyboundDevice.SECTOR_SIZE)
 
         with tqdm.tqdm(desc="Writing the database", total=total_size, unit='B', unit_scale=True) as t:
-            for i in range(pages_required * SkyboundDevice.BLOCKS_PER_PAGE):
+            for i in range(sectors_required * SkyboundDevice.BLOCKS_PER_SECTOR):
                 block = fd.read(SkyboundDevice.BLOCK_SIZE).ljust(SkyboundDevice.BLOCK_SIZE, b'\xFF')
 
                 _loop_helper(dev, i)
 
-                if i % SkyboundDevice.BLOCKS_PER_PAGE == 0:
-                    dev.select_page(i // SkyboundDevice.BLOCKS_PER_PAGE)
+                if i % SkyboundDevice.BLOCKS_PER_SECTOR == 0:
+                    dev.select_sector(i // SkyboundDevice.BLOCKS_PER_SECTOR)
 
                 dev.write_block(block)
                 t.update(len(block))
@@ -964,13 +964,13 @@ def _write_database(dev: SkyboundDevice, path: str, full_erase: bool) -> None:
 
         with tqdm.tqdm(desc="Verifying the database", total=total_size, unit='B', unit_scale=True) as t:
             dev.before_read()
-            for i in range(pages_required * SkyboundDevice.BLOCKS_PER_PAGE):
+            for i in range(sectors_required * SkyboundDevice.BLOCKS_PER_SECTOR):
                 file_block = fd.read(SkyboundDevice.BLOCK_SIZE).ljust(SkyboundDevice.BLOCK_SIZE, b'\xFF')
 
                 _loop_helper(dev, i)
 
-                if i % SkyboundDevice.BLOCKS_PER_PAGE == 0:
-                    dev.select_page(i // SkyboundDevice.BLOCKS_PER_PAGE)
+                if i % SkyboundDevice.BLOCKS_PER_SECTOR == 0:
+                    dev.select_sector(i // SkyboundDevice.BLOCKS_PER_SECTOR)
 
                 card_block = dev.read_block()
 
@@ -994,17 +994,17 @@ def cmd_write_database(dev: SkyboundDevice, path: str, full_erase: bool) -> None
 
 
 def _clear_card(dev: SkyboundDevice) -> None:
-    pages_to_erase = dev.get_total_pages()
-    total_erase_size = pages_to_erase * SkyboundDevice.PAGE_SIZE
+    sectors_to_erase = dev.get_total_sectors()
+    total_erase_size = sectors_to_erase * SkyboundDevice.SECTOR_SIZE
 
     dev.before_write()
 
     with tqdm.tqdm(desc="Erasing the database", total=total_erase_size, unit='B', unit_scale=True) as t:
-        for i in range(pages_to_erase):
+        for i in range(sectors_to_erase):
             _loop_helper(dev, i)
-            dev.select_page(i)
-            dev.erase_page()
-            t.update(SkyboundDevice.PAGE_SIZE)
+            dev.select_sector(i)
+            dev.erase_sector()
+            t.update(SkyboundDevice.SECTOR_SIZE)
 
 
 @with_data_card

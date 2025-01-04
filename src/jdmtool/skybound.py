@@ -18,8 +18,8 @@ class SkyboundDevice():
     TIMEOUT = 3000
 
     BLOCK_SIZE = 0x1000
-    BLOCKS_PER_PAGE = 0x10
-    PAGE_SIZE = BLOCK_SIZE * BLOCKS_PER_PAGE  # 64KB
+    BLOCKS_PER_SECTOR = 0x10
+    SECTOR_SIZE = BLOCK_SIZE * BLOCKS_PER_SECTOR  # 64KB
 
     MEMORY_OFFSETS = [0x00E0, 0x0160, 0x01A0, 0x01C0]
 
@@ -63,7 +63,7 @@ class SkyboundDevice():
         chip_iids: List[int] = []
 
         for offset in self.MEMORY_OFFSETS:
-            self.select_physical_page(offset)
+            self.select_physical_sector(offset)
             self.before_read()
             chip_iid = self.get_iid()
 
@@ -145,23 +145,23 @@ class SkyboundDevice():
         if buf[0] != expected_byte or buf[1:] != b"\x00\x00\x00":
             raise SkyboundException(f"Unexpected response: {buf}")
 
-    def select_physical_page(self, page_id: int) -> None:
-        if not (0x0000 <= page_id <= 0xFFFF):
-            raise ValueError("Invalid page ID")
-        self.write(b"\x30\x00\x00" + page_id.to_bytes(2, 'little'))
+    def select_physical_sector(self, sector_id: int) -> None:
+        if not (0x0000 <= sector_id <= 0xFFFF):
+            raise ValueError("Invalid sector ID")
+        self.write(b"\x30\x00\x00" + sector_id.to_bytes(2, 'little'))
 
-    def translate_page(self, page_id: int) -> int:
-        offset_id = page_id // self.sectors_per_chip
+    def translate_sector(self, sector_id: int) -> int:
+        offset_id = sector_id // self.sectors_per_chip
         if self.sectors_per_chip > 0x20:  # 4MB chip
-            offset_for_16mb = 0x200 * (page_id // 0x20 % 2)
-            return self.MEMORY_OFFSETS[offset_id] + page_id % 0x20 + offset_for_16mb
+            offset_for_16mb = 0x200 * (sector_id // 0x20 % 2)
+            return self.MEMORY_OFFSETS[offset_id] + sector_id % 0x20 + offset_for_16mb
         else:
-            return self.MEMORY_OFFSETS[offset_id] + page_id % self.sectors_per_chip
+            return self.MEMORY_OFFSETS[offset_id] + sector_id % self.sectors_per_chip
 
-    def select_page(self, page_id: int) -> None:
-        self.select_physical_page(self.translate_page(page_id))
+    def select_sector(self, sector_id: int) -> None:
+        self.select_physical_sector(self.translate_sector(sector_id))
 
-    def erase_page(self) -> None:
+    def erase_sector(self) -> None:
         if self.sectors_per_chip == 0x10:  # 1MB chip
             key = b"\x03"
             self.write(b"\x16")
@@ -182,8 +182,8 @@ class SkyboundDevice():
         # Same as above.
         self.write(b"\x42")
 
-    def get_total_pages(self) -> int:
+    def get_total_sectors(self) -> int:
         return self.chips * self.sectors_per_chip
 
     def get_total_size(self) -> int:
-        return self.get_total_pages() * self.PAGE_SIZE  # chips * sectors_per_chip * PAGE_SIZE
+        return self.get_total_sectors() * self.SECTOR_SIZE  # chips * sectors_per_chip * SECTOR_SIZE
