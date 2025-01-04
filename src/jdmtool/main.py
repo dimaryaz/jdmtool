@@ -836,12 +836,16 @@ def cmd_detect(dev: SkyboundDevice) -> None:
     version, name = dev.get_firmware_version_name()
     print(f"Firmware version: {version} ({name})")
     if dev.has_card():
-        print("Card inserted:")
-        for offset in dev.MEMORY_OFFSETS:
+        # Print IIDs first, even if it's an unsupported card.
+        print("Chip IIDs:")
+        for chip_idx, offset in enumerate(dev.MEMORY_OFFSETS):
             dev.select_physical_page(offset)
             dev.before_read()
             iid = dev.get_iid()
-            print(f"  IID at offset 0x{offset:04x}: 0x{iid:08x}")
+            print(f"  Chip {chip_idx}: 0x{iid:08x}")
+        # Then (try to) initialize the card and print the info.
+        dev.init_data_card()
+        print(f"Card type: {dev.card_name}")
     else:
         print("No card")
 
