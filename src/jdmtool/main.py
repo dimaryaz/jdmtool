@@ -937,15 +937,34 @@ def _write_database(dev: SkyboundDevice, path: str, full_erase: bool) -> None:
             sectors_to_erase = min(sectors_required + 1, dev.get_total_sectors())
         total_erase_size = sectors_to_erase * SkyboundDevice.SECTOR_SIZE
 
+        dev.before_read()
+
+        sector_is_blank = [True] * sectors_to_erase
+
+        with tqdm.tqdm(desc="Blank checking", total=total_erase_size, unit='B', unit_scale=True) as t:
+            for sector_idx in range(sectors_to_erase):
+                dev.select_sector(sector_idx)
+                for i in range(SkyboundDevice.BLOCKS_PER_SECTOR):
+                    _loop_helper(dev, i)
+
+                    block = dev.read_block()
+                    if block != b'\xff' * SkyboundDevice.BLOCK_SIZE:
+                        sector_is_blank[sector_idx] = False
+                        t.update(SkyboundDevice.BLOCK_SIZE * (SkyboundDevice.BLOCKS_PER_SECTOR - i))
+                        break
+
+                    t.update(SkyboundDevice.BLOCK_SIZE)
+
         dev.before_write()
 
         # Data card can only write by changing 1s to 0s (effectively doing a bit-wise AND with
         # the existing contents), so all data needs to be "erased" first to reset everything to 1s.
         with tqdm.tqdm(desc="Erasing the database", total=total_erase_size, unit='B', unit_scale=True) as t:
             for i in range(sectors_to_erase):
-                _loop_helper(dev, i)
-                dev.select_sector(i)
-                dev.erase_sector()
+                if not sector_is_blank[i]:
+                    _loop_helper(dev, i)
+                    dev.select_sector(i)
+                    dev.erase_sector()
                 t.update(SkyboundDevice.SECTOR_SIZE)
 
         with tqdm.tqdm(desc="Writing the database", total=total_size, unit='B', unit_scale=True) as t:
@@ -962,8 +981,9 @@ def _write_database(dev: SkyboundDevice, path: str, full_erase: bool) -> None:
 
         fd.seek(0)
 
+        dev.before_read()
+
         with tqdm.tqdm(desc="Verifying the database", total=total_size, unit='B', unit_scale=True) as t:
-            dev.before_read()
             for i in range(sectors_required * SkyboundDevice.BLOCKS_PER_SECTOR):
                 file_block = fd.read(SkyboundDevice.BLOCK_SIZE).ljust(SkyboundDevice.BLOCK_SIZE, b'\xFF')
 
