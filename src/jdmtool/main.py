@@ -741,8 +741,8 @@ def _transfer_skybound(dev: SkyboundDevice, service: Service, full_erase: bool) 
     _clear_metadata(dev)
     _write_database(dev, str(path), full_erase)
 
-    # TODO: 4MB cards don't seem to have metadata?
-    if dev.memory_layout == dev.MEMORY_LAYOUT_16MB:
+    # TODO: 2, 4, 8MB cards don't seem to have metadata?
+    if dev.sectors_per_chip == 0x40:
         new_metadata = f'{{{version}~{unique_service_id}}}'  # E.g. {2303~12345678}
         print(f"Writing new metadata: {new_metadata}")
         _write_metadata(dev, new_metadata)
