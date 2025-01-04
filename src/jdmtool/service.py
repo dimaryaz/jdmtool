@@ -9,6 +9,8 @@ import xml.etree.ElementTree as ET
 
 import platformdirs
 
+from .const import APP_NAME
+
 
 class ServiceException(Exception):
     pass
@@ -23,7 +25,7 @@ class DownloadConfig:
 
 
 def get_data_dir() -> pathlib.Path:
-    path = pathlib.Path(platformdirs.user_data_dir('jdmtool'))
+    path = pathlib.Path(platformdirs.user_data_dir(APP_NAME))
     path.mkdir(parents=True, exist_ok=True)
     return path
 

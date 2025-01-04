@@ -19,6 +19,7 @@ import zipfile
 import psutil
 import tqdm
 
+from .config import get_config, get_config_file
 from .skybound import SkyboundDevice, SkyboundException
 from .downloader import Downloader, DownloaderException, GRM_FEAT_KEY
 from .service import Service, ServiceException, SimpleService, get_data_dir, get_downloads_dir, load_services
@@ -178,10 +179,14 @@ def cmd_refresh() -> None:
 
 
 def _list(services: List[Service]) -> None:
-    row_format = "{:>2}  {:<70}  {:<25}  {:<8}  {:<10}  {:<10}  {:<10}"
+    config = get_config()
+    header_style = config.get("list", "header_style", fallback="")
+    odd_row_style = config.get("list", "odd_row_style", fallback="")
+    even_row_style = config.get("list", "even_row_style", fallback="")
 
-    header = row_format.format("ID", "Name", "Coverage", "Version", "Start Date", "End Date", "Downloaded")
-    print(f'\033[1m{header}\033[0m')
+    row_format = "\033[{}m{:>2}  {:<70}  {:<25}  {:<8}  {:<10}  {:<10}  {:<10}\033[0m"
+
+    print(row_format.format(header_style, "ID", "Name", "Coverage", "Version", "Start Date", "End Date", "Downloaded"))
     for idx, service in enumerate(services):
         avionics: str = service.get_property('avionics')
         service_type: str = service.get_property('service_type')
@@ -195,7 +200,9 @@ def _list(services: List[Service]) -> None:
 
         downloaded = all(f.exists() for f in service.get_download_paths())
 
-        print(row_format.format(idx, name, coverage, version, start_date, end_date, 'Y' if downloaded else ''))
+        style = even_row_style if idx % 2 == 0 else odd_row_style
+
+        print(row_format.format(style, idx, name, coverage, version, start_date, end_date, 'Y' if downloaded else ''))
 
 
 def cmd_list() -> None:
@@ -1011,6 +1018,10 @@ def cmd_clear_card(dev: SkyboundDevice) -> None:
     print("Done")
 
 
+def cmd_config_file() -> None:
+    print(get_config_file())
+
+
 def _parse_ids(ids: str) -> Union[List[int], IdPreset]:
     try:
         return IdPreset(ids)
@@ -1161,6 +1172,12 @@ def main():
         help="Clear all bytes on a data card",
     )
     clear_card_p.set_defaults(func=cmd_clear_card)
+
+    config_file_p = subparsers.add_parser(
+        "config-file",
+        help="Print the path of config.ini",
+    )
+    config_file_p.set_defaults(func=cmd_config_file)
 
     args = parser.parse_args()
 
