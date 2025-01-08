@@ -10,7 +10,7 @@ import json
 import os
 import pathlib
 import shutil
-from typing import Any, Callable, Dict, List, Optional, Set, Tuple, Union
+from typing import Any, Callable, Dict, List, Optional, Set, Tuple, TYPE_CHECKING, Union
 import zipfile
 
 import psutil
@@ -18,9 +18,13 @@ import tqdm
 
 from .common import JdmToolException
 from .config import get_config, get_config_file
+from .const import GRM_FEAT_KEY
 from .skybound import SkyboundDevice, SkyboundException
-from .downloader import Downloader, GRM_FEAT_KEY
 from .service import Service, ServiceException, SimpleService, get_data_dir, get_downloads_dir, load_services
+
+
+if TYPE_CHECKING:
+    from .downloader import Downloader
 
 
 CARD_TYPE_SD = 2
@@ -139,6 +143,8 @@ def _find_obsolete_downloads(services: List[Service]) -> Tuple[List[pathlib.Path
 
 
 def cmd_login() -> None:
+    from .downloader import Downloader
+
     downloader = Downloader()
 
     username = input("Username: ")
@@ -149,6 +155,8 @@ def cmd_login() -> None:
 
 
 def cmd_refresh() -> None:
+    from .downloader import Downloader
+
     try:
         old_services = load_services()
     except ServiceException:
@@ -235,7 +243,7 @@ def cmd_info(id: int) -> None:
         print(f'  {f}{status}')
 
 
-def _download(downloader: Downloader, service: Service) -> None:
+def _download(downloader: 'Downloader', service: Service) -> None:
     databases = service.get_databases()
     sffs = service.get_sffs()
     oems = service.get_oems()
@@ -276,6 +284,8 @@ def _download(downloader: Downloader, service: Service) -> None:
 
 
 def cmd_download(id: int) -> None:
+    from .downloader import Downloader
+
     services = load_services()
     if id < 0 or id >= len(services):
         raise UserException("Invalid download ID")
@@ -682,6 +692,8 @@ def _transfer_sd_card(services: List[Service], path: pathlib.Path, vol_id_overri
         raise UserException("Cancelled")
 
     if not all(f.exists() for s in services for f in s.get_download_paths()):
+        from .downloader import Downloader
+
         downloader = Downloader()
         for service in services:
             _download(downloader, service)
@@ -735,6 +747,8 @@ def _transfer_skybound(dev: SkyboundDevice, service: Service, full_erase: bool) 
         raise UserException("Cancelled")
 
     if not all(f.exists() for f in service.get_download_paths()):
+        from .downloader import Downloader
+
         downloader = Downloader()
         _download(downloader, service)
 
