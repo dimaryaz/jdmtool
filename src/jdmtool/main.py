@@ -838,21 +838,22 @@ def cmd_clean() -> None:
 
 
 @with_usb
-def cmd_detect(dev: SkyboundDevice) -> None:
+def cmd_detect(dev: SkyboundDevice, verbose: bool) -> None:
     dev.set_led(True)
     version, name = dev.get_firmware_version_name()
     print(f"Firmware version: {version} ({name})")
     if dev.has_card():
-        # Print IIDs first, even if it's an unsupported card.
-        print("Chip IIDs:")
-        for chip_idx, offset in enumerate(dev.MEMORY_OFFSETS):
-            dev.select_physical_sector(offset)
-            dev.before_read()
-            iid = dev.get_iid()
-            print(f"  Chip {chip_idx}: 0x{iid:08x}")
+        if verbose:
+            # Print IIDs first, even if it's an unsupported card.
+            print("Chip IIDs:")
+            for chip_idx, offset in enumerate(dev.MEMORY_OFFSETS):
+                dev.select_physical_sector(offset)
+                dev.before_read()
+                iid = dev.get_iid()
+                print(f"  Chip {chip_idx}: 0x{iid:08x}")
         # Then (try to) initialize the card and print the info.
         dev.init_data_card()
-        print(f"Card type: {dev.card_name}")
+        print(f"Card type: {dev.card_name}, {dev.chips} chips of {dev.sectors_per_chip//0x10}MB")
     else:
         print("No card")
 
@@ -1138,6 +1139,11 @@ def main():
     detect_p = subparsers.add_parser(
         "detect",
         help="Detect a card programmer device",
+    )
+    detect_p.add_argument(
+        "-v", "--verbose",
+        action="store_true",
+        help="Increase output verbosity",
     )
     detect_p.set_defaults(func=cmd_detect)
 
