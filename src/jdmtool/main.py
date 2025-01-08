@@ -4,10 +4,7 @@ from datetime import datetime
 from enum import Enum
 from functools import wraps
 from getpass import getpass
-try:
-    from importlib import metadata as importlib_metadata
-except ImportError:
-    import importlib_metadata
+from importlib import metadata as importlib_metadata
 from io import TextIOWrapper
 import json
 import os
