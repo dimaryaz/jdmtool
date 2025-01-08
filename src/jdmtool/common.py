@@ -1,0 +1,2 @@
+class JdmToolException(Exception):
+    pass

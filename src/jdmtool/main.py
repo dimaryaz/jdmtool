@@ -16,9 +16,10 @@ import zipfile
 import psutil
 import tqdm
 
+from .common import JdmToolException
 from .config import get_config, get_config_file
 from .skybound import SkyboundDevice, SkyboundException
-from .downloader import Downloader, DownloaderException, GRM_FEAT_KEY
+from .downloader import Downloader, GRM_FEAT_KEY
 from .service import Service, ServiceException, SimpleService, get_data_dir, get_downloads_dir, load_services
 
 
@@ -53,6 +54,10 @@ DETAILED_INFO_MAP = [
     ("Next Version Available Date", "next_version_avail_date"),
     ("Next Version Start Date", "next_version_start_date"),
 ]
+
+
+class UserException(JdmToolException):
+    pass
 
 
 class IdPreset(Enum):
@@ -210,7 +215,7 @@ def cmd_list() -> None:
 def cmd_info(id: int) -> None:
     services = load_services()
     if id < 0 or id >= len(services):
-        raise DownloaderException("Invalid download ID")
+        raise UserException("Invalid download ID")
 
     service = services[id]
 
@@ -273,7 +278,7 @@ def _download(downloader: Downloader, service: Service) -> None:
 def cmd_download(id: int) -> None:
     services = load_services()
     if id < 0 or id >= len(services):
-        raise DownloaderException("Invalid download ID")
+        raise UserException("Invalid download ID")
 
     downloader = Downloader()
     service = services[id]
@@ -376,35 +381,35 @@ def update_dot_jdm(service: Service, path: pathlib.Path, config: DotJdmConfig) -
 def get_device_volume_id(path: pathlib.Path) -> int:
     partition = next((p for p in psutil.disk_partitions() if pathlib.Path(p.mountpoint) == path), None)
     if partition is None:
-        raise DownloaderException(f"Could not find the device name for {path}")
+        raise UserException(f"Could not find the device name for {path}")
 
     if psutil.LINUX:
         import pyudev  # type: ignore  pylint: disable=import-error
 
         if partition.fstype != 'vfat':
-            raise DownloaderException(f"Wrong filesystem: {partition.fstype}")
+            raise UserException(f"Wrong filesystem: {partition.fstype}")
 
         ctx = pyudev.Context()
         devices = list(ctx.list_devices(subsystem='block', DEVNAME=partition.device))
         if not devices:
-            raise DownloaderException(f"Could not find the device for {partition.device}")
+            raise JdmToolException(f"Could not find the device for {partition.device}")
 
         volume_id_str = devices[0].properties['ID_FS_UUID'].replace('-', '')
         if len(volume_id_str) != 8:
-            raise DownloaderException(f"Unexpected volume ID: {volume_id_str}")
+            raise JdmToolException(f"Unexpected volume ID: {volume_id_str}")
 
         return int(volume_id_str, 16)
     elif psutil.WINDOWS:
         import win32api  # type: ignore  pylint: disable=import-error
 
         if partition.fstype != 'FAT32':
-            raise DownloaderException(f"Wrong filesystem: {partition.fstype}")
+            raise UserException(f"Wrong filesystem: {partition.fstype}")
 
         return win32api.GetVolumeInformation(str(path))[1]
     elif psutil.MACOS:
-        raise DownloaderException("Volume IDs not yet supported; enter it manually using --vol-id")
+        raise UserException("Volume IDs not yet supported; enter it manually using --vol-id")
     else:
-        raise DownloaderException("OS not supported")
+        raise UserException("OS not supported")
 
 
 def _format_service_name(service: Service, now: datetime) -> str:
@@ -438,9 +443,9 @@ def _transfer_avidyne_e2(service: Service, path: pathlib.Path, volume_id: int) -
         # Look for files ending with dsf.txt, even not preceeded by a dot, or anything at all.
         dsf_txt_files = [f for f in database_zip.infolist() if '/' not in f.filename and f.filename.endswith('dsf.txt')]
         if not dsf_txt_files:
-            raise DownloaderException("Did not find a dsf.txt file")
+            raise JdmToolException("Did not find a dsf.txt file")
         if len(dsf_txt_files) > 1:
-            raise DownloaderException(f"Found multiple dsf.txt files: {dsf_txt_files}")
+            raise JdmToolException(f"Found multiple dsf.txt files: {dsf_txt_files}")
         dsf_txt_file = dsf_txt_files[0]
 
         with database_zip.open(dsf_txt_file) as dsf_bytes:
@@ -497,7 +502,7 @@ def _transfer_g1000_basic(service: Service, path: pathlib.Path, volume_id: int) 
         for info in infolist:
             info.filename = info.filename.replace('\\', '/')  # 🤦‍
             if info.filename not in FILENAME_TO_FEATURE:
-                raise DownloaderException(f"Unexpected filename: {info.filename}! Please file a bug.")
+                raise UserException(f"Unexpected filename: {info.filename}! Please file a bug.")
 
             target = path / info.filename
             with tqdm.tqdm(desc=f"Extracting {info.filename}...", total=info.file_size, unit='B', unit_scale=True) as t:
@@ -625,7 +630,7 @@ def _transfer_sd_card(services: List[Service], path: pathlib.Path, vol_id_overri
             elif service.get_optional_property("oem_garmin") == '1':
                 transfer_func = _transfer_g1000_basic
             else:
-                raise DownloaderException("This service is not yet supported")
+                raise UserException("This service is not yet supported")
         else:
             if service.get_optional_property("oem_garmin") == '1':
                 print()
@@ -635,14 +640,14 @@ def _transfer_sd_card(services: List[Service], path: pathlib.Path, vol_id_overri
                 print()
                 transfer_func = _transfer_g1000_chartview
             else:
-                raise DownloaderException("Unexpected service type")
+                raise UserException("Unexpected service type")
         transfer_funcs.append(transfer_func)
 
     if path.is_block_device():
-        raise DownloaderException(f"{path} is a device file; need the directory where the SD card is mounted")
+        raise UserException(f"{path} is a device file; need the directory where the SD card is mounted")
 
     if not path.is_dir():
-        raise DownloaderException(f"{path} is not a directory")
+        raise UserException(f"{path} is not a directory")
 
     if isinstance(path, pathlib.PosixPath):
         if not path.is_mount():
@@ -660,7 +665,7 @@ def _transfer_sd_card(services: List[Service], path: pathlib.Path, vol_id_overri
                 raise ValueError()
             volume_id = int(vol_id_override, 16)
         except ValueError:
-            raise DownloaderException("Volume ID must be 8 hex digits long") from None
+            raise UserException("Volume ID must be 8 hex digits long") from None
         print(f"Using a manually-provided volume ID: {volume_id:08x}")
     else:
         volume_id = get_device_volume_id(path)
@@ -674,7 +679,7 @@ def _transfer_sd_card(services: List[Service], path: pathlib.Path, vol_id_overri
     print()
     prompt = input(f"Transfer to {path}? (y/n) ")
     if prompt.lower() != 'y':
-        raise DownloaderException("Cancelled")
+        raise UserException("Cancelled")
 
     if not all(f.exists() for s in services for f in s.get_download_paths()):
         downloader = Downloader()
@@ -727,7 +732,7 @@ def _transfer_skybound(dev: SkyboundDevice, service: Service, full_erase: bool) 
     print()
     prompt = input("Transfer to the data card? (y/n) ")
     if prompt.lower() != 'y':
-        raise DownloaderException("Cancelled")
+        raise UserException("Cancelled")
 
     if not all(f.exists() for f in service.get_download_paths()):
         downloader = Downloader()
@@ -753,7 +758,7 @@ def cmd_transfer(
     full_erase: bool,
 ) -> None:
     if not ids:
-        raise DownloaderException("Need at least one download ID")
+        raise UserException("Need at least one download ID")
 
     all_services = load_services()
 
@@ -761,7 +766,7 @@ def cmd_transfer(
         try:
             services = [all_services[id] for id in ids]
         except IndexError:
-            raise DownloaderException("Invalid service ID") from None
+            raise UserException("Invalid service ID") from None
     else:
         services: List[Service] = []
         now = datetime.now()
@@ -774,32 +779,32 @@ def cmd_transfer(
                     services.append(service)
 
         if not services:
-            raise DownloaderException("Did not match any services")
+            raise UserException("Did not match any services")
 
     if no_download and not all(f.exists() for s in services for f in s.get_download_paths()):
-        raise DownloaderException("Need to download the data, but --no-download was specified")
+        raise UserException("Need to download the data, but --no-download was specified")
 
     card_types = set(int(service.get_property('media/card_type')) for service in services)
     if len(card_types) != 1:
-        raise DownloaderException("Cannot mix SD card and programmer device services")
+        raise UserException("Cannot mix SD card and programmer device services")
     card_type = card_types.pop()
 
     if card_type == CARD_TYPE_SD:
         if not device:
-            raise DownloaderException("This database requires a path to an SD card")
+            raise UserException("This database requires a path to an SD card")
 
         if full_erase:
-            raise DownloaderException("--full-erase only makes sense for data cards")
+            raise UserException("--full-erase only makes sense for data cards")
 
         _transfer_sd_card(services, pathlib.Path(device), vol_id)
     elif card_type == CARD_TYPE_SKYBOUND:
         if device:
-            raise DownloaderException("This database requires a programmer device and does not support paths")
+            raise UserException("This database requires a programmer device and does not support paths")
         if len(services) != 1:
-            raise DownloaderException("Cannot transfer multiple programmer device services at the same time")
+            raise UserException("Cannot transfer multiple programmer device services at the same time")
 
         if vol_id:
-            raise DownloaderException("--vol-id only makes sense for SD cards / USB drives")
+            raise UserException("--vol-id only makes sense for SD cards / USB drives")
 
         _transfer_skybound(services[0], full_erase)  # pylint: disable=no-value-for-parameter
 
@@ -824,7 +829,7 @@ def cmd_clean() -> None:
         print()
         prompt = input("Delete? (y/n) ")
         if prompt.lower() != 'y':
-            raise DownloaderException("Cancelled")
+            raise UserException("Cancelled")
 
         for path in obsolete_downloads:
             path.unlink()
@@ -1001,7 +1006,7 @@ def _write_database(dev: SkyboundDevice, path: str, full_erase: bool) -> None:
 def cmd_write_database(dev: SkyboundDevice, path: str, full_erase: bool) -> None:
     prompt = input(f"Transfer {path} to the data card? (y/n) ")
     if prompt.lower() != 'y':
-        raise DownloaderException("Cancelled")
+        raise UserException("Cancelled")
 
     try:
         _write_database(dev, path, full_erase)
@@ -1029,7 +1034,7 @@ def _clear_card(dev: SkyboundDevice) -> None:
 def cmd_clear_card(dev: SkyboundDevice) -> None:
     prompt = input("Clear all bytes on the data card? (y/n) ")
     if prompt.lower() != 'y':
-        raise DownloaderException("Cancelled")
+        raise UserException("Cancelled")
 
     _clear_card(dev)
 
@@ -1209,13 +1214,7 @@ def main():
 
     try:
         func(**kwargs)
-    except DownloaderException as ex:
-        print(ex)
-        return 1
-    except ServiceException as ex:
-        print(ex)
-        return 1
-    except SkyboundException as ex:
+    except JdmToolException as ex:
         print(ex)
         return 1
 

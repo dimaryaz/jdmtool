@@ -1,10 +1,13 @@
 from typing import TYPE_CHECKING, List, Tuple
 
+from .common import JdmToolException
+
+
 if TYPE_CHECKING:
     from usb1 import USBDeviceHandle
 
 
-class SkyboundException(Exception):
+class SkyboundException(JdmToolException):
     pass
 
 

@@ -9,10 +9,11 @@ import xml.etree.ElementTree as ET
 
 import platformdirs
 
+from .common import JdmToolException
 from .const import APP_NAME
 
 
-class ServiceException(Exception):
+class ServiceException(JdmToolException):
     pass
 
 

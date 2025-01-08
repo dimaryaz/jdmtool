@@ -11,13 +11,14 @@ import xml.etree.ElementTree as ET
 import requests
 
 
+from .common import JdmToolException
 from .service import get_data_dir, get_services_path
 
 
 GRM_FEAT_KEY = 'grm_feat_key.zip'
 
 
-class DownloaderException(Exception):
+class DownloaderException(JdmToolException):
     pass
 
 
