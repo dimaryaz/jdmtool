@@ -15,7 +15,7 @@ class SkyboundDevice():
     WRITE_ENDPOINT = 0x02
     READ_ENDPOINT = 0x81
 
-    TIMEOUT = 3000
+    TIMEOUT = 5000
 
     BLOCK_SIZE = 0x1000
     BLOCKS_PER_SECTOR = 0x10
