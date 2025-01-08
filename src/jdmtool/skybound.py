@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from typing import TYPE_CHECKING
 
 from .common import JdmToolException
@@ -31,7 +33,7 @@ class SkyboundDevice():
         "20140530": "G2 Orange",
     }
 
-    def __init__(self, handle: 'USBDeviceHandle') -> None:
+    def __init__(self, handle: USBDeviceHandle) -> None:
         self.handle = handle
         self.card_name = "undefined"
         self.chips = 0

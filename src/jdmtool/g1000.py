@@ -1,9 +1,11 @@
+from __future__ import annotations
+
 from collections.abc import Callable
 from enum import Enum
 from io import BytesIO
 import pathlib
 import sys
-from typing import BinaryIO, Optional
+from typing import BinaryIO
 
 from .checksum import feat_unlk_checksum
 
@@ -113,7 +115,7 @@ def copy_with_feat_unlk(
 
 def update_feat_unlk(
         dest_dir: pathlib.Path, feature: Feature, vol_id: int, security_id: int,
-        system_id: int, checksum: int, preview: Optional[str]
+        system_id: int, checksum: int, preview: str | None
 ) -> None:
     content1 = BytesIO()
 

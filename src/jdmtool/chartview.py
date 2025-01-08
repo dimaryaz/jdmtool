@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import argparse
 import binascii
 from collections.abc import Callable
@@ -7,7 +9,7 @@ from dataclasses import dataclass
 import datetime
 import pathlib
 import struct
-from typing import Any, BinaryIO, Optional
+from typing import Any, BinaryIO
 try:
     from typing import Self  # type: ignore
 except ImportError:
@@ -247,8 +249,8 @@ class ChartView:
 
     def process_charts(self, ifr_airports: set[str], vfr_airports: set[str], dest_path: pathlib.Path) -> dict[str, int]:
         records: list[list[Any]] = []
-        header: Optional[DbfHeader] = None
-        fields: Optional[list[DbfField]] = None
+        header: DbfHeader | None = None
+        fields: list[DbfField] | None = None
         for name, airports in (('charts.dbf', ifr_airports), ('vfrchrts.dbf', vfr_airports)):
             with self._open(name) as fd:
                 header, fields = DbfFile.read_header(fd)
@@ -355,12 +357,12 @@ class ChartView:
             ifr_countries: set[str], vfr_countries: set[str], dest_path: pathlib.Path
     ) -> None:
         records: list[list[Any]] = []
-        header: Optional[DbfHeader] = None
-        fields: Optional[list[DbfField]] = None
+        header: DbfHeader | None = None
+        fields: list[DbfField] | None = None
 
         with open(dest_path / 'notams.dbt', 'wb') as dbt_out:
             memo_idx = 1
-            dbt_out_header: Optional[DbtHeader] = None
+            dbt_out_header: DbtHeader | None = None
 
             for name, airports, countries in (
                 ('notams', ifr_airports, ifr_countries),

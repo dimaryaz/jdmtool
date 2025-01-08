@@ -1,3 +1,4 @@
+from __future__ import annotations
 
 import base64
 import binascii
@@ -6,7 +7,6 @@ import datetime
 import hashlib
 import json
 import pathlib
-from typing import Optional
 import xml.etree.ElementTree as ET
 
 import requests
@@ -137,7 +137,7 @@ class Downloader:
         self,
         params: dict[str, str],
         dest_path: pathlib.Path,
-        expected_crc: Optional[int],
+        expected_crc: int | None,
         progress_cb: Callable[[int], None],
     ) -> None:
         auth = self.get_auth()

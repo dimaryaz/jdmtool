@@ -1,10 +1,10 @@
+from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from collections import defaultdict
 from dataclasses import dataclass
 from datetime import datetime
 import pathlib
-from typing import Optional
 import xml.etree.ElementTree as ET
 
 from .common import JdmToolException, get_data_dir
@@ -17,8 +17,8 @@ class ServiceException(JdmToolException):
 @dataclass
 class DownloadConfig:
     dest_path: pathlib.Path
-    size: Optional[int]
-    crc32: Optional[int]
+    size: int | None
+    crc32: int | None
     params: dict[str, str]
 
 
@@ -33,7 +33,7 @@ def get_services_path() -> pathlib.Path:
 
 class Service(ABC):
     @abstractmethod
-    def get_optional_property(self, name: str, default: Optional[str] = None) -> Optional[str]:
+    def get_optional_property(self, name: str, default: str | None = None) -> str | None:
         ...
 
     @abstractmethod
@@ -84,7 +84,7 @@ class SimpleService(Service):
         super().__init__()
         self._xml = xml
 
-    def get_optional_property(self, name: str, default: Optional[str] = None) -> Optional[str]:
+    def get_optional_property(self, name: str, default: str | None = None) -> str | None:
         return self._xml.findtext(f'./{name}', default)
 
     def get_media(self) -> list[ET.Element]:
@@ -178,7 +178,7 @@ class ChartViewService(Service):
         super().__init__()
         self._subservices = subservices
 
-    def get_optional_property(self, name: str, default: Optional[str] = None) -> Optional[str]:
+    def get_optional_property(self, name: str, default: str | None = None) -> str | None:
         if name == 'coverage_desc':
             values = [s.get_property(name) for s in self._subservices]
             return ', '.join(values)

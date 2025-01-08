@@ -1,8 +1,10 @@
+from __future__ import annotations
+
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from collections.abc import Callable, Mapping
 import re
-from typing import BinaryIO, Optional, TextIO
+from typing import BinaryIO, TextIO
 try:
     from typing import Self  # type: ignore
 except ImportError:
@@ -47,7 +49,7 @@ def write_string(fd: BinaryIO, data: str) -> None:
 class SectionContext:
     header: str
     bitmask: int
-    conditional_info: Optional[str]
+    conditional_info: str | None
     param: str
 
 

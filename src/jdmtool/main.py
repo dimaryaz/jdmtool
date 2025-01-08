@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import argparse
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -11,7 +13,7 @@ import json
 import os
 import pathlib
 import shutil
-from typing import Any, Optional, TYPE_CHECKING, Union
+from typing import Any, TYPE_CHECKING
 import zipfile
 
 import psutil
@@ -244,7 +246,7 @@ def cmd_info(id: int) -> None:
         print(f'  {f}{status}')
 
 
-def _download(downloader: 'Downloader', service: Service) -> None:
+def _download(downloader: Downloader, service: Service) -> None:
     databases = service.get_databases()
     sffs = service.get_sffs()
     oems = service.get_oems()
@@ -629,7 +631,7 @@ def _transfer_g1000_chartview(service: Service, path: pathlib.Path, volume_id: i
     return DotJdmConfig(0x2000, dot_jdm_files)
 
 
-def _transfer_sd_card(services: list[Service], path: pathlib.Path, vol_id_override: Optional[str]) -> None:
+def _transfer_sd_card(services: list[Service], path: pathlib.Path, vol_id_override: str | None) -> None:
     transfer_funcs: list[Callable[[Service, pathlib.Path, int], DotJdmConfig]] = []
 
     for service in services:
@@ -766,10 +768,10 @@ def _transfer_skybound(dev: SkyboundDevice, service: Service, full_erase: bool) 
 
 
 def cmd_transfer(
-    ids: Union[list[int], IdPreset],
-    device: Optional[str],
+    ids: list[int] | IdPreset,
+    device: str | None,
     no_download: bool,
-    vol_id: Optional[str],
+    vol_id: str | None,
     full_erase: bool,
 ) -> None:
     if not ids:
@@ -1060,7 +1062,7 @@ def cmd_config_file() -> None:
     print(get_config_file())
 
 
-def _parse_ids(ids: str) -> Union[list[int], IdPreset]:
+def _parse_ids(ids: str) -> list[int] | IdPreset:
     try:
         return IdPreset(ids)
     except ValueError:
