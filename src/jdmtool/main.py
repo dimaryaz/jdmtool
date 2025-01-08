@@ -1112,7 +1112,7 @@ def main():
         type=str,
     )
     transfer_p.add_argument(
-        "--full-erase",
+        "-f", "--full-erase",
         action="store_true",
         help="Erase the whole card, regardless of the database size (only for data cards)",
     )
@@ -1166,7 +1166,7 @@ def main():
         help="File to write the database to",
     )
     read_database_p.add_argument(
-        "--full-card",
+        "-f", "--full-card",
         action="store_true",
         help="Read the full contents of the card instead of stopping at the first empty block",
     )
@@ -1181,7 +1181,7 @@ def main():
         help="Database file, e.g. dgrw72_2302_742ae60e.bin",
     )
     write_database_p.add_argument(
-        "--full-erase",
+        "-f", "--full-erase",
         action="store_true",
         help="Erase the whole card, regardless of the database size",
     )
