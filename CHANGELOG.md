@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.3.6 (2025-01-07)
+- Rewrite data card memory handling
+- Properly support 2MB, 4MB, 8MB, and 16MB data cards
+- Improve writing to data cards
+- Add a "clear-card" command
+- Add unit tests for data card logic
+
+Thank you [@ELD400](https://github.com/ELD400) for all the help!
+
 ## 0.3.5 (2024-12-24)
 - Support for Navdata for Avidyne EX5000
 - Support for 8MB non-WAAS data cards for GNS 400/500 series

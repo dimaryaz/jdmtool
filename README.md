@@ -5,7 +5,7 @@ A command-line tool for downloading and transferring Jeppesen databases aiming t
 It requires a Jeppesen subscription, and currenty supports the following services:
 - NavData for Garmin GNS 400/500 Series
   - Requires a Skybound data card programmer (USB ID `0e39:1250`)
-  - Requires a NavData card (16MB WAAS, 8MB non-WAAS, or 4MB non-WAAS)
+  - Requires a NavData card (16MB WAAS, 8MB, 6MB, 4MB, 3MB, 2MB)
 - NavData and Obstacles for Avidyne IFD 400 Series
 - NavData for Avidyne EX5000
 - (Very experimental) Garmin G1000 support
@@ -141,6 +141,7 @@ Selected service:
   Garmin GNS 400/500 Series WAAS - NavData                              2408    2024-08-08 - 2024-09-05
 
 Transfer to the data card? (y/n) y
+Blank checking: 100%|██████████████████████████████████████████████| 8.59M/8.59M [00:06<00:00, 1.33MB/s]
 Erasing the database: 100%|████████████████████████████████████████| 8.59M/8.59M [02:15<00:00, 63.1KB/s]
 Writing the database: 100%|████████████████████████████████████████| 8.59M/8.59M [04:14<00:00, 40.5KB/s]
 Verifying the database: 100%|██████████████████████████████████████| 8.59M/8.59M [01:32<00:00, 92.5KB/s]

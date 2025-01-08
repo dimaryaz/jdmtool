@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "jdmtool"
-version = "0.3.5"
+version = "0.3.6"
 authors = [
   { name="Dima Ryazanov", email="dima@gmail.com" },
 ]
