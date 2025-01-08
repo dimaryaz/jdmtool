@@ -16,11 +16,11 @@ import zipfile
 import psutil
 import tqdm
 
-from .common import JdmToolException
+from .common import JdmToolException, get_data_dir
 from .config import get_config, get_config_file
 from .const import GRM_FEAT_KEY
 from .skybound import SkyboundDevice, SkyboundException
-from .service import Service, ServiceException, SimpleService, get_data_dir, get_downloads_dir, load_services
+from .service import Service, ServiceException, SimpleService, get_downloads_dir, load_services
 
 
 if TYPE_CHECKING:

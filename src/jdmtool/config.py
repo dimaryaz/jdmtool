@@ -2,9 +2,7 @@ from configparser import ConfigParser
 import pathlib
 from typing import Optional
 
-import platformdirs
-
-from .const import APP_NAME
+from .common import get_config_dir
 
 
 CONFIG_FILE = 'config.ini'
@@ -16,12 +14,6 @@ DEFAULT_CONFIG = {
         "even_row_style": "",
     }
 }
-
-
-def get_config_dir() -> pathlib.Path:
-    path = pathlib.Path(platformdirs.user_config_dir(APP_NAME))
-    path.mkdir(parents=True, exist_ok=True)
-    return path
 
 
 def get_config_file() -> pathlib.Path:

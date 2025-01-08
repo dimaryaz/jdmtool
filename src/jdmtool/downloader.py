@@ -11,9 +11,9 @@ import xml.etree.ElementTree as ET
 import requests
 
 
-from .common import JdmToolException
+from .common import JdmToolException, get_data_dir
 from .const import GRM_FEAT_KEY
-from .service import get_data_dir, get_services_path
+from .service import get_services_path
 
 
 class DownloaderException(JdmToolException):

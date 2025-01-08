@@ -7,10 +7,7 @@ import pathlib
 from typing import DefaultDict, Dict, List, Optional, Tuple
 import xml.etree.ElementTree as ET
 
-import platformdirs
-
-from .common import JdmToolException
-from .const import APP_NAME
+from .common import JdmToolException, get_data_dir
 
 
 class ServiceException(JdmToolException):
@@ -24,11 +21,6 @@ class DownloadConfig:
     crc32: Optional[int]
     params: Dict[str, str]
 
-
-def get_data_dir() -> pathlib.Path:
-    path = pathlib.Path(platformdirs.user_data_dir(APP_NAME))
-    path.mkdir(parents=True, exist_ok=True)
-    return path
 
 def get_downloads_dir() -> pathlib.Path:
     path = get_data_dir() / 'downloads'
