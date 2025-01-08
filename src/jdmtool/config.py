@@ -21,7 +21,7 @@ def get_config_file() -> pathlib.Path:
 
 
 @cache
-def get_config():
+def get_config() -> ConfigParser:
     config = ConfigParser()
     try:
         with open(get_config_file(), encoding="utf-8") as fd:

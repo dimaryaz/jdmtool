@@ -123,7 +123,7 @@ def with_data_card(f: Callable):
     return wrapper
 
 
-def _loop_helper(dev, i):
+def _loop_helper(dev: SkyboundDevice, i: int):
     dev.set_led(i % 2 == 0)
     if not dev.has_card():
         raise SkyboundException("Data card has disappeared!")
