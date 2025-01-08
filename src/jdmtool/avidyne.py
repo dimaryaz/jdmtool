@@ -1,7 +1,8 @@
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
+from collections.abc import Callable, Mapping
 import re
-from typing import BinaryIO, Callable, List, Mapping, Optional, TextIO
+from typing import BinaryIO, Optional, TextIO
 try:
     from typing import Self  # type: ignore
 except ImportError:
@@ -139,7 +140,7 @@ class SFXScriptSection(SFXSection):
 @dataclass
 class SFXCopySection(SFXSection):
     mode: int
-    files: List[str]
+    files: list[str]
 
     SECTION_ID = 1
 
@@ -244,7 +245,7 @@ class SFXMessageBoxSection(SFXSection):
         write_string(out, self.message)
 
 
-SECTION_CLASSES: List[SFXSection] = [SFXScriptSection, SFXCopySection, SFXMessageBoxSection]
+SECTION_CLASSES: list[SFXSection] = [SFXScriptSection, SFXCopySection, SFXMessageBoxSection]
 SECTION_BY_ID: Mapping[int, SFXSection] = { cls.SECTION_ID: cls for cls in SECTION_CLASSES }
 
 
@@ -260,7 +261,7 @@ class SFXFile:
     CONDITIONAL_RE = re.compile(r'(\d):(\d):(\d)\t(.+\t.+\t.+\t.+)')
 
     version: str
-    sections: List[SFXSection]
+    sections: list[SFXSection]
 
     @classmethod
     def debug(cls, fd: BinaryIO) -> None:

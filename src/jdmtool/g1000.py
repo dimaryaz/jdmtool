@@ -1,8 +1,9 @@
+from collections.abc import Callable
 from enum import Enum
 from io import BytesIO
 import pathlib
 import sys
-from typing import BinaryIO, Callable, Dict, Optional
+from typing import BinaryIO, Optional
 
 from .checksum import feat_unlk_checksum
 
@@ -54,7 +55,7 @@ class Feature(Enum):
         self.bit = bit
 
 
-FILENAME_TO_FEATURE: Dict[str, Feature] = {
+FILENAME_TO_FEATURE: dict[str, Feature] = {
     'apt_dir.gca': Feature.AIRPORT_DIR,
     'bmap.bin': Feature.BASEMAP,
     'bmap2.bin': Feature.BASEMAP2,

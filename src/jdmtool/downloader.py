@@ -1,11 +1,12 @@
 
 import base64
 import binascii
+from collections.abc import Callable
 import datetime
 import hashlib
 import json
 import pathlib
-from typing import Callable, Dict, Optional, Tuple
+from typing import Optional
 import xml.etree.ElementTree as ET
 
 import requests
@@ -31,14 +32,14 @@ class Downloader:
         self.session.headers['User-Agent'] = None  # type: ignore
 
     @classmethod
-    def get_cov_check(cls) -> Tuple[str, str]:
+    def get_cov_check(cls) -> tuple[str, str]:
         now = datetime.datetime.now(datetime.timezone.utc)
         date_str = now.strftime('%a %b %d %H:%M:%S %Y')
         cov_check = hashlib.md5((date_str + cls.COV_CHECK_MAGIC).encode()).hexdigest()
         return date_str, cov_check
 
     @classmethod
-    def get_common_headers_params(cls) -> Tuple[Dict[str, str], Dict[str, str]]:
+    def get_common_headers_params(cls) -> tuple[dict[str, str], dict[str, str]]:
         date_str, cov_check = cls.get_cov_check()
         headers = {
             'Date': date_str,
@@ -134,7 +135,7 @@ class Downloader:
 
     def download_database(
         self,
-        params: Dict[str, str],
+        params: dict[str, str],
         dest_path: pathlib.Path,
         expected_crc: Optional[int],
         progress_cb: Callable[[int], None],
@@ -169,7 +170,7 @@ class Downloader:
 
         download_path.rename(dest_path)
 
-    def download_sff(self, params: Dict[str, str], dest_path: pathlib.Path) -> None:
+    def download_sff(self, params: dict[str, str], dest_path: pathlib.Path) -> None:
         auth = self.get_auth()
         common_headers, common_params = self.get_common_headers_params()
 
@@ -190,7 +191,7 @@ class Downloader:
 
         download_path.rename(dest_path)
 
-    def download_oem(self, params: Dict[str, str], dest_path: pathlib.Path) -> None:
+    def download_oem(self, params: dict[str, str], dest_path: pathlib.Path) -> None:
         common_headers, common_params = self.get_common_headers_params()
 
         with self.session.get(

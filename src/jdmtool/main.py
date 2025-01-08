@@ -1,4 +1,5 @@
 import argparse
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime
 from enum import Enum
@@ -10,7 +11,7 @@ import json
 import os
 import pathlib
 import shutil
-from typing import Any, Callable, Dict, List, Optional, Set, Tuple, TYPE_CHECKING, Union
+from typing import Any, Optional, TYPE_CHECKING, Union
 import zipfile
 
 import psutil
@@ -126,10 +127,10 @@ def _loop_helper(dev, i):
         raise SkyboundException("Data card has disappeared!")
 
 
-def _find_obsolete_downloads(services: List[Service]) -> Tuple[List[pathlib.Path], int]:
+def _find_obsolete_downloads(services: list[Service]) -> tuple[list[pathlib.Path], int]:
     good_downloads = set(f for s in services for f in s.get_download_paths())
 
-    obsolete_downloads: List[pathlib.Path] = []
+    obsolete_downloads: list[pathlib.Path] = []
     total_size = 0
 
     for path in get_downloads_dir().rglob('*'):
@@ -188,7 +189,7 @@ def cmd_refresh() -> None:
         )
 
 
-def _list(services: List[Service]) -> None:
+def _list(services: list[Service]) -> None:
     config = get_config()
     header_style = config.get("list", "header_style", fallback="")
     odd_row_style = config.get("list", "odd_row_style", fallback="")
@@ -298,7 +299,7 @@ def cmd_download(id: int) -> None:
 @dataclass
 class DotJdmConfig:
     sh_size: int
-    files: List[pathlib.Path]
+    files: list[pathlib.Path]
 
 
 def update_dot_jdm(service: Service, path: pathlib.Path, config: DotJdmConfig) -> None:
@@ -311,8 +312,8 @@ def update_dot_jdm(service: Service, path: pathlib.Path, config: DotJdmConfig) -
         data = {}
 
     # Calculate new file hashes
-    file_info: List[Dict[str, Any]] = []
-    file_path_set: Set[str] = set()
+    file_info: list[dict[str, Any]] = []
+    file_path_set: set[str] = set()
 
     for f in config.files:
         size = f.stat().st_size
@@ -531,7 +532,7 @@ def _transfer_g1000_chartview(service: Service, path: pathlib.Path, volume_id: i
     charts_path = path / 'Charts'
     charts_path.mkdir(exist_ok=True)
 
-    charts_files: List[str] = []
+    charts_files: list[str] = []
 
     zip_files = [d.dest_path for d in service.get_databases()]
     with ChartView(zip_files) as cv:
@@ -550,8 +551,8 @@ def _transfer_g1000_chartview(service: Service, path: pathlib.Path, volume_id: i
 
         airports_by_key = cv.get_airports_by_key()
 
-        ifr_airports: Set[str] = set()
-        vfr_airports: Set[str] = set()
+        ifr_airports: set[str] = set()
+        vfr_airports: set[str] = set()
 
         for (code, is_vfr), filenames in filenames_by_chart.items():
             print(f"Guessing subscription for code {code}...")
@@ -628,8 +629,8 @@ def _transfer_g1000_chartview(service: Service, path: pathlib.Path, volume_id: i
     return DotJdmConfig(0x2000, dot_jdm_files)
 
 
-def _transfer_sd_card(services: List[Service], path: pathlib.Path, vol_id_override: Optional[str]) -> None:
-    transfer_funcs: List[Callable[[Service, pathlib.Path, int], DotJdmConfig]] = []
+def _transfer_sd_card(services: list[Service], path: pathlib.Path, vol_id_override: Optional[str]) -> None:
+    transfer_funcs: list[Callable[[Service, pathlib.Path, int], DotJdmConfig]] = []
 
     for service in services:
         if isinstance(service, SimpleService):
@@ -765,7 +766,7 @@ def _transfer_skybound(dev: SkyboundDevice, service: Service, full_erase: bool) 
 
 
 def cmd_transfer(
-    ids: Union[List[int], IdPreset],
+    ids: Union[list[int], IdPreset],
     device: Optional[str],
     no_download: bool,
     vol_id: Optional[str],
@@ -782,7 +783,7 @@ def cmd_transfer(
         except IndexError:
             raise UserException("Invalid service ID") from None
     else:
-        services: List[Service] = []
+        services: list[Service] = []
         now = datetime.now()
         for service in all_services:
             if ids is IdPreset.CURRENT:
@@ -1059,7 +1060,7 @@ def cmd_config_file() -> None:
     print(get_config_file())
 
 
-def _parse_ids(ids: str) -> Union[List[int], IdPreset]:
+def _parse_ids(ids: str) -> Union[list[int], IdPreset]:
     try:
         return IdPreset(ids)
     except ValueError:

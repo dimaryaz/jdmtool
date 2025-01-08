@@ -1,6 +1,3 @@
-from typing import List
-
-
 CRC32Q_POLYNOMIAL = 0x814141AB
 
 # Full lookup table can be found in:
@@ -15,8 +12,8 @@ FEAT_UNLK_POLYNOMIAL_1 = 0x076dc419
 FEAT_UNLK_POLYNOMIAL_2 = 0x77073096
 
 
-def _create_lookup_table(polynomial: int, length: int) -> List[int]:
-    lookup_table: List[int] = []
+def _create_lookup_table(polynomial: int, length: int) -> list[int]:
+    lookup_table: list[int] = []
     for index in range(length):
         value = index << 24
         for _ in range(8):

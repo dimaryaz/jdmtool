@@ -1,12 +1,13 @@
 import argparse
 import binascii
+from collections.abc import Callable
 from collections import defaultdict
 import configparser
 from dataclasses import dataclass
 import datetime
 import pathlib
 import struct
-from typing import Any, BinaryIO, Callable, Dict, List, Optional, Set, Tuple
+from typing import Any, BinaryIO, Optional
 try:
     from typing import Self  # type: ignore
 except ImportError:
@@ -73,7 +74,7 @@ class ChartView:
         'lssdef.tcl',
     ]
 
-    CRC_FILES: List[Tuple[str, bool]] = [
+    CRC_FILES: list[tuple[str, bool]] = [
         ('airports.dbf', True),
         ('charts.dbf', True),
         ('charts.ini', True),
@@ -91,10 +92,10 @@ class ChartView:
         ('state.dbf', False),
     ]
 
-    _handles: List[zipfile.ZipFile]
-    _entry_map: Dict[str, Tuple[zipfile.ZipFile, zipfile.ZipInfo]]
+    _handles: list[zipfile.ZipFile]
+    _entry_map: dict[str, tuple[zipfile.ZipFile, zipfile.ZipInfo]]
 
-    def __init__(self, zip_list: List[pathlib.Path]) -> None:
+    def __init__(self, zip_list: list[pathlib.Path]) -> None:
         self._handles = [zipfile.ZipFile(path) for path in zip_list]
         self._entry_map = {}
 
@@ -112,7 +113,7 @@ class ChartView:
     def __exit__(self, type, value, traceback) -> None:
         self.close()
 
-    def find_charts_bin(self) -> List[Tuple[zipfile.ZipFile, zipfile.ZipInfo]]:
+    def find_charts_bin(self) -> list[tuple[zipfile.ZipFile, zipfile.ZipInfo]]:
         return [value for name, value in self._entry_map.items() if name.endswith('.bin')]
 
     def _open(self, name: str) -> BinaryIO:
@@ -144,8 +145,8 @@ class ChartView:
 
     def process_charts_bin(
             self, dest_path: pathlib.Path, db_begin_date: str, progress_cb: Callable[[int], None]
-    ) -> Dict[Tuple[str, bool], List[str]]:
-        filenames: Dict[Tuple[str, bool], List[str]] = {}
+    ) -> dict[tuple[str, bool], list[str]]:
+        filenames: dict[tuple[str, bool], list[str]] = {}
 
         charts_bin_dest = dest_path / 'charts.bin'
         with open(charts_bin_dest, 'wb') as charts_bin_fd:
@@ -157,9 +158,9 @@ class ChartView:
                 crc32q = crc32q_checksum(data, crc32q)
                 progress_cb(len(data))
 
-            chart_fds: List[BinaryIO] = []
-            headers: List[ChartHeader] = []
-            all_records: List[ChartRecord] = []
+            chart_fds: list[BinaryIO] = []
+            headers: list[ChartHeader] = []
+            all_records: list[ChartRecord] = []
 
             total_size = 0
             total_files = 0
@@ -224,8 +225,8 @@ class ChartView:
 
         return filenames
 
-    def get_charts_by_airport(self, vfr: bool) -> Dict[str, List[str]]:
-        charts: defaultdict[str, List[str]] = defaultdict(list)
+    def get_charts_by_airport(self, vfr: bool) -> dict[str, list[str]]:
+        charts: defaultdict[str, list[str]] = defaultdict(list)
         chart_filename = 'vfrchrts.dbf' if vfr else 'charts.dbf'
         with self._open(chart_filename) as fd:
             header, fields = DbfFile.read_header(fd)
@@ -234,8 +235,8 @@ class ChartView:
                 charts[record[0]].append(record[1])
         return charts
 
-    def get_airports_by_key(self) -> Dict[int, Set[str]]:
-        result: defaultdict[int, Set[str]] = defaultdict(set)
+    def get_airports_by_key(self) -> dict[int, set[str]]:
+        result: defaultdict[int, set[str]] = defaultdict(set)
         with self._open('coverags.dbf') as fd:
             header, fields = DbfFile.read_header(fd)
             for _ in range(header.num_records):
@@ -244,10 +245,10 @@ class ChartView:
         return result
 
 
-    def process_charts(self, ifr_airports: Set[str], vfr_airports: Set[str], dest_path: pathlib.Path) -> Dict[str, int]:
-        records: List[List[Any]] = []
+    def process_charts(self, ifr_airports: set[str], vfr_airports: set[str], dest_path: pathlib.Path) -> dict[str, int]:
+        records: list[list[Any]] = []
         header: Optional[DbfHeader] = None
-        fields: Optional[List[DbfField]] = None
+        fields: Optional[list[DbfField]] = None
         for name, airports in (('charts.dbf', ifr_airports), ('vfrchrts.dbf', vfr_airports)):
             with self._open(name) as fd:
                 header, fields = DbfFile.read_header(fd)
@@ -265,7 +266,7 @@ class ChartView:
         header.num_records = len(records)
         header.last_update = self._last_update()
 
-        indexes: Dict[str, int] = {}
+        indexes: dict[str, int] = {}
 
         with open(dest_path / 'charts.dbf', 'wb') as fd:
             DbfFile.write_header(fd, header, fields)
@@ -275,7 +276,7 @@ class ChartView:
 
         return indexes
 
-    def process_chartlink(self, ifr_airports: Set[str], vfr_airports: Set[str], dest_path: pathlib.Path) -> Dict[str, int]:
+    def process_chartlink(self, ifr_airports: set[str], vfr_airports: set[str], dest_path: pathlib.Path) -> dict[str, int]:
         with self._open('chrtlink.dbf') as fd:
             header, fields = DbfFile.read_header(fd)
             records = []
@@ -286,7 +287,7 @@ class ChartView:
 
         header.num_records = len(records)
 
-        indexes: Dict[str, int] = {}
+        indexes: dict[str, int] = {}
 
         with open(dest_path / 'chrtlink.dbf', 'wb') as fd:
             DbfFile.write_header(fd, header, fields)
@@ -297,12 +298,12 @@ class ChartView:
         return indexes
 
     def process_airports(
-            self, ifr_airports: Set[str], vfr_airports: Set[str],
-            chart: Dict[str, int], chartlink: Dict[str, int], dest_path: pathlib.Path
-    ) -> Tuple[Set[str], Set[str]]:
-        ifr_countries: Set[str] = set()
-        vfr_countries: Set[str] = set()
-        records: Dict[str, List[Any]] = {}
+            self, ifr_airports: set[str], vfr_airports: set[str],
+            chart: dict[str, int], chartlink: dict[str, int], dest_path: pathlib.Path
+    ) -> tuple[set[str], set[str]]:
+        ifr_countries: set[str] = set()
+        vfr_countries: set[str] = set()
+        records: dict[str, list[Any]] = {}
 
         with self._open('airports.dbf') as fd:
             header, fields = DbfFile.read_header(fd)
@@ -350,12 +351,12 @@ class ChartView:
 
 
     def process_notams(
-            self, ifr_airports: Set[str], vfr_airports: Set[str],
-            ifr_countries: Set[str], vfr_countries: Set[str], dest_path: pathlib.Path
+            self, ifr_airports: set[str], vfr_airports: set[str],
+            ifr_countries: set[str], vfr_countries: set[str], dest_path: pathlib.Path
     ) -> None:
-        records: List[List[Any]] = []
+        records: list[list[Any]] = []
         header: Optional[DbfHeader] = None
-        fields: Optional[List[DbfField]] = None
+        fields: Optional[list[DbfField]] = None
 
         with open(dest_path / 'notams.dbt', 'wb') as dbt_out:
             memo_idx = 1
@@ -408,7 +409,7 @@ class ChartView:
         handle, entry = self._entry_map[filename.lower()]
         handle.extract(entry, dest_path)
 
-    def extract_fonts(self, dest_path: pathlib.Path) -> List[str]:
+    def extract_fonts(self, dest_path: pathlib.Path) -> list[str]:
         paths = []
         for name, (handle, entry) in self._entry_map.items():
             if not entry.is_dir() and name.startswith("fonts/"):

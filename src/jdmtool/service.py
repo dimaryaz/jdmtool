@@ -4,7 +4,7 @@ from collections import defaultdict
 from dataclasses import dataclass
 from datetime import datetime
 import pathlib
-from typing import DefaultDict, Dict, List, Optional, Tuple
+from typing import Optional
 import xml.etree.ElementTree as ET
 
 from .common import JdmToolException, get_data_dir
@@ -19,7 +19,7 @@ class DownloadConfig:
     dest_path: pathlib.Path
     size: Optional[int]
     crc32: Optional[int]
-    params: Dict[str, str]
+    params: dict[str, str]
 
 
 def get_downloads_dir() -> pathlib.Path:
@@ -37,22 +37,22 @@ class Service(ABC):
         ...
 
     @abstractmethod
-    def get_media(self) -> List[ET.Element]:
+    def get_media(self) -> list[ET.Element]:
         ...
 
     @abstractmethod
-    def get_databases(self) -> List[DownloadConfig]:
+    def get_databases(self) -> list[DownloadConfig]:
         ...
 
     @abstractmethod
-    def get_sffs(self) -> List[DownloadConfig]:
+    def get_sffs(self) -> list[DownloadConfig]:
         ...
 
     @abstractmethod
-    def get_oems(self) -> List[DownloadConfig]:
+    def get_oems(self) -> list[DownloadConfig]:
         ...
 
-    def get_download_paths(self) -> List[pathlib.Path]:
+    def get_download_paths(self) -> list[pathlib.Path]:
         return [cfg.dest_path for cfg in self.get_databases() + self.get_sffs() + self.get_oems()]
 
     def get_property(self, name: str) -> str:
@@ -63,7 +63,7 @@ class Service(ABC):
 
         return value
 
-    def get_fingerprint(self) -> Tuple[str, str, str]:
+    def get_fingerprint(self) -> tuple[str, str, str]:
         return (
             self.get_property('unique_service_id'),
             self.get_property('service_code'),
@@ -87,7 +87,7 @@ class SimpleService(Service):
     def get_optional_property(self, name: str, default: Optional[str] = None) -> Optional[str]:
         return self._xml.findtext(f'./{name}', default)
 
-    def get_media(self) -> List[ET.Element]:
+    def get_media(self) -> list[ET.Element]:
         return self._xml.findall('./media')
 
     @classmethod
@@ -116,10 +116,10 @@ class SimpleService(Service):
             ),
         )
 
-    def get_databases(self) -> List[DownloadConfig]:
+    def get_databases(self) -> list[DownloadConfig]:
         return [self.get_database()]
 
-    def get_sffs(self) -> List[DownloadConfig]:
+    def get_sffs(self) -> list[DownloadConfig]:
         sff_filenames_str = self.get_optional_property('./oem_garmin_sff_filenames')
         if not sff_filenames_str:
             return []
@@ -138,7 +138,7 @@ class SimpleService(Service):
             avionics_id=self.get_property('avionics_id'),
         )
 
-        cfgs: List[DownloadConfig] = []
+        cfgs: list[DownloadConfig] = []
         sff_filenames = sff_filenames_str.split(',')
         for sff_filename in sff_filenames:
             self._check_filename(sff_filename)
@@ -154,7 +154,7 @@ class SimpleService(Service):
 
         return cfgs
 
-    def get_oems(self) -> List[DownloadConfig]:
+    def get_oems(self) -> list[DownloadConfig]:
         size_str = self.get_optional_property('oem_package_filesize')
         version = self.get_property('version')
         oem_package_name = self.get_optional_property('oem_package_name', self.DEFAULT_OEM)
@@ -174,7 +174,7 @@ class SimpleService(Service):
 
 
 class ChartViewService(Service):
-    def __init__(self, subservices: List[SimpleService]) -> None:
+    def __init__(self, subservices: list[SimpleService]) -> None:
         super().__init__()
         self._subservices = subservices
 
@@ -188,17 +188,17 @@ class ChartViewService(Service):
     def get_media(self):
         return self._subservices[0].get_media()
 
-    def get_databases(self) -> List[DownloadConfig]:
+    def get_databases(self) -> list[DownloadConfig]:
         return [s.get_database() for s in self._subservices]
 
-    def get_sffs(self) -> List[DownloadConfig]:
+    def get_sffs(self) -> list[DownloadConfig]:
         return self._subservices[0].get_sffs()
 
-    def get_oems(self) -> List[DownloadConfig]:
+    def get_oems(self) -> list[DownloadConfig]:
         return self._subservices[0].get_oems()
 
 
-def load_services() -> List[Service]:
+def load_services() -> list[Service]:
     try:
         root = ET.parse(get_services_path())
     except FileNotFoundError:
@@ -206,8 +206,8 @@ def load_services() -> List[Service]:
 
     xml_services = root.findall('./service')
 
-    services: List[Service] = []
-    chartview_by_sn_version: DefaultDict[Tuple[str, str], List[SimpleService]] = defaultdict(list)
+    services: list[Service] = []
+    chartview_by_sn_version: defaultdict[tuple[str, str], list[SimpleService]] = defaultdict(list)
 
     for xml_service in xml_services:
         category = xml_service.findtext('./category', '')

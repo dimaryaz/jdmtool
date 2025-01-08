@@ -1,4 +1,4 @@
-from typing import TYPE_CHECKING, List, Tuple
+from typing import TYPE_CHECKING
 
 from .common import JdmToolException
 
@@ -63,7 +63,7 @@ class SkyboundDevice():
         if not self.has_card():
             raise SkyboundException("Card is missing!")
 
-        chip_iids: List[int] = []
+        chip_iids: list[int] = []
 
         for offset in self.MEMORY_OFFSETS:
             self.select_physical_sector(offset)
@@ -111,7 +111,7 @@ class SkyboundDevice():
             # Unknown IID
             raise SkyboundException(f"Unknown data card with chip IIDs: {hex_iids}. Please file a bug!")
 
-    def get_firmware_version_name(self) -> Tuple[str, str]:
+    def get_firmware_version_name(self) -> tuple[str, str]:
         self.write(b"\x60")
         version = self.read(0x0040).decode()
         name = self.FIRMWARE_NAME.get(version, "unknown")
