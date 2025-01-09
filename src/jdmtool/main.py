@@ -726,9 +726,6 @@ def _transfer_skybound(dev: SkyboundDevice, service: Service, full_erase: bool) 
     databases = service.get_databases()
     assert len(databases) == 1, databases
 
-    version = service.get_property('version')
-    unique_service_id = service.get_property('unique_service_id')
-
     card_size_min = int(service.get_property('media/card_size_min'))
     card_size_max = int(service.get_property('media/card_size_max'))
 
