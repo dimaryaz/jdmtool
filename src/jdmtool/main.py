@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 from collections.abc import Callable
+from contextvars import ContextVar
 from dataclasses import dataclass
 from datetime import datetime
 from enum import Enum
@@ -70,6 +71,19 @@ class UserException(JdmToolException):
 class IdPreset(Enum):
     CURRENT = 'curr'
     NEXT = 'next'
+
+
+def default_confirm_impl(prompt: str) -> None:
+    prompt = input(f"{prompt} (y/n) ")
+    if prompt.lower() != 'y':
+        raise UserException("Cancelled")
+
+
+PROMPT_CTX = ContextVar("prompt_func", default=default_confirm_impl)
+
+
+def confirm(prompt: str) -> None:
+    PROMPT_CTX.get()(prompt)
 
 
 def with_usb(f: Callable):
@@ -690,9 +704,7 @@ def _transfer_sd_card(services: list[Service], path: pathlib.Path, vol_id_overri
     for service in services:
         print("  " + _format_service_name(service, now))
     print()
-    prompt = input(f"Transfer to {path}? (y/n) ")
-    if prompt.lower() != 'y':
-        raise UserException("Cancelled")
+    confirm(f"Transfer to {path}?")
 
     if not all(f.exists() for s in services for f in s.get_download_paths()):
         from .downloader import Downloader
@@ -742,9 +754,7 @@ def _transfer_skybound(dev: SkyboundDevice, service: Service, full_erase: bool) 
     print("Selected service:")
     print("  " + _format_service_name(service, datetime.now()))
     print()
-    prompt = input("Transfer to the data card? (y/n) ")
-    if prompt.lower() != 'y':
-        raise UserException("Cancelled")
+    confirm("Transfer to the data card?")
 
     if not all(f.exists() for f in service.get_download_paths()):
         from .downloader import Downloader
@@ -833,9 +843,7 @@ def cmd_clean() -> None:
             print(f"  {path}")
 
         print()
-        prompt = input("Delete? (y/n) ")
-        if prompt.lower() != 'y':
-            raise UserException("Cancelled")
+        confirm("Delete?")
 
         for path in obsolete_downloads:
             path.unlink()
@@ -971,9 +979,7 @@ def _write_database(dev: SkyboundDevice, path: str, full_erase: bool) -> None:
 
 @with_data_card
 def cmd_write_database(dev: SkyboundDevice, path: str, full_erase: bool) -> None:
-    prompt = input(f"Transfer {path} to the data card? (y/n) ")
-    if prompt.lower() != 'y':
-        raise UserException("Cancelled")
+    confirm(f"Transfer {path} to the data card?")
 
     try:
         _write_database(dev, path, full_erase)
@@ -999,9 +1005,7 @@ def _clear_card(dev: SkyboundDevice) -> None:
 
 @with_data_card
 def cmd_clear_card(dev: SkyboundDevice) -> None:
-    prompt = input("Clear all bytes on the data card? (y/n) ")
-    if prompt.lower() != 'y':
-        raise UserException("Cancelled")
+    confirm("Clear all bytes on the data card?")
 
     _clear_card(dev)
 
@@ -1023,6 +1027,12 @@ def main():
     parser = argparse.ArgumentParser(description="Download and transfer Jeppesen databases")
 
     parser.add_argument('--version', action='version', version=importlib_metadata.version('jdmtool'))
+
+    parser.add_argument(
+        '-y', '--assume-yes',
+        action='store_true',
+        help="Disable confirmations; assume the answer is 'yes' for everything",
+    )
 
     subparsers = parser.add_subparsers(metavar="<command>")
     subparsers.required = True
@@ -1162,6 +1172,9 @@ def main():
 
     kwargs = vars(args)
     func = kwargs.pop('func')
+
+    if kwargs.pop('assume_yes'):
+        PROMPT_CTX.set(lambda _: None)
 
     try:
         func(**kwargs)
