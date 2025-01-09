@@ -418,7 +418,7 @@ def get_device_volume_id(path: pathlib.Path) -> int:
         if partition.fstype != 'FAT32':
             raise UserException(f"Wrong filesystem: {partition.fstype}")
 
-        return win32api.GetVolumeInformation(str(path))[1]
+        return win32api.GetVolumeInformation(str(path))[1] & 0xFFFFFFFF
     elif psutil.MACOS:
         raise UserException("Volume IDs not yet supported; enter it manually using --vol-id")
     else:
