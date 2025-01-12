@@ -4,7 +4,8 @@ from typing import Optional
 
 import pytest
 
-from jdmtool.skybound import SkyboundDevice, SkyboundException
+from jdmtool.data_card.common import ProgrammingException
+from jdmtool.data_card.skybound import SkyboundDevice
 
 
 class WriteFormat(Enum):
@@ -26,12 +27,12 @@ CHIP_AMD_4MB_ORANGE = ChipConfig(0x89007e00, 0x40, WriteFormat.FORMAT_2)
 
 
 SUPPORTED_CARDS = [
-    (CHIP_INTEL_1MB, 2, "2MB"),
-    (CHIP_INTEL_1MB, 3, "3MB"),
-    (CHIP_INTEL_1MB, 4, "4MB"),
-    (CHIP_AMD_2MB, 2, "4MB"),
-    (CHIP_AMD_2MB, 3, "6MB"),
-    (CHIP_AMD_2MB, 4, "8MB"),
+    (CHIP_INTEL_1MB, 2, "2MB non-WAAS (white)"),
+    (CHIP_INTEL_1MB, 3, "3MB non-WAAS (white)"),
+    (CHIP_INTEL_1MB, 4, "4MB non-WAAS (white)"),
+    (CHIP_AMD_2MB, 2, "4MB non-WAAS (green)"),
+    (CHIP_AMD_2MB, 3, "6MB non-WAAS (green)"),
+    (CHIP_AMD_2MB, 4, "8MB non-WAAS (green)"),
     (CHIP_AMD_4MB_SILVER, 4, "16MB WAAS (silver)"),
     (CHIP_AMD_4MB_ORANGE, 4, "16MB WAAS (orange)"),
 ]
@@ -179,7 +180,7 @@ def test_init_no_card(g2_orange):
     mock = UsbHandleMockNoCard(g2_orange)
 
     device = SkyboundDevice(mock)
-    with pytest.raises(SkyboundException, match="Card is missing"):
+    with pytest.raises(ProgrammingException, match="Card is missing"):
         device.init_data_card()
 
 
@@ -192,7 +193,7 @@ def test_init_card(g2_orange, chip, n_chips, name):
     device.init_data_card()
 
     assert device.sectors_per_chip == chip.sectors
-    assert device.card_name == name
+    assert device.get_card_name() == name
 
 
 @pytest.mark.parametrize("g2_orange", [False, True])
@@ -201,21 +202,21 @@ def test_init_errors(g2_orange):
     mock = UsbHandleMock(0, FAKE_CHIP, g2_orange)
 
     device = SkyboundDevice(mock)
-    with pytest.raises(SkyboundException, match="Unsupported"):
+    with pytest.raises(ProgrammingException, match="Unsupported"):
         device.init_data_card()
 
     # One chip (not supported, even if it's a real chip)
     mock = UsbHandleMock(1, CHIP_AMD_2MB, g2_orange)
 
     device = SkyboundDevice(mock)
-    with pytest.raises(SkyboundException, match="Unexpected|Unknown"):
+    with pytest.raises(ProgrammingException, match="Unknown"):
         device.init_data_card()
 
     # Four chips, but unknown ID
     mock = UsbHandleMock(4, FAKE_CHIP, g2_orange)
 
     device = SkyboundDevice(mock)
-    with pytest.raises(SkyboundException, match="Unknown"):
+    with pytest.raises(ProgrammingException, match="Unknown"):
         device.init_data_card()
 
 

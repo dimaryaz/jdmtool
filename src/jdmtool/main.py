@@ -23,7 +23,7 @@ import tqdm
 from .common import JdmToolException, get_data_dir
 from .config import get_config, get_config_file
 from .const import GRM_FEAT_KEY
-from .skybound import SkyboundDevice, SkyboundException
+from .data_card.common import ProgrammingDevice, ProgrammingException
 from .service import Service, ServiceException, SimpleService, get_downloads_dir, load_services
 
 
@@ -89,35 +89,10 @@ def confirm(prompt: str) -> None:
 def with_usb(f: Callable):
     @wraps(f)
     def wrapper(*args, **kwargs):
-        try:
-            from usb1 import USBContext, USBError
-        except ImportError:
-            raise SkyboundException("Please install USB support by running `pip3 install jdmtool[usb]") from None
+        from .data_card.detect import open_programming_device
 
-        with USBContext() as usbcontext:
-            try:
-                usbdev = usbcontext.getByVendorIDAndProductID(SkyboundDevice.VID, SkyboundDevice.PID)
-                if usbdev is None:
-                    raise SkyboundException("Device not found")
-
-                print(f"Found device: {usbdev}")
-                handle = usbdev.open()
-            except USBError as ex:
-                raise SkyboundException(f"Could not open device: {ex}") from ex
-
-            try:
-                handle.setAutoDetachKernelDriver(True)
-            except USBError:
-                # Safe to ignore if it's not supported.
-                pass
-
-            with handle.claimInterface(0):
-                handle.resetDevice()
-                dev = SkyboundDevice(handle)
-                try:
-                    f(dev, *args, **kwargs)
-                finally:
-                    dev.set_led(False)
+        with open_programming_device() as dev:
+            f(dev, *args, **kwargs)
 
     return wrapper
 
@@ -125,12 +100,12 @@ def with_usb(f: Callable):
 def with_data_card(f: Callable):
     @wraps(f)
     @with_usb
-    def wrapper(dev: SkyboundDevice, *args, **kwargs):
+    def wrapper(dev: ProgrammingDevice, *args, **kwargs):
         if not dev.has_card():
-            raise SkyboundException("Card is missing!")
+            raise ProgrammingException("Card is missing!")
 
         dev.init_data_card()
-        print(f"Detected data card: {dev.card_name}")
+        print(f"Detected data card: {dev.get_card_name()}")
 
         f(dev, *args, **kwargs)
 
@@ -728,7 +703,7 @@ def _transfer_sd_card(services: list[Service], path: pathlib.Path, vol_id_overri
 
 
 @with_data_card
-def _transfer_skybound(dev: SkyboundDevice, service: Service, full_erase: bool) -> None:
+def _transfer_data_card(dev: ProgrammingDevice, service: Service, full_erase: bool) -> None:
     databases = service.get_databases()
     assert len(databases) == 1, databases
 
@@ -816,7 +791,7 @@ def cmd_transfer(
         if vol_id:
             raise UserException("--vol-id only makes sense for SD cards / USB drives")
 
-        _transfer_skybound(services[0], full_erase)  # pylint: disable=no-value-for-parameter
+        _transfer_data_card(services[0], full_erase)  # pylint: disable=no-value-for-parameter
 
     print("Done")
 
@@ -848,28 +823,25 @@ def cmd_clean() -> None:
 
 
 @with_usb
-def cmd_detect(dev: SkyboundDevice, verbose: bool) -> None:
-    dev.set_led(True)
-    version, name = dev.get_firmware_version_name()
-    print(f"Firmware version: {version} ({name})")
+def cmd_detect(dev: ProgrammingDevice, verbose: bool) -> None:
+    firmware = dev.get_firmware_description()
+    print(f"Firmware version: {firmware}")
     if dev.has_card():
         if verbose:
             # Print IIDs first, even if it's an unsupported card.
-            print("Chip IIDs:")
-            for chip_idx, iid in enumerate(dev.get_chip_iids()):
-                print(f"  Chip {chip_idx}: 0x{iid:08x}")
+            print(f"Chip IIDs: {' '.join(f'0x{iid:08x}' for iid in dev.get_chip_iids())}")
         # Then (try to) initialize the card and print the info.
         dev.init_data_card()
-        print(f"Card type: {dev.card_name}, {dev.chips} chips of {dev.sectors_per_chip//0x10}MB")
+        print(f"Card type: {dev.get_card_name()}, {dev.get_card_description()}")
     else:
         print("No card")
 
 @with_data_card
-def cmd_read_database(dev: SkyboundDevice, path: str, full_card: bool) -> None:
+def cmd_read_database(dev: ProgrammingDevice, path: str, full_card: bool) -> None:
     with open(path, 'w+b') as fd:
         with tqdm.tqdm(desc="Reading the database", total=dev.get_total_size(), unit='B', unit_scale=True) as t:
             for block in dev.read_blocks(0, dev.get_total_sectors()):
-                if not full_card and block == b'\xFF' * SkyboundDevice.BLOCK_SIZE:
+                if not full_card and block == b'\xFF' * ProgrammingDevice.BLOCK_SIZE:
                     # Garmin card has no concept of size of the data,
                     # so we stop when we see a completely empty block.
                     break
@@ -879,39 +851,39 @@ def cmd_read_database(dev: SkyboundDevice, path: str, full_card: bool) -> None:
 
     print("Done")
 
-def _write_database(dev: SkyboundDevice, path: str, full_erase: bool) -> None:
+def _write_database(dev: ProgrammingDevice, path: str, full_erase: bool) -> None:
     max_size = dev.get_total_size()
 
     with open(path, 'rb') as fd:
         size = os.fstat(fd.fileno()).st_size
 
         if size > max_size:
-            raise SkyboundException(f"Database file is too big: {size}! The maximum size is {max_size}.")
+            raise ProgrammingException(f"Database file is too big: {size}! The maximum size is {max_size}.")
 
         def _read_block():
-            return fd.read(SkyboundDevice.BLOCK_SIZE).ljust(SkyboundDevice.BLOCK_SIZE, b'\xFF')
+            return fd.read(ProgrammingDevice.BLOCK_SIZE).ljust(ProgrammingDevice.BLOCK_SIZE, b'\xFF')
 
-        sectors_required = -(-size // SkyboundDevice.SECTOR_SIZE)
-        total_size = sectors_required * SkyboundDevice.SECTOR_SIZE
+        sectors_required = -(-size // ProgrammingDevice.SECTOR_SIZE)
+        total_size = sectors_required * ProgrammingDevice.SECTOR_SIZE
 
         if full_erase:
             sectors_to_erase = dev.get_total_sectors()
         else:
             # Erase an extra sector just to be safe.
             sectors_to_erase = min(sectors_required + 1, dev.get_total_sectors())
-        total_erase_size = sectors_to_erase * SkyboundDevice.SECTOR_SIZE
+        total_erase_size = sectors_to_erase * ProgrammingDevice.SECTOR_SIZE
 
         sector_is_blank = [True] * sectors_to_erase
 
         with tqdm.tqdm(desc="Blank checking", total=total_erase_size, unit='B', unit_scale=True) as t:
             for sector_idx in range(sectors_to_erase):
                 for i, block in enumerate(dev.read_blocks(sector_idx, 1)):
-                    if block != b'\xff' * SkyboundDevice.BLOCK_SIZE:
+                    if block != b'\xff' * ProgrammingDevice.BLOCK_SIZE:
                         sector_is_blank[sector_idx] = False
-                        t.update(SkyboundDevice.BLOCK_SIZE * (SkyboundDevice.BLOCKS_PER_SECTOR - i))
+                        t.update(ProgrammingDevice.BLOCK_SIZE * (ProgrammingDevice.BLOCKS_PER_SECTOR - i))
                         break
 
-                    t.update(SkyboundDevice.BLOCK_SIZE)
+                    t.update(ProgrammingDevice.BLOCK_SIZE)
 
         # Data card can only write by changing 1s to 0s (effectively doing a bit-wise AND with
         # the existing contents), so all data needs to be "erased" first to reset everything to 1s.
@@ -920,11 +892,11 @@ def _write_database(dev: SkyboundDevice, path: str, full_erase: bool) -> None:
                 if not sector_is_blank[sector_idx]:
                     for _ in dev.erase_sectors(sector_idx, 1):
                         pass
-                t.update(SkyboundDevice.SECTOR_SIZE)
+                t.update(ProgrammingDevice.SECTOR_SIZE)
 
         with tqdm.tqdm(desc="Writing the database", total=total_size, unit='B', unit_scale=True) as t:
             for _ in dev.write_blocks(0, sectors_required, _read_block):
-                t.update(SkyboundDevice.BLOCK_SIZE)
+                t.update(ProgrammingDevice.BLOCK_SIZE)
 
         fd.seek(0)
 
@@ -933,33 +905,33 @@ def _write_database(dev: SkyboundDevice, path: str, full_erase: bool) -> None:
                 file_block = _read_block()
 
                 if card_block != file_block:
-                    raise SkyboundException("Verification failed!")
+                    raise ProgrammingException("Verification failed!")
 
                 t.update(len(file_block))
 
 @with_data_card
-def cmd_write_database(dev: SkyboundDevice, path: str, full_erase: bool) -> None:
+def cmd_write_database(dev: ProgrammingDevice, path: str, full_erase: bool) -> None:
     confirm(f"Transfer {path} to the data card?")
 
     try:
         _write_database(dev, path, full_erase)
     except IOError as ex:
-        raise SkyboundException(f"Could not read the database file: {ex}")
+        raise ProgrammingException(f"Could not read the database file: {ex}")
 
     print("Done")
 
 
-def _clear_card(dev: SkyboundDevice) -> None:
+def _clear_card(dev: ProgrammingDevice) -> None:
     sectors_to_erase = dev.get_total_sectors()
-    total_erase_size = sectors_to_erase * SkyboundDevice.SECTOR_SIZE
+    total_erase_size = sectors_to_erase * ProgrammingDevice.SECTOR_SIZE
 
     with tqdm.tqdm(desc="Erasing the database", total=total_erase_size, unit='B', unit_scale=True) as t:
         for _ in dev.erase_sectors(0, sectors_to_erase):
-            t.update(SkyboundDevice.SECTOR_SIZE)
+            t.update(ProgrammingDevice.SECTOR_SIZE)
 
 
 @with_data_card
-def cmd_clear_card(dev: SkyboundDevice) -> None:
+def cmd_clear_card(dev: ProgrammingDevice) -> None:
     confirm("Clear all bytes on the data card?")
 
     _clear_card(dev)
