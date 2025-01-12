@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Callable, Generator
 from typing import TYPE_CHECKING
 
 from .common import JdmToolException
@@ -61,10 +62,7 @@ class SkyboundDevice():
         else:
             raise SkyboundException(f"Unexpected response: {buf}")
 
-    def init_data_card(self) -> None:
-        if not self.has_card():
-            raise SkyboundException("Card is missing!")
-
+    def get_chip_iids(self) -> list[int]:
         chip_iids: list[int] = []
 
         for offset in self.MEMORY_OFFSETS:
@@ -76,6 +74,14 @@ class SkyboundDevice():
                 break
 
             chip_iids.append(chip_iid)
+
+        return chip_iids
+
+    def init_data_card(self) -> None:
+        if not self.has_card():
+            raise SkyboundException("Card is missing!")
+
+        chip_iids = self.get_chip_iids()
 
         if not chip_iids:
             raise SkyboundException("Unsupported data card - possibly Terrain/Obstacles")
@@ -192,3 +198,37 @@ class SkyboundDevice():
 
     def get_total_size(self) -> int:
         return self.get_total_sectors() * self.SECTOR_SIZE  # chips * sectors_per_chip * SECTOR_SIZE
+
+    def _loop_helper(self, i: int) -> None:
+        self.set_led(i % 2 == 0)
+        if not self.has_card():
+            raise SkyboundException("Data card has disappeared!")
+
+    def read_blocks(self, start_sector: int, num_sectors: int) -> Generator[bytes, bool, None]:
+        self.before_read()
+        for sector in range(start_sector, start_sector + num_sectors):
+            self.select_sector(sector)
+            for i in range(self.BLOCKS_PER_SECTOR):
+                self._loop_helper(i)
+                yield self.read_block()
+
+    def erase_sectors(self, start_sector: int, num_sectors: int) -> Generator[None, None, None]:
+        self.before_write()
+        for sector in range(start_sector, start_sector + num_sectors):
+            self._loop_helper(sector)
+            self.select_sector(sector)
+            self.erase_sector()
+            yield
+
+    def write_blocks(
+        self, start_sector: int, num_sectors: int,
+        read_func: Callable[[], bytes]
+    ) -> Generator[None, None, None]:
+        self.before_write()
+        for sector in range(start_sector, start_sector + num_sectors):
+            self.select_sector(sector)
+            for i in range(self.BLOCKS_PER_SECTOR):
+                self._loop_helper(i)
+                block = read_func()
+                self.write_block(block)
+                yield

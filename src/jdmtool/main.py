@@ -137,12 +137,6 @@ def with_data_card(f: Callable):
     return wrapper
 
 
-def _loop_helper(dev: SkyboundDevice, i: int):
-    dev.set_led(i % 2 == 0)
-    if not dev.has_card():
-        raise SkyboundException("Data card has disappeared!")
-
-
 def _find_obsolete_downloads(services: list[Service]) -> tuple[list[pathlib.Path], int]:
     good_downloads = set(f for s in services for f in s.get_download_paths())
 
@@ -862,10 +856,7 @@ def cmd_detect(dev: SkyboundDevice, verbose: bool) -> None:
         if verbose:
             # Print IIDs first, even if it's an unsupported card.
             print("Chip IIDs:")
-            for chip_idx, offset in enumerate(dev.MEMORY_OFFSETS):
-                dev.select_physical_sector(offset)
-                dev.before_read()
-                iid = dev.get_iid()
+            for chip_idx, iid in enumerate(dev.get_chip_iids()):
                 print(f"  Chip {chip_idx}: 0x{iid:08x}")
         # Then (try to) initialize the card and print the info.
         dev.init_data_card()
@@ -877,15 +868,7 @@ def cmd_detect(dev: SkyboundDevice, verbose: bool) -> None:
 def cmd_read_database(dev: SkyboundDevice, path: str, full_card: bool) -> None:
     with open(path, 'w+b') as fd:
         with tqdm.tqdm(desc="Reading the database", total=dev.get_total_size(), unit='B', unit_scale=True) as t:
-            dev.before_read()
-            for i in range(dev.get_total_sectors() * SkyboundDevice.BLOCKS_PER_SECTOR):
-                _loop_helper(dev, i)
-
-                if i % SkyboundDevice.BLOCKS_PER_SECTOR == 0:
-                    dev.select_sector(i // SkyboundDevice.BLOCKS_PER_SECTOR)
-
-                block = dev.read_block()
-
+            for block in dev.read_blocks(0, dev.get_total_sectors()):
                 if not full_card and block == b'\xFF' * SkyboundDevice.BLOCK_SIZE:
                     # Garmin card has no concept of size of the data,
                     # so we stop when we see a completely empty block.
@@ -905,6 +888,9 @@ def _write_database(dev: SkyboundDevice, path: str, full_erase: bool) -> None:
         if size > max_size:
             raise SkyboundException(f"Database file is too big: {size}! The maximum size is {max_size}.")
 
+        def _read_block():
+            return fd.read(SkyboundDevice.BLOCK_SIZE).ljust(SkyboundDevice.BLOCK_SIZE, b'\xFF')
+
         sectors_required = -(-size // SkyboundDevice.SECTOR_SIZE)
         total_size = sectors_required * SkyboundDevice.SECTOR_SIZE
 
@@ -915,17 +901,11 @@ def _write_database(dev: SkyboundDevice, path: str, full_erase: bool) -> None:
             sectors_to_erase = min(sectors_required + 1, dev.get_total_sectors())
         total_erase_size = sectors_to_erase * SkyboundDevice.SECTOR_SIZE
 
-        dev.before_read()
-
         sector_is_blank = [True] * sectors_to_erase
 
         with tqdm.tqdm(desc="Blank checking", total=total_erase_size, unit='B', unit_scale=True) as t:
             for sector_idx in range(sectors_to_erase):
-                dev.select_sector(sector_idx)
-                for i in range(SkyboundDevice.BLOCKS_PER_SECTOR):
-                    _loop_helper(dev, i)
-
-                    block = dev.read_block()
+                for i, block in enumerate(dev.read_blocks(sector_idx, 1)):
                     if block != b'\xff' * SkyboundDevice.BLOCK_SIZE:
                         sector_is_blank[sector_idx] = False
                         t.update(SkyboundDevice.BLOCK_SIZE * (SkyboundDevice.BLOCKS_PER_SECTOR - i))
@@ -933,47 +913,27 @@ def _write_database(dev: SkyboundDevice, path: str, full_erase: bool) -> None:
 
                     t.update(SkyboundDevice.BLOCK_SIZE)
 
-        dev.before_write()
-
         # Data card can only write by changing 1s to 0s (effectively doing a bit-wise AND with
         # the existing contents), so all data needs to be "erased" first to reset everything to 1s.
         with tqdm.tqdm(desc="Erasing the database", total=total_erase_size, unit='B', unit_scale=True) as t:
-            for i in range(sectors_to_erase):
-                if not sector_is_blank[i]:
-                    _loop_helper(dev, i)
-                    dev.select_sector(i)
-                    dev.erase_sector()
+            for sector_idx in range(sectors_to_erase):
+                if not sector_is_blank[sector_idx]:
+                    for _ in dev.erase_sectors(sector_idx, 1):
+                        pass
                 t.update(SkyboundDevice.SECTOR_SIZE)
 
         with tqdm.tqdm(desc="Writing the database", total=total_size, unit='B', unit_scale=True) as t:
-            for i in range(sectors_required * SkyboundDevice.BLOCKS_PER_SECTOR):
-                block = fd.read(SkyboundDevice.BLOCK_SIZE).ljust(SkyboundDevice.BLOCK_SIZE, b'\xFF')
-
-                _loop_helper(dev, i)
-
-                if i % SkyboundDevice.BLOCKS_PER_SECTOR == 0:
-                    dev.select_sector(i // SkyboundDevice.BLOCKS_PER_SECTOR)
-
-                dev.write_block(block)
-                t.update(len(block))
+            for _ in dev.write_blocks(0, sectors_required, _read_block):
+                t.update(SkyboundDevice.BLOCK_SIZE)
 
         fd.seek(0)
 
-        dev.before_read()
-
         with tqdm.tqdm(desc="Verifying the database", total=total_size, unit='B', unit_scale=True) as t:
-            for i in range(sectors_required * SkyboundDevice.BLOCKS_PER_SECTOR):
-                file_block = fd.read(SkyboundDevice.BLOCK_SIZE).ljust(SkyboundDevice.BLOCK_SIZE, b'\xFF')
-
-                _loop_helper(dev, i)
-
-                if i % SkyboundDevice.BLOCKS_PER_SECTOR == 0:
-                    dev.select_sector(i // SkyboundDevice.BLOCKS_PER_SECTOR)
-
-                card_block = dev.read_block()
+            for card_block in dev.read_blocks(0, sectors_required):
+                file_block = _read_block()
 
                 if card_block != file_block:
-                    raise SkyboundException(f"Verification failed! Block {i} is incorrect.")
+                    raise SkyboundException("Verification failed!")
 
                 t.update(len(file_block))
 
@@ -993,13 +953,8 @@ def _clear_card(dev: SkyboundDevice) -> None:
     sectors_to_erase = dev.get_total_sectors()
     total_erase_size = sectors_to_erase * SkyboundDevice.SECTOR_SIZE
 
-    dev.before_write()
-
     with tqdm.tqdm(desc="Erasing the database", total=total_erase_size, unit='B', unit_scale=True) as t:
-        for i in range(sectors_to_erase):
-            _loop_helper(dev, i)
-            dev.select_sector(i)
-            dev.erase_sector()
+        for _ in dev.erase_sectors(0, sectors_to_erase):
             t.update(SkyboundDevice.SECTOR_SIZE)
 
 
