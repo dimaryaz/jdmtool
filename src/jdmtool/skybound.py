@@ -39,21 +39,21 @@ class SkyboundDevice():
         self.chips = 0
         self.sectors_per_chip = 0x0
 
-    def write(self, data: bytes) -> None:
-        self.handle.bulkWrite(self.WRITE_ENDPOINT, data, self.TIMEOUT)
-
-    def read(self, length: int) -> bytes:
+    def bulk_read(self, length: int) -> bytes:
         return self.handle.bulkRead(self.READ_ENDPOINT, length, self.TIMEOUT)
+
+    def bulk_write(self, data: bytes) -> None:
+        self.handle.bulkWrite(self.WRITE_ENDPOINT, data, self.TIMEOUT)
 
     def set_led(self, on: bool) -> None:
         if on:
-            self.write(b'\x12')
+            self.bulk_write(b'\x12')
         else:
-            self.write(b'\x13')
+            self.bulk_write(b'\x13')
 
     def has_card(self) -> bool:
-        self.write(b"\x18")
-        buf = self.read(0x0040)
+        self.bulk_write(b"\x18")
+        buf = self.bulk_read(0x0040)
         if buf == b"\x00":
             return True
         elif buf == b"\x01":
@@ -114,38 +114,38 @@ class SkyboundDevice():
             raise SkyboundException(f"Unknown data card with chip IIDs: {hex_iids}. Please file a bug!")
 
     def get_firmware_version_name(self) -> tuple[str, str]:
-        self.write(b"\x60")
-        version = self.read(0x0040).decode()
+        self.bulk_write(b"\x60")
+        version = self.bulk_read(0x0040).decode()
         name = self.FIRMWARE_NAME.get(version, "unknown")
         return version, name
 
     def get_1m_chip_version(self) -> int:
-        self.write(b"\x50\x03")
-        buf = self.read(0x0040)
+        self.bulk_write(b"\x50\x03")
+        buf = self.bulk_read(0x0040)
         return int.from_bytes(buf, 'little')
 
     def get_iid(self) -> int:
-        self.write(b"\x50\x04")
-        buf = self.read(0x0040)
+        self.bulk_write(b"\x50\x04")
+        buf = self.bulk_read(0x0040)
         return int.from_bytes(buf, 'little')
 
     def read_block(self) -> bytes:
-        self.write(b"\x28")
-        return self.read(0x1000)
+        self.bulk_write(b"\x28")
+        return self.bulk_read(0x1000)
 
     def write_block(self, data: bytes) -> None:
         if len(data) != 0x1000:
             raise ValueError("Data must be 4096 bytes")
 
         if self.sectors_per_chip == 0x10:  # 1MB chip
-            self.write(b"\x2A\x03")
+            self.bulk_write(b"\x2A\x03")
             expected_byte = 0x80
         else:
-            self.write(b"\x2A\x04")
+            self.bulk_write(b"\x2A\x04")
             expected_byte = data[-1]
 
-        self.write(data)
-        buf = self.read(0x0040)
+        self.bulk_write(data)
+        buf = self.bulk_read(0x0040)
 
         if buf[0] != expected_byte or buf[1:] != b"\x00\x00\x00":
             raise SkyboundException(f"Unexpected response: {buf}")
@@ -153,7 +153,7 @@ class SkyboundDevice():
     def select_physical_sector(self, sector_id: int) -> None:
         if not (0x0000 <= sector_id <= 0xFFFF):
             raise ValueError("Invalid sector ID")
-        self.write(b"\x30\x00\x00" + sector_id.to_bytes(2, 'little'))
+        self.bulk_write(b"\x30\x00\x00" + sector_id.to_bytes(2, 'little'))
 
     def translate_sector(self, sector_id: int) -> int:
         offset_id = sector_id // self.sectors_per_chip
@@ -169,23 +169,23 @@ class SkyboundDevice():
     def erase_sector(self) -> None:
         if self.sectors_per_chip == 0x10:  # 1MB chip
             key = b"\x03"
-            self.write(b"\x16")
-            self.write(b"\x52" + key)
+            self.bulk_write(b"\x16")
+            self.bulk_write(b"\x52" + key)
         else:
             key = b"\x04"
-            self.write(b"\x52" + key)
-        buf = self.read(0x0040)
+            self.bulk_write(b"\x52" + key)
+        buf = self.bulk_read(0x0040)
         if buf != key:
             raise SkyboundException(f"Unexpected response: {buf}")
 
     def before_read(self) -> None:
         # It's not clear that this does anything, but JDM seems to send it
         # before reading anything, so do the same thing.
-        self.write(b"\x40")
+        self.bulk_write(b"\x40")
 
     def before_write(self) -> None:
         # Same as above.
-        self.write(b"\x42")
+        self.bulk_write(b"\x42")
 
     def get_total_sectors(self) -> int:
         return self.chips * self.sectors_per_chip
