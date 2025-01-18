@@ -40,6 +40,8 @@ def _open_usb_device(usbdev: USBDevice):
 SKYBOUND_VID_PID = (0x0E39, 0x1250)
 GARMIN_UNINITIALIZED_VID_PID = (0x091E, 0x0500)
 GARMIN_VID_PID = (0x091E, 0x1300)
+# If you reset the Garmin Programmer's EEPROM, you end up with a Cypress EZ-USB FX2
+FX2_VID_PID = (0x04B4, 0x8613)
 
 
 @contextmanager
@@ -53,7 +55,7 @@ def open_programming_device() -> Generator[ProgrammingDevice, None, None]:
                 dev_cls = SkyboundDevice
                 break
 
-            elif vid_pid == GARMIN_UNINITIALIZED_VID_PID:
+            elif vid_pid in (GARMIN_UNINITIALIZED_VID_PID, FX2_VID_PID):
                 print(f"Found an un-initialized Garmin device at {usbdev}")
                 print("Writing stage 1 firmware...")
 
