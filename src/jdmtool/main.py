@@ -14,6 +14,7 @@ import json
 import os
 import pathlib
 import shutil
+import time
 from typing import Any, TYPE_CHECKING
 import zipfile
 
@@ -682,6 +683,8 @@ def _transfer_sd_card(services: list[Service], path: pathlib.Path, vol_id_overri
         for service in services:
             _download(downloader, service)
 
+    start = time.perf_counter()
+
     for service, transfer_func in zip(services, transfer_funcs):
         dot_jdm_config = transfer_func(service, path, volume_id)
 
@@ -700,6 +703,8 @@ def _transfer_sd_card(services: list[Service], path: pathlib.Path, vol_id_overri
 
         print("Updating .jdm...")
         update_dot_jdm(service, path, dot_jdm_config)
+
+    print(f"Done in: {time.perf_counter() - start:.1f}s.")
 
 
 @with_data_card
@@ -733,7 +738,12 @@ def _transfer_data_card(dev: ProgrammingDevice, service: Service, full_erase: bo
 
     path = databases[0].dest_path
 
+    start = time.perf_counter()
+
     _write_database(dev, str(path), full_erase)
+
+    print(f"Done in: {time.perf_counter() - start:.1f}s.")
+
 
 def cmd_transfer(
     ids: list[int] | IdPreset,
@@ -793,8 +803,6 @@ def cmd_transfer(
 
         _transfer_data_card(services[0], full_erase)  # pylint: disable=no-value-for-parameter
 
-    print("Done")
-
 
 def cmd_clean() -> None:
     try:
@@ -836,8 +844,11 @@ def cmd_detect(dev: ProgrammingDevice, verbose: bool) -> None:
     else:
         print("No card")
 
+
 @with_data_card
 def cmd_read_database(dev: ProgrammingDevice, path: str, full_card: bool) -> None:
+    start = time.perf_counter()
+
     with open(path, 'w+b') as fd:
         with tqdm.tqdm(desc="Reading the database", total=dev.get_total_size(), unit='B', unit_scale=True) as t:
             for block in dev.read_blocks(0, dev.get_total_sectors()):
@@ -849,7 +860,8 @@ def cmd_read_database(dev: ProgrammingDevice, path: str, full_card: bool) -> Non
                 fd.write(block)
                 t.update(len(block))
 
-    print("Done")
+    print(f"Done in: {time.perf_counter() - start:.1f}s.")
+
 
 def _write_database(dev: ProgrammingDevice, path: str, full_erase: bool) -> None:
     max_size = dev.get_total_size()
@@ -913,12 +925,14 @@ def _write_database(dev: ProgrammingDevice, path: str, full_erase: bool) -> None
 def cmd_write_database(dev: ProgrammingDevice, path: str, full_erase: bool) -> None:
     confirm(f"Transfer {path} to the data card?")
 
+    start = time.perf_counter()
+
     try:
         _write_database(dev, path, full_erase)
     except IOError as ex:
         raise ProgrammingException(f"Could not read the database file: {ex}")
 
-    print("Done")
+    print(f"Done in: {time.perf_counter() - start:.1f}s.")
 
 
 def _clear_card(dev: ProgrammingDevice) -> None:
@@ -934,9 +948,11 @@ def _clear_card(dev: ProgrammingDevice) -> None:
 def cmd_clear_card(dev: ProgrammingDevice) -> None:
     confirm("Clear all bytes on the data card?")
 
+    start = time.perf_counter()
+
     _clear_card(dev)
 
-    print("Done")
+    print(f"Done in: {time.perf_counter() - start:.1f}s.")
 
 
 def cmd_config_file() -> None:
