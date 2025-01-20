@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.4.0 (2025-01-19)
+- Add support for the Garmin Aviation Data Card Programmer
+- Stop writing metadata to data cards
+- Remove `read-metadata` and `write-metadata` commands
+- Fix a bug causing negative volume IDs on Windows
+- Require Python 3.9 or newer
+
 ## 0.3.6 (2025-01-07)
 - Rewrite data card memory handling
 - Properly support 2MB, 4MB, 8MB, and 16MB data cards
