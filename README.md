@@ -4,7 +4,9 @@ A command-line tool for downloading and transferring Jeppesen databases aiming t
 
 It requires a Jeppesen subscription, and currenty supports the following services:
 - NavData for Garmin GNS 400/500 Series
-  - Requires a Skybound data card programmer (USB ID `0e39:1250`)
+  - Requires a data card programmer device:
+    - Jeppesen Skybound G2 USB Adapter (USB ID `0e39:1250`), or
+    - Garmin USB Aviation Data Card Programmer (USB ID `091e:0500` / `091e:1300`)
   - Requires a NavData card (16MB WAAS, 8MB, 6MB, 4MB, 3MB, 2MB)
 - NavData and Obstacles for Avidyne IFD 400 Series
 - NavData for Avidyne EX5000
@@ -52,7 +54,7 @@ Make sure you have access to the USB device.
 
 On Linux, see [Installing udev rules on Linux](udev/README.md). 
 
-On Windows, you will need the WinUSB drivers. You do **not** need the official Skybound drivers.
+On Windows, you will need the WinUSB drivers. You do need the official Skybound/Garmin drivers (though they might still work for you).
 
 ## Basic Usage
 
@@ -145,8 +147,7 @@ Blank checking: 100%|███████████████████�
 Erasing the database: 100%|████████████████████████████████████████| 8.59M/8.59M [02:15<00:00, 63.1KB/s]
 Writing the database: 100%|████████████████████████████████████████| 8.59M/8.59M [04:14<00:00, 40.5KB/s]
 Verifying the database: 100%|██████████████████████████████████████| 8.59M/8.59M [01:32<00:00, 92.5KB/s]
-Writing new metadata: {2303~12345678}
-Done
+Done in: 291.9s.
 ```
 
 ### Transfer the database to the USB drive (IFD 440 or G1000)
@@ -170,7 +171,7 @@ Writing to /run/media/user/USB/navdata.dsf: 100%|██████████�
 Updating .jdm...
 Writing to /run/media/user/USB/obstacles.dsf: 100%|████████████████| 2.24M/2.24M [00:02<00:00, 984kB/s]
 Updating .jdm...
-Done
+Done in: 12.5s
 ```
 
 ### Delete expired downloads
@@ -189,7 +190,7 @@ Deleted.
 ## More Information
 
 - [Experimental support for G1000 Electronic Charts](ElectronicCharts.md)
-- [Troubleshooting Skybound data cards (GNS 400/500)](Skybound.md)
+- [Troubleshooting data cards (GNS 400/500)](DataCards.md)
 
 ## Bugs
 

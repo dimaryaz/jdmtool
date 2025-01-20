@@ -1,43 +1,36 @@
-## Advanced Features for Skybound Data Cards (GNS 400/500)
+## Advanced Features for Data Cards (GNS 400/500)
 
 These mainly exist for troubleshooting. You should not normally need them.
 
-### Check that the tool can detect the device and the data card:
+### Check that the tool can detect the device and the data card
+
+#### Skybound G2:
 
 ```
 $ jdmtool detect
-Found device: Bus 001 Device 049: ID 0e39:1250
-Firmware version: 20071203
-Card inserted:
-  IID: 0x1004100
-  Unknown identifier: 0x38001000
+Found a Skybound device at Bus 001 Device 053: ID 0e39:1250
+Firmware version: 20071203 (G2 Black)
+Card type: 16MB WAAS (silver), 4 chips of 4MB
 ```
 
-("Unknown identifier" likely contains the information about what type of card this is, but
-I don't have enough information to decode it.)
+Note that a black-label adapter will be able to detect and read orange-label cards, but not write to them.
 
-
-### Read the metadata (should contain the cycle and the service ID):
-
-JDM seems to only write it to 16MB cards. Not clear if it's actually used for anything.
+#### Garmin Data Card Programmmer:
 
 ```
-$ jdmtool read-metadata
-Found device: Bus 001 Device 045: ID 0e39:1250
-Detected data card: 16MB WAAS
-Database metadata: {2303~12345678}
+$ jdmtool detect
+Found an un-initialized Garmin device at Bus 001 Device 054: ID 091e:0500
+Writing stage 1 firmware...
+Re-scanning devices...
+Found at Bus 001 Device 055: ID 091e:1300
+Writing stage 2 firmware...
+Re-scanning devices...
+Found at Bus 001 Device 056: ID 091e:1300
+Firmware version: Aviation Card Programmer Ver 3.05 Apr 01 2024 08:42:10
+Card type: 16MB WAAS (silver), 4 chips of 4MB
 ```
 
-### Write the metadata (should probably keep the same format):
-
-JDM seems to only write it to 16MB cards. Not clear if it's actually used for anything.
-
-```
-$ jdmtool write-metadata '{2303~12345678}'
-Found device: Bus 001 Device 045: ID 0e39:1250
-Detected data card: 16MB WAAS
-Done
-```
+jdmtool needs to update the adapter's firmware, twice, every time it is plugged in.
 
 ### Read the current database from the data card:
 
@@ -46,8 +39,7 @@ $ jdmtool read-database db.bin
 Found device: Bus 001 Device 044: ID 0e39:1250
 Detected data card: 16MB WAAS
 Reading the database: 100%|████████████████████████████████████████| 8.59M/8.59M [01:33<00:00, 91.6KB/s]
-Truncating the file...
-Done
+Done in: 93.1s.
 ```
 
 You should now have the database in `db.bin`.
@@ -70,8 +62,9 @@ $ jdmtool write-database dgrw72_2303_eceb0273.bin
 Found device: Bus 001 Device 045: ID 0e39:1250
 Detected data card: 16MB WAAS
 Transfer dgrw72_2303_eceb0273.bin to the data card? (y/n) y
+Blank checking: 100%|██████████████████████████████████████████████| 8.59M/8.59M [00:06<00:00, 1.33MB/s]
 Erasing the database: 100%|████████████████████████████████████████| 8.59M/8.59M [02:15<00:00, 63.1KB/s]
 Writing the database: 100%|████████████████████████████████████████| 8.59M/8.59M [04:14<00:00, 40.5KB/s]
 Verifying the database: 100%|██████████████████████████████████████| 8.59M/8.59M [01:32<00:00, 92.5KB/s]
-Done
+Done in: 291.9s.
 ```
