@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.4.1 (2025-01-23)
+- Fix Garmin firmware not being included in the package
+- Fix the FAT filesystem check on Windows
+
 ## 0.4.0 (2025-01-19)
 - Add support for the Garmin Aviation Data Card Programmer
 - Stop writing metadata to data cards
