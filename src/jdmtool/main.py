@@ -399,7 +399,7 @@ def get_device_volume_id(path: pathlib.Path) -> int:
     elif psutil.WINDOWS:
         import win32api  # type: ignore  pylint: disable=import-error
 
-        if partition.fstype != 'FAT32':
+        if partition.fstype != 'FAT32' and partition.fstype != 'FAT':
             raise UserException(f"Wrong filesystem: {partition.fstype}")
 
         return win32api.GetVolumeInformation(str(path))[1] & 0xFFFFFFFF
