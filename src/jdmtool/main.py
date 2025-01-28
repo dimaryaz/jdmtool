@@ -959,11 +959,15 @@ def cmd_config_file() -> None:
     print(get_config_file())
 
 
-def cmd_extract_awp(input: str, output: str) -> None:
-    with open(input, 'rb') as fd_in:
+def cmd_extract_awp_taw(input_file: str, output_dir: str) -> None:
+    input_file_path = pathlib.Path(input_file)
+    output_dir_path = pathlib.Path(output_dir)
+
+    with open(input_file_path, 'rb') as fd_in:
         magic = fd_in.read(4)
-        if magic != b'pWa.':
+        if magic not in (b'pWa.', b'wAt.'):
             raise ProgrammingException(f"Unexpected bytes: {magic}")
+
         unknown = fd_in.read(16)
         print(f"Unknown: {unknown}")
         unknown = [s.decode() for s in fd_in.read(25).split(b'\x00') if s]
@@ -973,12 +977,19 @@ def cmd_extract_awp(input: str, output: str) -> None:
         metadata = fd_in.read(metadata_len + 1)
         print(f"Unknown: {metadata[:4]}")
         parts = metadata[4:].split(b'\x00')
-        if len(parts) != 6:
-            raise ProgrammingException(f"Unexpected bytes: {metadata}")
-        print(f"Year: {ord(parts[1])}")
-        print(f"Month: {ord(parts[2])}")
-        print(f"Avionics: {parts[3].decode()!r}")
-        print(f"Coverage: {parts[4].decode()!r}")
+        if len(parts) == 6:
+            print(f"Year: {ord(parts[1])}")
+            print(f"Cycle: {ord(parts[2])}")
+            print(f"Avionics: {parts[3].decode()!r}")
+            print(f"Coverage: {parts[4].decode()!r}")
+        elif len(parts) == 13:
+            print(f"Year: {ord(parts[4])}")
+            print(f"Cycle: {ord(parts[7])}")
+            print(f"Type: {parts[12].decode()!r}")
+            print(f"Avionics: {parts[10].decode()!r}")
+            print(f"Coverage: {parts[11].decode()!r}")
+        else:
+            raise ProgrammingException(f"Unexpected metadata: {parts}")
 
         size1 = int.from_bytes(fd_in.read(4), 'little')
         print(f"Size of the remaining content: {size1}")
@@ -990,26 +1001,37 @@ def cmd_extract_awp(input: str, output: str) -> None:
         unknown = [s.decode() for s in fd_in.read(25).split(b'\x00') if s]
         print(f"Unknown: {unknown}")
 
-        size2 = int.from_bytes(fd_in.read(4), 'little')
-        print(f"Size of the remaining content: {size2}")
-        unknown = fd_in.read(7)
-        print(f"Unknown: {unknown}")
-        database_size = int.from_bytes(fd_in.read(4), 'little')
-        print(f"Database size: {database_size}")
+        databases = []
+        while True:
+            remaining = int.from_bytes(fd_in.read(4), 'little')
+            if remaining <= 0x14:
+                print("No more databases left")
+                break
 
-        block_size = 0x1000
-        if database_size % block_size != 0:
-            print("Database is not block-aligned!")
+            idx = len(databases)
+            output_file_path = output_dir_path / f"{input_file_path.stem}-{idx}.bin" 
+            databases.append(output_file_path)
 
-        print("Writing database...")
-        with open(output, 'wb') as fd_out:
-            for _ in range(0, database_size, block_size):
-                block = fd_in.read(block_size)
-                fd_out.write(block)
-        print("Done")
+            unknown = fd_in.read(7)
+            print(f"Unknown: {unknown}")
+            database_size = int.from_bytes(fd_in.read(4), 'little')
+            print(f"Database size: {database_size}")
+
+            print(f"Writing database to {output_file_path}...")
+            block_size = 0x1000
+            with open(output_file_path, 'wb') as fd_out:
+                for offset in range(0, database_size, block_size):
+                    block = fd_in.read(min(database_size - offset, block_size))
+                    fd_out.write(block)
+            print("Done")
 
         tail = fd_in.read()
-        print(f"Unknown: {tail}")
+        print(f"Tail: {tail}")
+
+        print()
+        print(f"Extracted {len(databases)} database(s):")
+        for database in databases:
+            print(f"  {database}")
 
 
 def _parse_ids(ids: str) -> list[int] | IdPreset:
@@ -1164,19 +1186,19 @@ def main():
     )
     config_file_p.set_defaults(func=cmd_config_file)
 
-    extract_awp_p = subparsers.add_parser(
-        "extract-awp",
-        help="Extract the database from a Garmin .awp file",
+    extract_awp_taw_p = subparsers.add_parser(
+        "extract-awp-taw",
+        help="Extract the database from a Garmin .awp or .taw file",
     )
-    extract_awp_p.add_argument(
-        "input",
-        help="Input .awp file",
+    extract_awp_taw_p.add_argument(
+        "input_file",
+        help="Input .awp or .taw file",
     )
-    extract_awp_p.add_argument(
-        "output",
-        help="Output database file",
+    extract_awp_taw_p.add_argument(
+        "output_dir",
+        help="Directory where to save database files",
     )
-    extract_awp_p.set_defaults(func=cmd_extract_awp)
+    extract_awp_taw_p.set_defaults(func=cmd_extract_awp_taw)
 
     args = parser.parse_args()
 
