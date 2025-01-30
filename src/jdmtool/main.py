@@ -963,46 +963,51 @@ TAW_SEPARATOR = b'\x00\x02\x00\x00\x00Dd\x00\x1b\x00\x00\x00A\xc8\x00'
 TAW_UNKNOWN = b'KpGrd'
 
 TAW_DATABASE_TYPES = {
+    0x0091: "GPSMAP196",
+    0x00BF: "Gx000",
+    0x0104: "GPSMAP296",
     0x0190: "G500",
-    0x0402: "G650",
+    0x01F2: "G500H/GPSx75",
+    0x0253: "GPSMAP496",
+    0x0294: "AERA660",
+    0x02E9: "GPSMAP696",
+    0x02EA: "G3X",
+    0x02F0: "GPS175",
+    0x0402: "GtnXi",
+    0x0465: "GI275",
+    0x0618: "AERA760",
+    0x06BF: "G3XT",
+    0x0738: "GTR2X5",
+    0x07DC: "GTXi",
 }
 
-TAW_REGION_TYPES = {
-    0x00: "Aviation",
-    0x01: "Aviation",
-    0x02: "NewAVDB",
-    0x03: "Basemap",
-    0x04: "Software",
-    0x0a: "Map",
-    0x0c: "Loader",
-    0x0d: "Workspace",
-    0x0e: "Firmware",
-    0x0f: "Region 0F",
-    0x10: "Splash Screen",
-    0x11: "Sounds",
-    0x14: "FCharts panel",
-    0x1a: "IFR_VFR charts",
-    0x21: "Terrain 30as",
-    0x22: "Terrain 9as",
-    0x23: "Terrain 5as",
+TAW_REGION_PATHS = {
+    0x01: "ldr_sys/avtn_db",
+    0x02: "ldr_sys/nav_db2",
+    0x03: "bmap",
+    0x04: "nav.bin",  # fake filename: used for GNS430/500 data cards
+    0x05: "bmap2",
+    0x0A: "safetaxi",
+    0x0B: "safetaxi2.gca",
+    0x14: "fc_tpc/fc_tpc.dat",
+    0x1A: "rasters_rasters.xml",
+    0x21: "terrain.tdb",
+    0x22: "terrain.odb",
+    0x23: "trn.dat",
     0x24: "FCharts.dat",
     0x25: "Fcharts.fca",
-    0x26: "New Obstacles",
-    0x27: "Obstacles",
-    0x28: "APT Terrain",
-    0x29: "Region 29",
-    0x32: "Aera Aviation",
-    0x33: "Aera AirSports",
-    0x34: "Aera Terrain",
-    0x35: "Aera Obstacles",
-    0x36: "Aera SafeTaxi",
-    0x37: "Aera AOPA Data",
-    0x39: "Aera FCharts.dat",
-    0x3a: "Aera FCharts.fca",
-    0x4c: "AOPA",
-    0x4d: "SafeTaxi",
-    0x4e: "AOPA",
-    0x4f: "VRP AirSports",
+    0x26: "standard.odb",
+    0x27: "terrain.odb",
+    0x28: "terrain.adb",
+    0x32: ".System/AVTN/avtn_db",
+    0x33: "Poi/air_sport.gpi",
+    0x35: ".System/AVTN/Obstacle.odb",
+    0x36: ".System/AVTN/safetaxi.img",
+    0x39: ".System/AVTN/FliteCharts/fc_tpc.dat",
+    0x3A: ".System/AVTN/FliteCharts/fc_tpc.fca",
+    0x4C: "fbo.gpi",
+    0x4E: "apt_dir.gca",
+    0x4F: "air_sport.gpi",
 }
 
 
@@ -1089,8 +1094,8 @@ def cmd_extract_awp_taw(input_file: str, verbose: bool) -> None:
                 raise ProgrammingException(f"Unexpected section type: {section_type}")
 
             region = int.from_bytes(fd_in.read(2), 'little')
-            region_name = TAW_REGION_TYPES.get(region, "Unknown")
-            print(f"Region: {region:02x} ({region_name})")
+            dest_path = TAW_REGION_PATHS.get(region)
+            print(f"Region: {region:02x} ({dest_path or 'unknown'})")
 
             unknown = fd_in.read(4)
             debug(f"Unknown: {unknown}")
@@ -1099,7 +1104,11 @@ def cmd_extract_awp_taw(input_file: str, verbose: bool) -> None:
 
             debug(f"DataStart: {fd_in.tell():x}")
 
-            output_file = f"G{database_type_name}_{region:02x}_{region_name}.bin"
+            if dest_path:
+                output_file = pathlib.PurePosixPath(dest_path).name
+            else:
+                output_file = f"region_{region:02x}.bin"
+
             databases.append(output_file)
 
             print(f"Writing database to {output_file!r}...")
