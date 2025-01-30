@@ -1035,20 +1035,24 @@ def cmd_extract_awp_taw(input_file: str, verbose: bool) -> None:
         database_type_name = TAW_DATABASE_TYPES.get(database_type, "Unknown")
         print(f"Database type: {database_type:x} ({database_type_name})")
 
-        parts = metadata[4:].split(b'\x00')
-        if len(parts) == 5:
-            print(f"Year: {ord(parts[0])}")
-            print(f"Cycle: {ord(parts[1])}")
-            print(f"Avionics: {parts[2].decode()!r}")
-            print(f"Coverage: {parts[3].decode()!r}")
-        elif len(parts) == 12:
-            print(f"Year: {ord(parts[3])}")
-            print(f"Cycle: {ord(parts[6])}")
-            print(f"Type: {parts[11].decode().upper()!r}")
-            print(f"Avionics: {parts[9].decode()!r}")
-            print(f"Coverage: {parts[10].decode()!r}")
+        if metadata[2] == 0x00:
+            year = metadata[8]
+            cycle = metadata[12]
+            text = metadata[16:]
         else:
-            print(f"Unexpected metadata: {len(parts)}")
+            year = metadata[4]
+            cycle = metadata[6]
+            text = metadata[8:]
+
+        parts = text.split(b'\x00')
+        if len(parts) == 3:
+            print(f"Year: {year}")
+            print(f"Cycle: {cycle}")
+            print(f"Avionics: {parts[0].decode()!r}")
+            print(f"Coverage: {parts[1].decode()!r}")
+            print(f"Type: {parts[2].decode().upper()!r}")
+        else:
+            print(f"Unexpected metadata: {metadata}")
 
         remaining = int.from_bytes(fd_in.read(4), 'little')
         debug(f"Size of the remaining content: {remaining}")
