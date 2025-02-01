@@ -982,15 +982,15 @@ TAW_DATABASE_TYPES = {
 }
 
 TAW_REGION_PATHS = {
-    0x01: "ldr_sys/avtn_db",
-    0x02: "ldr_sys/nav_db2",
-    0x03: "bmap",
+    0x01: "ldr_sys/avtn_db.bin",
+    0x02: "ldr_sys/nav_db2.bin",
+    0x03: "bmap.bin",
     0x04: "nav.bin",  # fake filename: used for GNS430/500 data cards
-    0x05: "bmap2",
-    0x0A: "safetaxi",
+    0x05: "bmap2.bin",
+    0x0A: "safetaxi.bin",
     0x0B: "safetaxi2.gca",
     0x14: "fc_tpc/fc_tpc.dat",
-    0x1A: "rasters_rasters.xml",
+    0x1A: "rasters/rasters.xml",
     0x21: "terrain.tdb",
     0x22: "terrain.odb",
     0x23: "trn.dat",
@@ -999,7 +999,7 @@ TAW_REGION_PATHS = {
     0x26: "standard.odb",
     0x27: "terrain.odb",
     0x28: "terrain.adb",
-    0x32: ".System/AVTN/avtn_db",
+    0x32: ".System/AVTN/avtn_db.bin",
     0x33: "Poi/air_sport.gpi",
     0x35: ".System/AVTN/Obstacle.odb",
     0x36: ".System/AVTN/safetaxi.img",
