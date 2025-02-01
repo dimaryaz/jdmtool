@@ -129,6 +129,34 @@ def _find_obsolete_downloads(services: list[Service]) -> tuple[list[pathlib.Path
     return obsolete_downloads, total_size
 
 
+def _load_services_by_ids(ids: list[int] | IdPreset) -> list[Service]:
+    if not ids:
+        raise UserException("Need at least one download ID")
+
+    all_services = load_services()
+
+    if isinstance(ids, list):
+        try:
+            services = [all_services[id] for id in ids]
+        except IndexError:
+            raise UserException("Invalid service ID") from None
+    else:
+        services: list[Service] = []
+        now = datetime.now()
+        for service in all_services:
+            if ids is IdPreset.CURRENT:
+                if service.get_start_date() <= now <= service.get_end_date():
+                    services.append(service)
+            elif ids is IdPreset.NEXT:
+                if now < service.get_start_date():
+                    services.append(service)
+
+        if not services:
+            raise UserException("Did not match any services")
+
+    return services
+
+
 def cmd_login() -> None:
     from .downloader import Downloader
 
@@ -270,16 +298,14 @@ def _download(downloader: Downloader, service: Service) -> None:
         print(f"Downloaded to {oem.dest_path}")
 
 
-def cmd_download(id: int) -> None:
+def cmd_download(ids: list[int] | IdPreset) -> None:
     from .downloader import Downloader
 
-    services = load_services()
-    if id < 0 or id >= len(services):
-        raise UserException("Invalid download ID")
-
+    services = _load_services_by_ids(ids)
     downloader = Downloader()
-    service = services[id]
-    _download(downloader, service)
+
+    for service in services:
+        _download(downloader, service)
 
 
 @dataclass
@@ -752,29 +778,7 @@ def cmd_transfer(
     vol_id: str | None,
     full_erase: bool,
 ) -> None:
-    if not ids:
-        raise UserException("Need at least one download ID")
-
-    all_services = load_services()
-
-    if isinstance(ids, list):
-        try:
-            services = [all_services[id] for id in ids]
-        except IndexError:
-            raise UserException("Invalid service ID") from None
-    else:
-        services: list[Service] = []
-        now = datetime.now()
-        for service in all_services:
-            if ids is IdPreset.CURRENT:
-                if service.get_start_date() <= now <= service.get_end_date():
-                    services.append(service)
-            elif ids is IdPreset.NEXT:
-                if now < service.get_start_date():
-                    services.append(service)
-
-        if not services:
-            raise UserException("Did not match any services")
+    services = _load_services_by_ids(ids)
 
     if no_download and not all(f.exists() for s in services for f in s.get_download_paths()):
         raise UserException("Need to download the data, but --no-download was specified")
@@ -1014,9 +1018,9 @@ def main():
         help="Download the data",
     )
     download_p.add_argument(
-        "id",
-        help="ID of the download",
-        type=int,
+        "ids",
+        help="Comma-separated list of service IDs, 'curr' for all current versions, or 'next' for all future versions",
+        type=_parse_ids,
     )
     download_p.set_defaults(func=cmd_download)
 
