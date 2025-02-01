@@ -1011,7 +1011,7 @@ TAW_REGION_PATHS = {
 }
 
 
-def cmd_extract_awp_taw(input_file: str, verbose: bool) -> None:
+def cmd_extract_taw(input_file: str, verbose: bool, list_only: bool) -> None:
     input_file_path = pathlib.Path(input_file)
 
     debug = print if verbose else lambda *_: None
@@ -1077,9 +1077,10 @@ def cmd_extract_awp_taw(input_file: str, verbose: bool) -> None:
         sqa = [s.decode() for s in fd_in.read(25).split(b'\x00')]
         debug(f"SQA: {sqa}")
 
-        databases = []
+        print()
+
+        databases: list[tuple[str, int]] = []
         while True:
-            print()
             debug(f"SectStart: {fd_in.tell():x}")
 
             remaining = int.from_bytes(fd_in.read(4), 'little')
@@ -1095,37 +1096,43 @@ def cmd_extract_awp_taw(input_file: str, verbose: bool) -> None:
 
             region = int.from_bytes(fd_in.read(2), 'little')
             dest_path = TAW_REGION_PATHS.get(region)
-            print(f"Region: {region:02x} ({dest_path or 'unknown'})")
+            debug(f"Region: {region:02x} ({dest_path or 'unknown'})")
 
             unknown = fd_in.read(4)
             debug(f"Unknown: {unknown}")
             database_size = int.from_bytes(fd_in.read(4), 'little')
             debug(f"Database size: {database_size}")
 
-            debug(f"DataStart: {fd_in.tell():x}")
+            database_start = fd_in.tell()
+            debug(f"DataStart: {database_start:x}")
 
             if dest_path:
                 output_file = pathlib.PurePosixPath(dest_path).name
             else:
                 output_file = f"region_{region:02x}.bin"
 
-            databases.append(output_file)
+            databases.append((output_file, database_size))
 
-            print(f"Writing database to {output_file!r}...")
-            block_size = 0x1000
-            with open(output_file, 'wb') as fd_out:
-                for offset in range(0, database_size, block_size):
-                    block = fd_in.read(min(database_size - offset, block_size))
-                    fd_out.write(block)
-            print("Done")
+            if list_only:
+                fd_in.seek(database_start + database_size)
+            else:
+                print(f"Extracting {output_file}... ", end='')
+                block_size = 0x1000
+                with open(output_file, 'wb') as fd_out:
+                    for offset in range(0, database_size, block_size):
+                        block = fd_in.read(min(database_size - offset, block_size))
+                        fd_out.write(block)
+                print("Done")
+            debug()
 
         tail = fd_in.read()
         debug(f"Tail: {tail}")
-        debug()
 
-        print(f"Extracted {len(databases)} database(s):")
-        for database in databases:
-            print(f"  {database}")
+        if list_only:
+            debug()
+            print(f"{len(databases)} database(s):")
+            for database, database_size in databases:
+                print(f"{database_size:>10} {database}")
 
 
 def _parse_ids(ids: str) -> list[int] | IdPreset:
@@ -1280,20 +1287,25 @@ def main():
     )
     config_file_p.set_defaults(func=cmd_config_file)
 
-    extract_awp_taw_p = subparsers.add_parser(
-        "extract-awp-taw",
+    extract_taw_p = subparsers.add_parser(
+        "extract-taw",
         help="Extract the database from a Garmin .awp or .taw file",
     )
-    extract_awp_taw_p.add_argument(
+    extract_taw_p.add_argument(
         "input_file",
         help="Input .awp or .taw file",
     )
-    extract_awp_taw_p.add_argument(
+    extract_taw_p.add_argument(
         "-v", "--verbose",
         action="store_true",
         help="Increase output verbosity",
     )
-    extract_awp_taw_p.set_defaults(func=cmd_extract_awp_taw)
+    extract_taw_p.add_argument(
+        "-l", "--list-only",
+        action="store_true",
+        help="List databases without extracting",
+    )
+    extract_taw_p.set_defaults(func=cmd_extract_taw)
 
     args = parser.parse_args()
 
