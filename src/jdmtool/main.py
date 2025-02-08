@@ -963,168 +963,57 @@ def cmd_config_file() -> None:
     print(get_config_file())
 
 
-TAW_SEPARATOR = b'\x00\x02\x00\x00\x00Dd\x00\x1b\x00\x00\x00A\xc8\x00'
-TAW_UNKNOWN = b'KpGrd'
-
-TAW_DATABASE_TYPES = {
-    0x0091: "GPSMAP196",
-    0x00BF: "Gx000",
-    0x0104: "GPSMAP296",
-    0x0190: "G500",
-    0x01F2: "G500H/GPSx75",
-    0x0253: "GPSMAP496",
-    0x0294: "AERA660",
-    0x02E9: "GPSMAP696",
-    0x02EA: "G3X",
-    0x02F0: "GPS175",
-    0x0402: "GtnXi",
-    0x0465: "GI275",
-    0x0618: "AERA760",
-    0x06BF: "G3XT",
-    0x0738: "GTR2X5",
-    0x07DC: "GTXi",
-}
-
-TAW_REGION_PATHS = {
-    0x01: "ldr_sys/avtn_db.bin",
-    0x02: "ldr_sys/nav_db2.bin",
-    0x03: "bmap.bin",
-    0x04: "nav.bin",  # fake filename: used for GNS430/500 data cards
-    0x05: "bmap2.bin",
-    0x0A: "safetaxi.bin",
-    0x0B: "safetaxi2.gca",
-    0x14: "fc_tpc/fc_tpc.dat",
-    0x1A: "rasters/rasters.xml",
-    0x21: "terrain.tdb",
-    0x22: "terrain.odb",
-    0x23: "trn.dat",
-    0x24: "FCharts.dat",
-    0x25: "Fcharts.fca",
-    0x26: "standard.odb",
-    0x27: "terrain.odb",
-    0x28: "terrain.adb",
-    0x32: ".System/AVTN/avtn_db.bin",
-    0x33: "Poi/air_sport.gpi",
-    0x35: ".System/AVTN/Obstacle.odb",
-    0x36: ".System/AVTN/safetaxi.img",
-    0x39: ".System/AVTN/FliteCharts/fc_tpc.dat",
-    0x3A: ".System/AVTN/FliteCharts/fc_tpc.fca",
-    0x4C: "fbo.gpi",
-    0x4E: "apt_dir.gca",
-    0x4F: "air_sport.gpi",
-}
-
-
 def cmd_extract_taw(input_file: str, verbose: bool, list_only: bool) -> None:
+    from .taw import TAW_DATABASE_TYPES, TAW_REGION_PATHS, parse_taw_metadata, read_taw_header, read_taw_sections
+
     input_file_path = pathlib.Path(input_file)
 
     debug = print if verbose else lambda *_: None
 
     with open(input_file_path, 'rb') as fd_in:
-        magic = fd_in.read(5)
-        if magic not in (b'pWa.d', b'wAt.d'):
-            raise ProgrammingException(f"Unexpected bytes: {magic}")
+        sqa1, meta_bytes, sqa2 = read_taw_header(fd_in)
+        debug(f"SQA1: {sqa1}")
+        debug(f"SQA2: {sqa2}")
 
-        sep = fd_in.read(len(TAW_SEPARATOR))
-        if sep != TAW_SEPARATOR:
-            raise ProgrammingException(f"Unexpected separator bytes: {sep}")
-
-        sqa = [s.decode() for s in fd_in.read(25).split(b'\x00')]
-        debug(f"SQA: {sqa}")
-
-        metadata_len = int.from_bytes(fd_in.read(4), 'little')
-
-        section_type = fd_in.read(1)
-        if section_type != b'F':
-            print(f"Unexpected section type: {section_type}")
-
-        metadata = fd_in.read(metadata_len)
-
-        database_type = int.from_bytes(metadata[:2], 'little')
-        database_type_name = TAW_DATABASE_TYPES.get(database_type, "Unknown")
-        print(f"Database type: {database_type:x} ({database_type_name})")
-
-        if metadata[2] == 0x00:
-            year = metadata[8]
-            cycle = metadata[12]
-            text = metadata[16:]
-        else:
-            year = metadata[4]
-            cycle = metadata[6]
-            text = metadata[8:]
-
-        parts = text.split(b'\x00')
-        if len(parts) == 3:
-            print(f"Year: {year}")
-            print(f"Cycle: {cycle}")
-            print(f"Avionics: {parts[0].decode()!r}")
-            print(f"Coverage: {parts[1].decode()!r}")
-            print(f"Type: {parts[2].decode().upper()!r}")
-        else:
-            print(f"Unexpected metadata: {metadata}")
-
-        remaining = int.from_bytes(fd_in.read(4), 'little')
-        debug(f"Size of the remaining content: {remaining}")
-
-        section_type = fd_in.read(1)
-        if section_type != b'R':
-            print(f"Unexpected section type: {section_type}")
-
-        unknown = fd_in.read(len(TAW_UNKNOWN))
-        if unknown != TAW_UNKNOWN:
-            print(f"Got unexpected unknown bytes: {unknown}")
-
-        sep = fd_in.read(len(TAW_SEPARATOR))
-        if sep != TAW_SEPARATOR:
-            raise ProgrammingException(f"Unexpected separator bytes: {sep}")
-
-        sqa = [s.decode() for s in fd_in.read(25).split(b'\x00')]
-        debug(f"SQA: {sqa}")
+        try:
+            m = parse_taw_metadata(meta_bytes)
+            database_type_name = TAW_DATABASE_TYPES.get(m.database_type, "Unknown")
+            print(f"Database type: {m.database_type:x} ({database_type_name})")
+            print(f"Year: {m.year}")
+            print(f"Cycle: {m.cycle}")
+            print(f"Avionics: {m.avionics!r}")
+            print(f"Coverage: {m.coverage!r}")
+            print(f"Type: {m.type.upper()!r}")
+        except ValueError as ex:
+            print(ex)
 
         print()
 
         databases: list[tuple[str, int]] = []
-        while True:
-            debug(f"SectStart: {fd_in.tell():x}")
+        for s in read_taw_sections(fd_in):
+            debug(f"Section start: {s.sect_start:x}")
+            debug(f"Section size: {s.sect_size:x}")
 
-            remaining = int.from_bytes(fd_in.read(4), 'little')
-            debug(f"Size of the remaining content: {remaining}")
-
-            section_type = fd_in.read(1)
-            if section_type == b'R':
-                pass
-            elif section_type == b'S':
-                break
-            else:
-                raise ProgrammingException(f"Unexpected section type: {section_type}")
-
-            region = int.from_bytes(fd_in.read(2), 'little')
-            dest_path = TAW_REGION_PATHS.get(region)
-            debug(f"Region: {region:02x} ({dest_path or 'unknown'})")
-
-            unknown = fd_in.read(4)
-            debug(f"Unknown: {unknown}")
-            database_size = int.from_bytes(fd_in.read(4), 'little')
-            debug(f"Database size: {database_size}")
-
-            database_start = fd_in.tell()
-            debug(f"DataStart: {database_start:x}")
+            dest_path = TAW_REGION_PATHS.get(s.region)
+            debug(f"Region: {s.region:02x} ({dest_path or 'unknown'})")
+            debug(f"Unknown: {s.unknown}")
+            debug(f"Database start: {s.data_start}")
+            debug(f"Database size: {s.data_size}")
 
             if dest_path:
                 output_file = pathlib.PurePosixPath(dest_path).name
             else:
-                output_file = f"region_{region:02x}.bin"
+                output_file = f"region_{s.region:02x}.bin"
 
-            databases.append((output_file, database_size))
+            databases.append((output_file, s.data_size))
 
-            if list_only:
-                fd_in.seek(database_start + database_size)
-            else:
+            if not list_only:
                 print(f"Extracting {output_file}... ", end='')
+                assert fd_in.tell() == s.data_start
                 block_size = 0x1000
                 with open(output_file, 'wb') as fd_out:
-                    for offset in range(0, database_size, block_size):
-                        block = fd_in.read(min(database_size - offset, block_size))
+                    for offset in range(0, s.data_size, block_size):
+                        block = fd_in.read(min(s.data_size - offset, block_size))
                         fd_out.write(block)
                 print("Done")
             debug()
