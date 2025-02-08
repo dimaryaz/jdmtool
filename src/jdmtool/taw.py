@@ -1,6 +1,6 @@
 from collections.abc import Generator
 from dataclasses import dataclass
-from io import BytesIO
+from typing import BinaryIO
 
 from .common import JdmToolException
 
@@ -103,7 +103,7 @@ def parse_taw_metadata(metadata: bytes) -> TawMetadata:
     )
 
 
-def read_taw_header(fd: BytesIO) -> tuple[bytes, bytes, bytes]:
+def read_taw_header(fd: BinaryIO) -> tuple[bytes, bytes, bytes]:
     magic = fd.read(5)
     if magic not in (b'pWa.d', b'wAt.d'):
         raise JdmToolException(f"Unexpected bytes: {magic}")
@@ -141,7 +141,7 @@ def read_taw_header(fd: BytesIO) -> tuple[bytes, bytes, bytes]:
     return sqa1, metadata, sqa2
 
 
-def read_taw_sections(fd: BytesIO) -> Generator[TawSection, None, None]:
+def read_taw_sections(fd: BinaryIO) -> Generator[TawSection, None, None]:
     while True:
         sect_start = fd.tell()
         sect_size = int.from_bytes(fd.read(4), 'little')
