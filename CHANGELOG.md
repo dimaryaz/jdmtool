@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.4.2 (2025-02-12)
+- Add an `extract-taw` command
+- Allow downloading multiple services at once
+- Retry when opening USB devices
+
 ## 0.4.1 (2025-01-23)
 - Fix Garmin firmware not being included in the package
 - Fix the FAT filesystem check on Windows
