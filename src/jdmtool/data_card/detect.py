@@ -10,31 +10,42 @@ from .garmin import AlreadyUpdatedException, GarminFirmwareWriter, GarminProgram
 from .skybound import SkyboundDevice
 
 try:
-    from usb1 import USBContext, USBDevice, USBError
+    from usb1 import USBContext, USBDevice, USBDeviceHandle, USBError
 except ImportError:
     raise ProgrammingException("Please install USB support by running `pip3 install jdmtool[usb]") from None
 
 
 @contextmanager
 def _open_usb_device(usbdev: USBDevice):
-    try:
-        handle = usbdev.open()
-    except USBError as ex:
-        raise ProgrammingException(f"Could not open device: {ex}") from ex
+    handle: USBDeviceHandle | None = None
 
     try:
-        try:
-            handle.setAutoDetachKernelDriver(True)
-        except USBError:
-            # Safe to ignore if it's not supported.
-            pass
+        retry = 0
+        while True:
+            try:
+                handle = usbdev.open()
 
-        with handle.claimInterface(0):
-            handle.resetDevice()
-            yield handle
+                try:
+                    handle.setAutoDetachKernelDriver(True)
+                except USBError:
+                    # Safe to ignore if it's not supported.
+                    pass
+
+                handle.claimInterface(0)
+                handle.resetDevice()
+
+                break
+            except USBError as ex:
+                retry += 1
+                if retry == 3:
+                    raise ProgrammingException(f"Could not open device: {ex}") from ex
+                time.sleep(.5)
+
+        yield handle
 
     finally:
-        handle.close()
+        if handle is not None:
+            handle.close()
 
 
 SKYBOUND_VID_PID = (0x0E39, 0x1250)
@@ -74,9 +85,6 @@ def open_programming_device() -> Generator[ProgrammingDevice, None, None]:
                 else:
                     raise ProgrammingException("Could not find the new device!")
 
-                # Wait for permissions to settle.
-                time.sleep(0.5)
-
                 print("Writing stage 2 firmware...")
                 with _open_usb_device(usbdev) as handle:
                     writer = GarminFirmwareWriter(handle)
@@ -93,9 +101,6 @@ def open_programming_device() -> Generator[ProgrammingDevice, None, None]:
                         break
                 else:
                     raise ProgrammingException("Could not find the new device!")
-
-                # Wait for permissions to settle.
-                time.sleep(0.5)
 
                 dev_cls = GarminProgrammingDevice
                 break
@@ -120,9 +125,6 @@ def open_programming_device() -> Generator[ProgrammingDevice, None, None]:
                             print(f"Found at {new_usbdev}")
                             usbdev = new_usbdev
                             break
-
-                    # Wait for permissions to settle.
-                    time.sleep(0.5)
 
                 dev_cls = GarminProgrammingDevice
                 break
