@@ -126,6 +126,8 @@ Downloads:
 
 This is optional - the next command will automatically download the database as needed - but can be useful if you want to transfer the database when you are offline.
 
+You can specify a single service ID, multiple IDs separated by commas, `curr` for all services that are current, or `next` for all services that are not yet current.
+
 ```
 $ jdmtool download 0
 Downloading: 100%|█████████████████████████████████████████████████| 8.44M/8.44M [00:03<00:00, 2.15MB/s]
@@ -186,6 +188,26 @@ Found 1 obsolete downloads (8.2MB total):
 Delete? (y/n) y
 Deleted.
 ```
+
+### Extract Garmin databases
+
+Garmin subscriptions are not (yet) supported - however, if you get a hold of a `.taw` or `.awp` file, you can extract its contents using the `extract-taw` command:
+
+```
+$ jdmtool extract-taw j500a-us-2413.awp
+Database type: 190 (G500)
+Year: 24
+Cycle: 13
+Avionics: 'GNS 430W/530W'
+Coverage: 'US Garmin Navigation Database'
+Type: ''
+
+Extracting nav.bin... Done
+```
+
+You can transfer GNS 400/500 NavData databases to a data card using the `write-database` command (see [here](DataCards.md) for more info). Terrain and obstacles databases are not supported, but may be in the near future.
+
+You can extract other database types, but `jdmtool` cannot do anything with them yet.
 
 ## More Information
 
