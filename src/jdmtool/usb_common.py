@@ -39,7 +39,7 @@ class BasicUsbDevice():
 
 
 @contextmanager
-def open_usb_device(usbdev: USBDevice):
+def open_usb_device(usbdev: USBDevice, reset: bool = True):
     from usb1 import USBError
 
     handle: USBDeviceHandle | None = None
@@ -57,7 +57,8 @@ def open_usb_device(usbdev: USBDevice):
                     pass
 
                 handle.claimInterface(0)
-                handle.resetDevice()
+                if reset:
+                    handle.resetDevice()
 
                 break
             except USBError as ex:

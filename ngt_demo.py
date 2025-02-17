@@ -183,7 +183,7 @@ def main(args) -> int:
             print("Could not find an NGT9000 device!")
             return 2
 
-        with open_usb_device(usbdev) as dev:
+        with open_usb_device(usbdev, reset=False) as dev:
             ngt_dev = NGTDevice(dev)
             run_command(ngt_dev, args[1])
 
