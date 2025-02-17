@@ -184,8 +184,11 @@ def main(args) -> int:
             return 2
 
         with open_usb_device(usbdev, reset=False) as dev:
-            ngt_dev = NGTDevice(dev)
-            run_command(ngt_dev, args[1])
+            if args[1] == "reset":
+                dev.resetDevice()
+            else:
+                ngt_dev = NGTDevice(dev)
+                run_command(ngt_dev, args[1])
 
     return 0
 
