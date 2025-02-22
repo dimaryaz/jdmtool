@@ -211,6 +211,34 @@ class SFXCopySection(SFXSection):
 
 
 @dataclass
+class SFXSection6(SFXSection):
+    SECTION_ID = 6
+
+    @classmethod
+    def debug(cls, fd: BinaryIO) -> None:
+        path = read_string(fd)
+        print("Path:", path)
+        key_name = read_string(fd)
+        print("Key:", key_name)
+        value = read_string(fd)
+        print("Value:", value)
+        unknown = read_u32(fd)
+        print("Unknown:", unknown)
+        data_type = read_string(fd)
+        print("Data Type:", data_type)
+
+    @classmethod
+    def parse_script(cls, fd: TextIO, ctx: SectionContext) -> Self:
+        raise NotImplementedError()
+
+    def total_progress(self, zipfile: ZipFile) -> int:
+        return 0
+
+    def run(self, out: BinaryIO, zipfile: ZipFile, ctx: SecurityContext, progress_cb: Callable[[int], None]) -> None:
+        raise NotImplementedError()
+
+
+@dataclass
 class SFXMessageBoxSection(SFXSection):
     has_proceed: bool
     has_cancel: bool
@@ -247,7 +275,7 @@ class SFXMessageBoxSection(SFXSection):
         write_string(out, self.message)
 
 
-SECTION_CLASSES: list[SFXSection] = [SFXScriptSection, SFXCopySection, SFXMessageBoxSection]
+SECTION_CLASSES: list[SFXSection] = [SFXScriptSection, SFXCopySection, SFXSection6, SFXMessageBoxSection]
 SECTION_BY_ID: Mapping[int, SFXSection] = { cls.SECTION_ID: cls for cls in SECTION_CLASSES }
 
 
@@ -257,6 +285,7 @@ class SFXFile:
     MAGIC_FOOTER = 0x03040506
 
     VERSION_1_05 = '1.05'
+    VERSION_3_06 = '3.06'
     VERSION_3_07 = '3.07'
 
     SECTION_RE = re.compile(r'(\d{1,2})\s+(.+?)( ~Conditional.*)?')
@@ -277,12 +306,13 @@ class SFXFile:
         num_sections = read_u32(fd)
         for _ in range(num_sections):
             print()
-            unknown = read_u32(fd)
-            print("Unknown value:", unknown)
+            zero = read_u32(fd)
+            if zero != 0:
+                raise ValueError(f"Expected 0 but got {zero}")
             section_header = read_string(fd)
             print('Header:', section_header)
 
-            if ver == cls.VERSION_3_07:
+            if ver in (cls.VERSION_3_06, cls.VERSION_3_07):
                 bitmask = read_u32(fd)
                 print(f"Bismask: {bitmask}")
 
@@ -372,7 +402,7 @@ class SFXFile:
             else:
                 write_string(out, section.ctx.header)
 
-            if self.version == self.VERSION_3_07:
+            if self.version in (self.VERSION_3_06, self.VERSION_3_07):
                 write_u32(out, section.ctx.bitmask)
                 write_u32(out, section.ctx.conditional_info is not None)
                 if section.ctx.conditional_info:
