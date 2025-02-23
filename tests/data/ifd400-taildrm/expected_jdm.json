@@ -1,0 +1,37 @@
+{
+  "ss": [
+    {
+      "a": "Avidyne IFD 400",
+      "c": "123",
+      "cd": "Antarctica",
+      "date_label_override": "Effective Date:",
+      "dv": "2401",
+      "f": [
+        {
+          "fh": "-",
+          "fp": "service.dsf",
+          "fs": -1,
+          "sh": "-"
+        }
+      ],
+      "fid": "N11111, N22222",
+      "filter_applied": "no",
+      "gsi": "",
+      "jvsn": "",
+      "ndv": "2402",
+      "nvad": "2024-02-01 00:00:00",
+      "nvsd": "2024-02-01 00:00:00",
+      "oatn": "N12345",
+      "pi": "TEST12345",
+      "s": "Test Service",
+      "sc": "Antarctica",
+      "u": "123456",
+      "uv": "123456_2401",
+      "v": "2401",
+      "ved": "2024-01-01 00:00:00",
+      "vsd": "2024-01-01 00:00:00"
+    }
+  ],
+  "ver": "1.1",
+  "z": "-"
+}

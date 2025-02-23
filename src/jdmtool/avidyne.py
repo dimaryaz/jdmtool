@@ -3,6 +3,7 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from collections.abc import Callable, Mapping
+import pathlib
 import re
 from typing import BinaryIO, TextIO
 try:
@@ -64,6 +65,7 @@ class SecurityContext:
     cycle: str
     volume_id: int
     remaining_transfers: int
+    fleet_ids: list[str]
 
 
 @dataclass
@@ -79,7 +81,7 @@ class SFXSection(ABC):
 
     @classmethod
     @abstractmethod
-    def parse_script(cls, fd: TextIO, ctx: SectionContext) -> Self:
+    def parse_script(cls, dsf_dir: pathlib.PurePosixPath, fd: TextIO, ctx: SectionContext) -> Self:
         ...
 
     @abstractmethod
@@ -122,7 +124,7 @@ class SFXScriptSection(SFXSection):
                 raise ValueError(f"Unexpected padding: {padding}")
 
     @classmethod
-    def parse_script(cls, fd: TextIO, ctx: SectionContext) -> Self:
+    def parse_script(cls, dsf_dir: pathlib.PurePosixPath, fd: TextIO, ctx: SectionContext) -> Self:
         blank = next(fd).strip()
         if blank:
             raise ValueError(f"Unexpected content: {blank!r}")
@@ -148,7 +150,7 @@ class SFXScriptSection(SFXSection):
 @dataclass
 class SFXCopySection(SFXSection):
     mode: int
-    files: list[str]
+    files: list[pathlib.PurePosixPath]
 
     SECTION_ID = 1
 
@@ -180,7 +182,7 @@ class SFXCopySection(SFXSection):
             print(f"Checksum: {calculated_checksum:08x}")
 
     @classmethod
-    def parse_script(cls, fd: TextIO, ctx: SectionContext) -> Self:
+    def parse_script(cls, dsf_dir: pathlib.PurePosixPath, fd: TextIO, ctx: SectionContext) -> Self:
         mode_str = next(fd).strip()
         mode = int(mode_str, 8)
         files = []
@@ -188,22 +190,27 @@ class SFXCopySection(SFXSection):
             line = line.strip()
             if not line:
                 break
-            files.append(line)
+            rel_path = pathlib.PurePosixPath(line)
+            while rel_path.parts[0] == "..":
+                rel_path = pathlib.PurePosixPath(*rel_path.parts[1:])
+                dsf_dir = dsf_dir.parent
+            path = dsf_dir / rel_path
+            files.append(path)
 
         return SFXCopySection(ctx, mode, files)
 
     def total_progress(self, zipfile: ZipFile) -> int:
-        return sum(zipfile.getinfo(filename).file_size for filename in self.files)
+        return sum(zipfile.getinfo(str(path)).file_size for path in self.files)
 
     def run(self, out: BinaryIO, zipfile: ZipFile, ctx: SecurityContext, progress_cb: Callable[[int], None]) -> None:
         write_u32(out, len(self.files))
         write_u32(out, self.mode)
 
-        for filename in self.files:
-            write_string(out, filename.rsplit('/')[-1])
+        for path in self.files:
+            write_string(out, path.name)
             write_u32(out, 3)
 
-            contents = zipfile.read(filename)
+            contents = zipfile.read(str(path))
             write_u32(out, len(contents))
             compressed_contents = zlib.compress(contents)
             write_u32(out, len(compressed_contents))
@@ -214,6 +221,79 @@ class SFXCopySection(SFXSection):
             write_u32(out, checksum)
 
             progress_cb(len(contents))
+
+
+@dataclass
+class SFXExecuteSection(SFXSection):
+    unknown1: str
+    unknown2: int
+
+    SECTION_ID = 3
+
+    @classmethod
+    def debug(cls, fd: BinaryIO) -> None:
+        unknown1 = read_string(fd)
+        print("Unknown1:", unknown1)
+        unknown2 = fd.read(1)[0]
+        print("Unknown2:", unknown2)
+
+    @classmethod
+    def parse_script(cls, dsf_dir: pathlib.PurePosixPath, fd: TextIO, ctx: SectionContext) -> Self:
+        unknown1 = next(fd).strip()
+        unknown2 = int(next(fd))
+        return SFXExecuteSection(ctx, unknown1, unknown2)
+
+    def total_progress(self, zipfile: ZipFile) -> int:
+        return 0
+
+    def run(self, out: BinaryIO, zipfile: ZipFile, ctx: SecurityContext, progress_cb: Callable[[int], None]) -> None:
+        write_string(out, self.unknown1)
+        out.write(self.unknown2.to_bytes(1, 'big'))
+
+
+@dataclass
+class SFXPersistSection(SFXSection):
+    path: str
+    key: str
+    value: str
+    data_type: str
+    unknown: int
+
+    SECTION_ID = 6
+
+    @classmethod
+    def debug(cls, fd: BinaryIO) -> None:
+        path = read_string(fd)
+        print("Path:", path)
+        key_name = read_string(fd)
+        print("Key:", key_name)
+        value = read_string(fd)
+        print("Value:", value)
+        unknown = read_u32(fd)
+        print("Unknown:", unknown)
+        data_type = read_string(fd)
+        print("Data Type:", data_type)
+
+    @classmethod
+    def parse_script(cls, dsf_dir: pathlib.PurePosixPath, fd: TextIO, ctx: SectionContext) -> Self:
+        key = next(fd).strip()
+        value = next(fd).strip()
+        data_type = next(fd).strip()
+        try:
+            unknown = int(next(fd).strip()) + 1
+        except ValueError:
+            unknown = 1
+        return SFXPersistSection(ctx, ctx.param, key, value, data_type, unknown)
+
+    def total_progress(self, zipfile: ZipFile) -> int:
+        return 0
+
+    def run(self, out: BinaryIO, zipfile: ZipFile, ctx: SecurityContext, progress_cb: Callable[[int], None]) -> None:
+        write_string(out, self.path)
+        write_string(out, self.key)
+        write_string(out, self.value)
+        write_u32(out, self.unknown)
+        write_string(out, self.data_type)
 
 
 @dataclass
@@ -233,7 +313,7 @@ class SFXMessageBoxSection(SFXSection):
         print('Message:', message)
 
     @classmethod
-    def parse_script(cls, fd: TextIO, ctx: SectionContext) -> Self:
+    def parse_script(cls, dsf_dir: pathlib.PurePosixPath, fd: TextIO, ctx: SectionContext) -> Self:
         has_proceed = not next(fd).strip().startswith('0')
         has_cancel = not next(fd).strip().startswith('0')
         message_parts = []
@@ -253,7 +333,13 @@ class SFXMessageBoxSection(SFXSection):
         write_string(out, self.message)
 
 
-SECTION_CLASSES: list[SFXSection] = [SFXScriptSection, SFXCopySection, SFXMessageBoxSection]
+SECTION_CLASSES: list[SFXSection] = [
+    SFXScriptSection,
+    SFXCopySection,
+    SFXExecuteSection,
+    SFXPersistSection,
+    SFXMessageBoxSection,
+]
 SECTION_BY_ID: Mapping[int, SFXSection] = { cls.SECTION_ID: cls for cls in SECTION_CLASSES }
 
 
@@ -266,7 +352,7 @@ class SFXFile:
     VERSION_3_09 = '3.09'
 
     SECTION_RE = re.compile(r'(\d{1,2})\s+(.+?)( ~Conditional.*)?')
-    CONDITIONAL_RE = re.compile(r'Mask:0x([0-9a-fA-F]{1,8})\t(.+\t.+\t.+\t.+)')
+    CONDITIONAL_RE = re.compile(r'Mask:0x([0-9a-fA-F]{1,8})(?:\t(.+\t.+\t.+\t.+))?')
     CONDITIONAL_OLD_RE = re.compile(r'(\d):(\d):(\d)\t(.+\t.+\t.+\t.+)')
 
     version: str
@@ -319,7 +405,7 @@ class SFXFile:
             raise ValueError(f"Unexpected footer: {footer:08x}")
 
     @classmethod
-    def parse_script(cls, fd: TextIO) -> Self:
+    def parse_script(cls, dsf_dir: pathlib.PurePosixPath, fd: TextIO) -> Self:
         version = cls.VERSION_1_05
         sections = []
 
@@ -363,7 +449,7 @@ class SFXFile:
             if section_cls is None:
                 raise ValueError(f"Unsupported section type: {section_type}")
 
-            section = section_cls.parse_script(fd, ctx)
+            section = section_cls.parse_script(dsf_dir, fd, ctx)
             sections.append(section)
 
         return SFXFile(version, sections)
@@ -387,6 +473,11 @@ class SFXFile:
                 write_u32(out, section.ctx.bitmask)
                 write_u32(out, section.ctx.conditional_info is not None)
                 if section.ctx.conditional_info:
+                    if ctx.fleet_ids:
+                        parts = section.ctx.conditional_info.split('\t')
+                        if parts[1] == 'TAIL_NUM':
+                            parts[3] = ctx.fleet_ids.pop(0)
+                            section.ctx.conditional_info = '\t'.join(parts)
                     write_string(out, section.ctx.conditional_info)
 
             write_string(out, section.ctx.param)

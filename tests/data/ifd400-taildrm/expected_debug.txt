@@ -1,0 +1,103 @@
+Version: 3.09
+
+Header: 2401 Start
+Bitmask: 0x0000000f
+Conditional: 0
+Param: End
+Section type: 0
+Message: Updating stuff!
+Security enabled: 0
+
+Header: Message1
+Bitmask: 0x0000000f
+Conditional: 1
+Condition info: /some_path	some_text	1	2
+Param: -MsgBox-
+Section type: 14
+Has proceed: 0
+Has cancel: 0
+Message: A Very Bad Error Has Occurred
+
+Header: Message2
+Bitmask: 0x0000000f
+Conditional: 1
+Condition info: /some_path	some_text	3	4
+Param: -MsgBox-
+Section type: 14
+Has proceed: 1
+Has cancel: 1
+Message: Actually, it's fine
+
+Header: Delete file
+Bitmask: 0x0000000f
+Conditional: 0
+Param: rm /File.txt
+Section type: 3
+Unknown1: 
+Unknown2: 0
+
+Header: Copy Stuff
+Bitmask: 0x0000000f
+Conditional: 1
+Condition info: /some_path	some_text	5	6
+Param: /Dir1
+Section type: 1
+File count: 1
+Mode: 0444
+Filename: hello.txt
+Unknown value: 3
+Uncompressed size: 7
+Checksum: 7bf0831e
+
+Header: Tail1
+Bitmask: 0x0000000f
+Conditional: 1
+Condition info: /some_path	TAIL_NUM	0	N11111
+Param: /File.txt
+Section type: 6
+Path: /File.txt
+Key: ACTION
+Value: 1
+Unknown: 2
+Data Type: UINT08
+
+Header: Tail2
+Bitmask: 0x0000000f
+Conditional: 1
+Condition info: /some_path	TAIL_NUM	0	 N22222
+Param: /File.txt
+Section type: 6
+Path: /File.txt
+Key: ACTION
+Value: 1
+Unknown: 2
+Data Type: UINT08
+
+Header: Tail3
+Bitmask: 0x0000000f
+Conditional: 1
+Condition info: /some_path	TAIL_NUM	0	<T>TAIL3</T>
+Param: /File.txt
+Section type: 6
+Path: /File.txt
+Key: ACTION
+Value: 1
+Unknown: 2
+Data Type: UINT08
+
+Header: Copy More Stuff
+Bitmask: 0x0000000f
+Conditional: 1
+Condition info: /some_path	some_text	7	8
+Param: /Dir2
+Section type: 1
+File count: 2
+Mode: 0444
+Filename: foo.txt
+Unknown value: 3
+Uncompressed size: 4
+Checksum: 3132330a
+Filename: bar.txt
+Unknown value: 3
+Uncompressed size: 4
+Checksum: 3435360a

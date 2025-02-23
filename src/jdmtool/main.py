@@ -465,9 +465,19 @@ def _transfer_avidyne_e2(service: Service, path: pathlib.Path, volume_id: int) -
 
     dot_jdm = DotJdmConfig(0x8000, [])
 
-    with zipfile.ZipFile(database_path) as database_zip:
+    tail_drm = service.get_optional_property("oem_avidyne_taildrm_enabled", "") == "1"
+    dsf_dir = pathlib.PurePosixPath("tail" if tail_drm else ".")
+
+    fleet_ids_str = service.get_optional_property("fleet_ids", "")
+    fleet_ids = [fid.rstrip() for fid in fleet_ids_str.split(",")] if fleet_ids_str else []
+
+    def _dsf_filter(path_str: str):
         # Look for files ending with dsf.txt, even not preceeded by a dot, or anything at all.
-        dsf_txt_files = [f for f in database_zip.infolist() if '/' not in f.filename and f.filename.endswith('dsf.txt')]
+        path = pathlib.PurePosixPath(path_str)
+        return path.parent == dsf_dir and path.name.endswith('dsf.txt')
+
+    with zipfile.ZipFile(database_path) as database_zip:
+        dsf_txt_files = [f for f in database_zip.infolist() if _dsf_filter(f.filename)]
         if not dsf_txt_files:
             raise JdmToolException("Did not find a dsf.txt file")
         if len(dsf_txt_files) > 1:
@@ -476,13 +486,13 @@ def _transfer_avidyne_e2(service: Service, path: pathlib.Path, volume_id: int) -
 
         with database_zip.open(dsf_txt_file) as dsf_bytes:
             with TextIOWrapper(dsf_bytes) as dsf_txt:
-                script = SFXFile.parse_script(dsf_txt)
+                script = SFXFile.parse_script(dsf_dir, dsf_txt)
 
-        dsf_name = dsf_txt_file.filename[:-4].lower()
+        dsf_name = pathlib.PurePosixPath(dsf_txt_file.filename).name[:-4].lower()
         if not dsf_name.endswith('.dsf'):
             dsf_name += '.dsf'
 
-        ctx = SecurityContext(service.get_property('display_version'), volume_id, 2)
+        ctx = SecurityContext(service.get_property('display_version'), volume_id, 2, fleet_ids)
 
         dest = path / dsf_name
         total = script.total_progress(database_zip)
