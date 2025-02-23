@@ -217,6 +217,58 @@ class SFXCopySection(SFXSection):
 
 
 @dataclass
+class SFXExecuteSection(SFXSection):
+    command: str
+
+    SECTION_ID = 3
+
+    @classmethod
+    def debug(cls, fd: BinaryIO) -> None:
+        unknown1 = fd.read(1)[0]
+        print("Unknown1:", unknown1)
+        unknown2 = read_u32(fd)
+        print("Unknown2:", unknown2)
+
+    @classmethod
+    def parse_script(cls, fd: TextIO, ctx: SectionContext) -> Self:
+        raise NotImplementedError()
+
+    def total_progress(self, zipfile: ZipFile) -> int:
+        return 0
+
+    def run(self, out: BinaryIO, zipfile: ZipFile, ctx: SecurityContext, progress_cb: Callable[[int], None]) -> None:
+        raise NotImplementedError()
+
+
+@dataclass
+class SFXPersistSection(SFXSection):
+    SECTION_ID = 6
+
+    @classmethod
+    def debug(cls, fd: BinaryIO) -> None:
+        path = read_string(fd)
+        print("Path:", path)
+        key_name = read_string(fd)
+        print("Key:", key_name)
+        value = read_string(fd)
+        print("Value:", value)
+        unknown = read_u32(fd)
+        print("Unknown:", unknown)
+        data_type = read_string(fd)
+        print("Data Type:", data_type)
+
+    @classmethod
+    def parse_script(cls, fd: TextIO, ctx: SectionContext) -> Self:
+        raise NotImplementedError()
+
+    def total_progress(self, zipfile: ZipFile) -> int:
+        return 0
+
+    def run(self, out: BinaryIO, zipfile: ZipFile, ctx: SecurityContext, progress_cb: Callable[[int], None]) -> None:
+        raise NotImplementedError()
+
+
+@dataclass
 class SFXMessageBoxSection(SFXSection):
     has_proceed: bool
     has_cancel: bool
@@ -253,7 +305,13 @@ class SFXMessageBoxSection(SFXSection):
         write_string(out, self.message)
 
 
-SECTION_CLASSES: list[SFXSection] = [SFXScriptSection, SFXCopySection, SFXMessageBoxSection]
+SECTION_CLASSES: list[SFXSection] = [
+    SFXScriptSection,
+    SFXCopySection,
+    SFXExecuteSection,
+    SFXPersistSection,
+    SFXMessageBoxSection,
+]
 SECTION_BY_ID: Mapping[int, SFXSection] = { cls.SECTION_ID: cls for cls in SECTION_CLASSES }
 
 
