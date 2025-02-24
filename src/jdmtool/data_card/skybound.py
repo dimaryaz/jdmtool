@@ -1,13 +1,8 @@
 from __future__ import annotations
 
 from collections.abc import Callable, Generator
-from typing import TYPE_CHECKING
 
 from .common import IID_MAP, ProgrammingDevice, ProgrammingException
-
-
-if TYPE_CHECKING:
-    from usb1 import USBDeviceHandle
 
 
 class SkyboundDevice(ProgrammingDevice):

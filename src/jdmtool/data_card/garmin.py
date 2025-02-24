@@ -3,13 +3,9 @@ from __future__ import annotations
 from collections.abc import Callable, Generator
 from pathlib import Path
 from struct import unpack
-from typing import BinaryIO, TYPE_CHECKING
+from typing import BinaryIO
 
 from .common import IID_MAP, BasicUsbDevice, ProgrammingDevice, ProgrammingException
-
-
-if TYPE_CHECKING:
-    from usb1 import USBDeviceHandle
 
 
 FIRMWARE_DIR = Path(__file__).parent / 'firmware'
