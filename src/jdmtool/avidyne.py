@@ -20,6 +20,12 @@ def read_u32(fd: BinaryIO) -> int:
     return int.from_bytes(fd.read(4), 'big')
 
 
+def read_zero(fd: BinaryIO) -> None:
+    zero = int.from_bytes(fd.read(4), 'big')
+    if zero != 0:
+        raise ValueError(f"Expected 0, but got {zero}")
+
+
 def read_bytes(fd: BinaryIO) -> bytes:
     str_len = read_u32(fd)
     s = fd.read(str_len)
@@ -278,8 +284,7 @@ class SFXFile:
         num_sections = read_u32(fd)
         for _ in range(num_sections):
             print()
-            unknown = read_u32(fd)
-            print("Unknown value:", unknown)
+            read_zero(fd)
             section_header = read_string(fd)
             print('Header:', section_header)
 
