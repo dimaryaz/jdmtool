@@ -282,7 +282,7 @@ class SFXFile:
             section_header = read_string(fd)
             print('Header:', section_header)
 
-            if ver == cls.VERSION_3_07:
+            if ver.startswith('3.'):
                 bitmask = read_u32(fd)
                 print(f"Bitmask: {bitmask}")
 
@@ -293,7 +293,7 @@ class SFXFile:
                     condition_info = read_string(fd)
                     print(f"Condition info: {condition_info}")
 
-            elif ver != cls.VERSION_1_05:
+            elif not ver.startswith('1.'):
                 raise ValueError(f"Unexpected version: {ver}")
 
             param = read_string(fd)
