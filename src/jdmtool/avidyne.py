@@ -284,7 +284,7 @@ class SFXFile:
 
             if ver == cls.VERSION_3_07:
                 bitmask = read_u32(fd)
-                print(f"Bismask: {bitmask}")
+                print(f"Bitmask: {bitmask}")
 
                 conditional = read_u32(fd)
                 print(f"Conditional: {conditional}")
@@ -343,6 +343,8 @@ class SFXFile:
                         bool(int(m.group(3))) << 1
                     )
                     conditional_info = m.group(4)
+                else:
+                    bitmask = 0
 
             param = next(fd).strip()
 
