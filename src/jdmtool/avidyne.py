@@ -257,10 +257,11 @@ class SFXFile:
     MAGIC_FOOTER = 0x03040506
 
     VERSION_1_05 = '1.05'
-    VERSION_3_07 = '3.07'
+    VERSION_3_09 = '3.09'
 
     SECTION_RE = re.compile(r'(\d{1,2})\s+(.+?)( ~Conditional.*)?')
-    CONDITIONAL_RE = re.compile(r'(\d):(\d):(\d)\t(.+\t.+\t.+\t.+)')
+    CONDITIONAL_RE = re.compile(r'Mask:0x([0-9a-fA-F]{1,8})\t(.+\t.+\t.+\t.+)')
+    CONDITIONAL_OLD_RE = re.compile(r'(\d):(\d):(\d)\t(.+\t.+\t.+\t.+)')
 
     version: str
     sections: list[SFXSection]
@@ -284,7 +285,7 @@ class SFXFile:
 
             if ver.startswith('3.'):
                 bitmask = read_u32(fd)
-                print(f"Bitmask: {bitmask}")
+                print(f"Bitmask: 0x{bitmask:08x}")
 
                 conditional = read_u32(fd)
                 print(f"Conditional: {conditional}")
@@ -330,13 +331,16 @@ class SFXFile:
             header = m.group(2)
             conditional = m.group(3) is not None
 
-            bitmask = 7
+            bitmask = 0xF
             conditional_info = None
 
             if conditional:
-                version = cls.VERSION_3_07
-                m = cls.CONDITIONAL_RE.fullmatch(next(fd).strip())
-                if m:
+                version = cls.VERSION_3_09
+                conditional_str = next(fd).strip()
+                if m := cls.CONDITIONAL_RE.fullmatch(conditional_str):
+                    bitmask = int(m.group(1), 16)
+                    conditional_info = m.group(2)
+                elif m := cls.CONDITIONAL_OLD_RE.fullmatch(conditional_str):
                     bitmask = (
                         bool(int(m.group(1))) |
                         bool(int(m.group(2))) << 2 |
@@ -374,7 +378,7 @@ class SFXFile:
             else:
                 write_string(out, section.ctx.header)
 
-            if self.version == self.VERSION_3_07:
+            if self.version == self.VERSION_3_09:
                 write_u32(out, section.ctx.bitmask)
                 write_u32(out, section.ctx.conditional_info is not None)
                 if section.ctx.conditional_info:
