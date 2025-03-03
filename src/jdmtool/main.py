@@ -14,6 +14,7 @@ import json
 import os
 import pathlib
 import shutil
+import sys
 import time
 from typing import Any, TYPE_CHECKING
 import zipfile
@@ -1215,3 +1216,7 @@ def main():
         return 1
 
     return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
