@@ -481,9 +481,9 @@ def _transfer_avidyne_e2(service: Service, path: pathlib.Path, volume_id: int) -
 
         with database_zip.open(dsf_txt_file) as dsf_bytes:
             with TextIOWrapper(dsf_bytes) as dsf_txt:
-                script = SFXFile.parse_script(dsf_txt)
+                script = SFXFile.parse_script(dsf_dir, dsf_txt)
 
-        dsf_name = dsf_txt_file.filename[:-4].lower()
+        dsf_name = pathlib.PurePosixPath(dsf_txt_file.filename).name[:-4].lower()
         if not dsf_name.endswith('.dsf'):
             dsf_name += '.dsf'
 
