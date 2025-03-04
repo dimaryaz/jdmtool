@@ -39,7 +39,7 @@ def test_transfer(tmp_path: Path, test_data: Path):
 
     with open(dest / "service.dsf", "rb") as fd:
         with redirect_stdout(actual_debug):
-            SFXFile.debug(fd)
+            SFXFile.debug(fd, False)
 
     assert actual_debug.getvalue() == expected_debug
 

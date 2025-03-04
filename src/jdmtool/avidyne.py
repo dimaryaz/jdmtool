@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
+import argparse
 from dataclasses import dataclass
 from collections.abc import Callable, Mapping
 import pathlib
@@ -10,7 +11,6 @@ try:
     from typing import Self  # type: ignore
 except ImportError:
     from typing_extensions import Self  # type: ignore
-import sys
 import zlib
 from zipfile import ZipFile
 
@@ -76,7 +76,7 @@ class SFXSection(ABC):
 
     @classmethod
     @abstractmethod
-    def debug(cls, fd: BinaryIO) -> None:
+    def debug(cls, fd: BinaryIO, extract: bool) -> None:
         ...
 
     @classmethod
@@ -101,7 +101,7 @@ class SFXScriptSection(SFXSection):
     SECTION_ID = 0
 
     @classmethod
-    def debug(cls, fd: BinaryIO) -> None:
+    def debug(cls, fd: BinaryIO, extract: bool) -> None:
         msg = read_string(fd)
         print("Message:", msg)
 
@@ -149,13 +149,15 @@ class SFXScriptSection(SFXSection):
 
 @dataclass
 class SFXCopySection(SFXSection):
+    _idx = 0
+
     mode: int
     files: list[pathlib.PurePosixPath]
 
     SECTION_ID = 1
 
     @classmethod
-    def debug(cls, fd: BinaryIO) -> None:
+    def debug(cls, fd: BinaryIO, extract: bool) -> None:
         file_count = read_u32(fd)
         print("File count:", file_count)
         mode = read_u32(fd)
@@ -180,6 +182,13 @@ class SFXCopySection(SFXSection):
             if calculated_checksum != expected_checksum:
                 raise ValueError(f"Unexpected checksum: {calculated_checksum:08x}; expected {expected_checksum:08x}")
             print(f"Checksum: {calculated_checksum:08x}")
+
+            if extract:
+                dest = pathlib.Path(f"{cls._idx}") / filename
+                dest.parent.mkdir(parents=True, exist_ok=True)
+                dest.write_bytes(contents)
+
+        cls._idx += 1
 
     @classmethod
     def parse_script(cls, dsf_dir: pathlib.PurePosixPath, fd: TextIO, ctx: SectionContext) -> Self:
@@ -231,7 +240,7 @@ class SFXExecuteSection(SFXSection):
     SECTION_ID = 3
 
     @classmethod
-    def debug(cls, fd: BinaryIO) -> None:
+    def debug(cls, fd: BinaryIO, extract: bool) -> None:
         unknown1 = read_string(fd)
         print("Unknown1:", unknown1)
         unknown2 = fd.read(1)[0]
@@ -262,7 +271,7 @@ class SFXPersistSection(SFXSection):
     SECTION_ID = 6
 
     @classmethod
-    def debug(cls, fd: BinaryIO) -> None:
+    def debug(cls, fd: BinaryIO, extract: bool) -> None:
         path = read_string(fd)
         print("Path:", path)
         key_name = read_string(fd)
@@ -305,7 +314,7 @@ class SFXMessageBoxSection(SFXSection):
     SECTION_ID = 14
 
     @classmethod
-    def debug(cls, fd: BinaryIO) -> None:
+    def debug(cls, fd: BinaryIO, extract: bool) -> None:
         has_proceed, has_cancel = fd.read(2)
         print("Has proceed:", has_proceed)
         print("Has cancel:", has_cancel)
@@ -359,7 +368,7 @@ class SFXFile:
     sections: list[SFXSection]
 
     @classmethod
-    def debug(cls, fd: BinaryIO) -> None:
+    def debug(cls, fd: BinaryIO, extract: bool) -> None:
         magic = fd.read(len(cls.MAGIC_HEADER))
         if magic != cls.MAGIC_HEADER:
             raise ValueError("Incorrect magic number")
@@ -398,7 +407,7 @@ class SFXFile:
             if section_cls is None:
                 raise ValueError(f"Unsupported section type: {section_type}")
 
-            section_cls.debug(fd)
+            section_cls.debug(fd, extract)
 
         footer = read_u32(fd)
         if footer != cls.MAGIC_FOOTER:
@@ -489,12 +498,21 @@ class SFXFile:
 
 
 def main():
-    if len(sys.argv) != 2:
-        print(f"Usage: {sys.argv[0]} input.dsf")
-        return
+    parser = argparse.ArgumentParser(description="List the contents of an Avidyne .dsf file")
+    parser.add_argument(
+        '-x',
+        '--extract',
+        action='store_true',
+        help="Extract the files into the current directory",
+    )
+    parser.add_argument(
+        "path",
+        help="Path to the .dsf file",
+    )
+    args = parser.parse_args()
 
-    with open(sys.argv[1], 'rb') as fd:
-        SFXFile.debug(fd)
+    with open(args.path, 'rb') as fd:
+        SFXFile.debug(fd, args.extract)
 
 
 if __name__ == '__main__':
