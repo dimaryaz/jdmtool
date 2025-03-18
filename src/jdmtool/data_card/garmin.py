@@ -92,29 +92,29 @@ class GarminProgrammingDevice(ProgrammingDevice):
     def get_firmware_description(self) -> str:
         return self.firmware
 
-    def begin_erase(self, start_page: int, page_count: int) -> None:
+    def begin_erase(self, start_sector: int, sector_count: int) -> None:
         self.check_card()
 
-        start_page_byte = start_page.to_bytes(2, 'big')
-        page_count_byte = page_count.to_bytes(2, 'big')
-        buf = b"\x00\x00" + start_page_byte + b"\x00\x00\x00\x00" + page_count_byte + b"\x00\x01\x00\x00"
+        start_sector_byte = start_sector.to_bytes(2, 'big')
+        sector_count_byte = sector_count.to_bytes(2, 'big')
+        buf = b"\x00\x00" + start_sector_byte + b"\x00\x00\x00\x00" + sector_count_byte + b"\x00\x01\x00\x00"
         self.control_write(0x40, 0x85, 0x0000, 0x0000, buf)
 
-    def begin_write(self, start_page: int) -> None:
+    def begin_write(self, start_sector: int) -> None:
         self.check_card()
 
-        start_page_byte = start_page.to_bytes(2, 'big')
-        buf = b"\x00\x04" + start_page_byte + b"\x00\x00\x00\x00\x00\x00"
+        start_sector_byte = start_sector.to_bytes(2, 'big')
+        buf = b"\x00\x04" + start_sector_byte + b"\x00\x00\x00\x00\x00\x00"
         self.control_write(0x40, 0x86, 0x0000, 0x0000, buf)
 
     def end_write(self) -> None:
         self.control_write(0x40, 0x87, 0x0000, 0x0000, b"")
 
-    def begin_read(self, start_page: int) -> None:
+    def begin_read(self, start_sector: int) -> None:
         self.check_card()
 
-        start_page_byte = start_page.to_bytes(2, 'big')
-        buf = b"\x00\x04" + start_page_byte + b"\x00\x00\x00\x00\x00\x00"
+        start_sector_byte = start_sector.to_bytes(2, 'big')
+        buf = b"\x00\x04" + start_sector_byte + b"\x00\x00\x00\x00\x00\x00"
         self.control_write(0x40, 0x81, 0x0000, 0x0000, buf)
 
     def end_read(self) -> None:

@@ -49,11 +49,11 @@ class BasicUsbDevice():
     def bulk_write(self, data: bytes) -> None:
         self.handle.bulkWrite(self.WRITE_ENDPOINT, data, self.TIMEOUT)
 
-    def control_read(self, bRequestType: int, bRequest: int, wValue: int, wIndex: int, wLength: int) -> bytes:
-        return self.handle.controlRead(bRequestType, bRequest, wValue, wIndex, wLength, self.TIMEOUT)
+    def control_read(self, request_type: int, request: int, value: int, index: int, length: int) -> bytes:
+        return self.handle.controlRead(request_type, request, value, index, length, self.TIMEOUT)
 
-    def control_write(self, bRequestType: int, bRequest: int, wValue: int, wIndex: int, data: bytes) -> None:
-        self.handle.controlWrite(bRequestType, bRequest, wValue, wIndex, data, self.TIMEOUT)
+    def control_write(self, request_type: int, request: int, value: int, index: int, data: bytes) -> None:
+        self.handle.controlWrite(request_type, request, value, index, data, self.TIMEOUT)
 
 
 class ProgrammingDevice(BasicUsbDevice):

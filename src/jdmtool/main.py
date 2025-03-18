@@ -33,8 +33,10 @@ if TYPE_CHECKING:
     from .downloader import Downloader
 
 
-CARD_TYPE_SD = 2
-CARD_TYPE_SKYBOUND = 7
+class CardType(Enum):
+    SD = 2
+    DATA_CARD = 7
+
 
 DOT_JDM = '.jdm'
 DOT_JDM_MAX_FH_SIZE = 100 * 1024 * 1024  # fh calculated up to 100MB
@@ -787,9 +789,9 @@ def cmd_transfer(
     card_types = set(int(service.get_property('media/card_type')) for service in services)
     if len(card_types) != 1:
         raise UserException("Cannot mix SD card and programmer device services")
-    card_type = card_types.pop()
+    card_type = CardType(card_types.pop())
 
-    if card_type == CARD_TYPE_SD:
+    if card_type is CardType.SD:
         if not device:
             raise UserException("This database requires a path to an SD card")
 
@@ -797,7 +799,7 @@ def cmd_transfer(
             raise UserException("--full-erase only makes sense for data cards")
 
         _transfer_sd_card(services, pathlib.Path(device), vol_id)
-    elif card_type == CARD_TYPE_SKYBOUND:
+    elif card_type is CardType.DATA_CARD:
         if device:
             raise UserException("This database requires a programmer device and does not support paths")
         if len(services) != 1:
