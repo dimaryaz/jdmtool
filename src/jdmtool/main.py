@@ -25,7 +25,7 @@ import tqdm
 from .common import JdmToolException, get_data_dir
 from .config import get_config, get_config_file
 from .const import GRM_FEAT_KEY
-from .data_card.common import ProgrammingDevice, ProgrammingException
+from .data_card.common import DataCardType, ProgrammingDevice, ProgrammingException
 from .service import Service, ServiceException, SimpleService, get_downloads_dir, load_services
 
 
@@ -754,14 +754,16 @@ def _transfer_data_card(dev: ProgrammingDevice, service: Service, full_erase: bo
     card_size_min = int(service.get_property('media/card_size_min'))
     card_size_max = int(service.get_property('media/card_size_max'))
 
-    if not card_size_min <= dev.get_total_size() <= card_size_max:
+    if dev.card_type is DataCardType.TAWS:
+        print()
+        print("WARNING: You are trying to transfer a Nav database to a TAWS data card!")
+    elif not card_size_min <= dev.get_total_size() <= card_size_max:
         print()
         print(
             f"WARNING: This service requires a data card between "
             f"{card_size_min // 2**20}MB and {card_size_max // 2**20}MB, "
             f"but yours is {dev.get_total_size() // 2**20}MB!"
         )
-        print()
 
     print()
     print("Selected service:")
@@ -866,10 +868,12 @@ def cmd_detect(dev: ProgrammingDevice, verbose: bool) -> None:
 def cmd_read_database(dev: ProgrammingDevice, path: str, full_card: bool) -> None:
     start = time.perf_counter()
 
+    total_size = dev.get_total_size()
+
     with open(path, 'w+b') as fd:
-        with tqdm.tqdm(desc="Reading the database", total=dev.get_total_size(), unit='B', unit_scale=True) as t:
-            for block in dev.read_blocks(0, dev.get_total_sectors()):
-                if not full_card and block == b'\xFF' * ProgrammingDevice.BLOCK_SIZE:
+        with tqdm.tqdm(desc="Reading the database", total=total_size, unit='B', unit_scale=True) as t:
+            for block in dev.read_blocks(0, total_size):
+                if dev.card_type is DataCardType.NAVDATA and not full_card and not block.strip(b'\xFF'):
                     # Garmin card has no concept of size of the data,
                     # so we stop when we see a completely empty block.
                     break
@@ -889,49 +893,54 @@ def _write_database(dev: ProgrammingDevice, path: str, full_erase: bool) -> None
         if size > max_size:
             raise ProgrammingException(f"Database file is too big: {size}! The maximum size is {max_size}.")
 
-        def _read_block():
-            return fd.read(ProgrammingDevice.BLOCK_SIZE).ljust(ProgrammingDevice.BLOCK_SIZE, b'\xFF')
-
-        sectors_required = -(-size // ProgrammingDevice.SECTOR_SIZE)
-        total_size = sectors_required * ProgrammingDevice.SECTOR_SIZE
-
         if full_erase:
             sectors_to_erase = dev.get_total_sectors()
         else:
             # Erase an extra sector just to be safe.
+            sectors_required = -(-size // dev.card_type.sector_size)
             sectors_to_erase = min(sectors_required + 1, dev.get_total_sectors())
-        total_erase_size = sectors_to_erase * ProgrammingDevice.SECTOR_SIZE
 
-        sector_is_blank = [True] * sectors_to_erase
+        total_erase_size = sectors_to_erase * dev.card_type.sector_size
 
-        with tqdm.tqdm(desc="Blank checking", total=total_erase_size, unit='B', unit_scale=True) as t:
-            for sector_idx in range(sectors_to_erase):
-                for i, block in enumerate(dev.read_blocks(sector_idx, 1)):
-                    if block != b'\xff' * ProgrammingDevice.BLOCK_SIZE:
-                        sector_is_blank[sector_idx] = False
-                        t.update(ProgrammingDevice.BLOCK_SIZE * (ProgrammingDevice.BLOCKS_PER_SECTOR - i))
-                        break
+        # For NavData cards, check if sectors are already blank before erasing.
+        # For TAWS cards, it is much faster to just erase everything.
+        check_blanks = dev.card_type is DataCardType.NAVDATA
 
-                    t.update(ProgrammingDevice.BLOCK_SIZE)
+        if check_blanks:
+            sector_is_blank = [True] * sectors_to_erase
 
-        # Data card can only write by changing 1s to 0s (effectively doing a bit-wise AND with
-        # the existing contents), so all data needs to be "erased" first to reset everything to 1s.
-        with tqdm.tqdm(desc="Erasing the database", total=total_erase_size, unit='B', unit_scale=True) as t:
-            for sector_idx in range(sectors_to_erase):
-                if not sector_is_blank[sector_idx]:
-                    for _ in dev.erase_sectors(sector_idx, 1):
-                        pass
-                t.update(ProgrammingDevice.SECTOR_SIZE)
+            with tqdm.tqdm(desc="Blank checking", total=total_erase_size, unit='B', unit_scale=True) as t:
+                for sector_idx in range(sectors_to_erase):
+                    remaining = dev.card_type.sector_size
+                    for block in dev.read_blocks(sector_idx, remaining):
+                        if block.strip(b'\xff'):
+                            sector_is_blank[sector_idx] = False
+                            t.update(remaining)
+                            break
 
-        with tqdm.tqdm(desc="Writing the database", total=total_size, unit='B', unit_scale=True) as t:
-            for _ in dev.write_blocks(0, sectors_required, _read_block):
-                t.update(ProgrammingDevice.BLOCK_SIZE)
+                        t.update(len(block))
+                        remaining -= len(block)
+
+            with tqdm.tqdm(desc="Erasing the database", total=total_erase_size, unit='B', unit_scale=True) as t:
+                for sector_idx in range(sectors_to_erase):
+                    if not sector_is_blank[sector_idx]:
+                        for _ in dev.erase_sectors(sector_idx, 1):
+                            pass
+                    t.update(dev.card_type.sector_size)
+        else:
+            with tqdm.tqdm(desc="Erasing the database", total=size, unit='B', unit_scale=True) as t:
+                for _ in dev.erase_sectors(0, sectors_to_erase):
+                    t.update(dev.card_type.sector_size)
+
+        with tqdm.tqdm(desc="Writing the database", total=size, unit='B', unit_scale=True) as t:
+            for block in dev.write_blocks(0, size, fd.read):
+                t.update(len(block))
 
         fd.seek(0)
 
-        with tqdm.tqdm(desc="Verifying the database", total=total_size, unit='B', unit_scale=True) as t:
-            for card_block in dev.read_blocks(0, sectors_required):
-                file_block = _read_block()
+        with tqdm.tqdm(desc="Verifying the database", total=size, unit='B', unit_scale=True) as t:
+            for card_block in dev.read_blocks(0, size):
+                file_block = fd.read(len(card_block))
 
                 if card_block != file_block:
                     raise ProgrammingException("Verification failed!")
@@ -954,11 +963,11 @@ def cmd_write_database(dev: ProgrammingDevice, path: str, full_erase: bool) -> N
 
 def _clear_card(dev: ProgrammingDevice) -> None:
     sectors_to_erase = dev.get_total_sectors()
-    total_erase_size = sectors_to_erase * ProgrammingDevice.SECTOR_SIZE
+    total_erase_size = sectors_to_erase * dev.card_type.sector_size
 
     with tqdm.tqdm(desc="Erasing the database", total=total_erase_size, unit='B', unit_scale=True) as t:
         for _ in dev.erase_sectors(0, sectors_to_erase):
-            t.update(ProgrammingDevice.SECTOR_SIZE)
+            t.update(dev.card_type.sector_size)
 
 
 @with_data_card

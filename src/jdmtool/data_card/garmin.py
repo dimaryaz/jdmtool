@@ -5,7 +5,7 @@ from pathlib import Path
 from struct import unpack
 from typing import BinaryIO
 
-from .common import IID_MAP, BasicUsbDevice, ProgrammingDevice, ProgrammingException
+from .common import IID_MAP, BasicUsbDevice, DataCardType, ProgrammingDevice, ProgrammingException
 
 
 FIRMWARE_DIR = Path(__file__).parent / 'firmware'
@@ -67,8 +67,6 @@ class GarminProgrammingDevice(ProgrammingDevice):
         card_id = self.get_card_id()
         if card_id == self.NO_CARD:
             raise ProgrammingException("Card is missing!")
-        if card_id == 0x0101daec or card_id == 0x010179ec:
-            raise ProgrammingException("TAWS/Terrain is not (yet) supported")
 
         self.chips = (card_id & 0x00ff0000) >> 16
         manufacturer_id = card_id & 0xff
@@ -78,7 +76,7 @@ class GarminProgrammingDevice(ProgrammingDevice):
         if info is None:
             raise ProgrammingException(f"Unknown data card ID: 0x{card_id:08x}. Please file a bug!")
 
-        (self.sectors_per_chip, self.card_info) = info
+        (self.card_type, self.sectors_per_chip, self.card_info) = info
 
         self.end_read()
         self.end_write()
@@ -95,16 +93,43 @@ class GarminProgrammingDevice(ProgrammingDevice):
     def begin_erase(self, start_sector: int, sector_count: int) -> None:
         self.check_card()
 
+        # Doesn't seem to make a difference, but this is what Garmin's software does.
+        if self.card_type == DataCardType.TAWS:
+            unknown1 = 3
+            unknown2 = 2
+        else:
+            unknown1 = 0
+            unknown2 = 1
+
+        unknown1_bytes = unknown1.to_bytes(2, 'big')
         start_sector_byte = start_sector.to_bytes(2, 'big')
         sector_count_byte = sector_count.to_bytes(2, 'big')
-        buf = b"\x00\x00" + start_sector_byte + b"\x00\x00\x00\x00" + sector_count_byte + b"\x00\x01\x00\x00"
+        unknown2_bytes = unknown2.to_bytes(2, 'big')
+
+        buf = (
+            unknown1_bytes + start_sector_byte + b"\x00\x00\x00\x00" +
+            sector_count_byte + unknown2_bytes + b"\x00\x00"
+        )
         self.control_write(0x40, 0x85, 0x0000, 0x0000, buf)
 
     def begin_write(self, start_sector: int) -> None:
         self.check_card()
 
+        # Doesn't seem to make a difference, but this is what Garmin's software does.
+        if self.card_type == DataCardType.TAWS:
+            unknown1 = 5
+            unknown2 = 8
+        else:
+            unknown1 = 4
+            unknown2 = 0
+
+        unknown1_bytes = unknown1.to_bytes(2, 'big')
         start_sector_byte = start_sector.to_bytes(2, 'big')
-        buf = b"\x00\x04" + start_sector_byte + b"\x00\x00\x00\x00\x00\x00"
+        # Not clear if this is actually an offset, or what is supported.
+        sector_offset_bytes = (0).to_bytes(2, "big")
+        unknown2_bytes = unknown2.to_bytes(2, 'big')
+
+        buf = unknown1_bytes + start_sector_byte + sector_offset_bytes + b"\x00\x00" + unknown2_bytes
         self.control_write(0x40, 0x86, 0x0000, 0x0000, buf)
 
     def end_write(self) -> None:
@@ -113,18 +138,34 @@ class GarminProgrammingDevice(ProgrammingDevice):
     def begin_read(self, start_sector: int) -> None:
         self.check_card()
 
-        start_sector_byte = start_sector.to_bytes(2, 'big')
-        buf = b"\x00\x04" + start_sector_byte + b"\x00\x00\x00\x00\x00\x00"
+        # Doesn't seem to make a difference, but this is what Garmin's software does.
+        unknown = 0 if self.card_type == DataCardType.TAWS else 4
+        unknown_bytes = unknown.to_bytes(2, 'big')
+
+        start_sector_bytes = start_sector.to_bytes(2, 'big')
+
+        # We can technically read from the middle of a sector.
+        # For NavData cards, it's the offset in bytes, 0x0 through 0xffff.
+        # But TAWS cards have a 0x10800 sector size, which doesn't fit in two bytes -
+        # so instead, it's scaled down, i.e., (offset * 0x10000 // 0x10800).
+        # We're not going to bother with this craziness, and will only support 0.
+        sector_offset_bytes = (0).to_bytes(2, "big")
+
+        buf = unknown_bytes + start_sector_bytes + sector_offset_bytes + b"\x00\x00\x00\x00"
         self.control_write(0x40, 0x81, 0x0000, 0x0000, buf)
 
     def end_read(self) -> None:
         self.control_write(0x40, 0x83, 0x0000, 0x0000, b"")
 
-    def read_blocks(self, start_sector: int, num_sectors: int) -> Generator[None, bytes, None]:
+    def read_blocks(self, start_sector: int, length: int) -> Generator[bytes, None, None]:
+        block_size = self.card_type.read_size
+
         self.begin_read(start_sector)
         try:
-            for _ in range(num_sectors * self.BLOCKS_PER_SECTOR):
-                yield self.bulk_read(self.BLOCK_SIZE)
+            while length > 0:
+                block = self.bulk_read(block_size)
+                yield block[:min(block_size, length)]
+                length -= block_size
         finally:
             self.end_read()
 
@@ -142,14 +183,20 @@ class GarminProgrammingDevice(ProgrammingDevice):
             self.end_write()
 
     def write_blocks(
-        self, start_sector: int, num_sectors: int,
-        read_func: Callable[[], bytes]
-    ) -> Generator[None, None, None]:
+        self, start_sector: int, length: int,
+        read_func: Callable[[int], bytes]
+    ) -> Generator[bytes, None, None]:
+        block_size = self.card_type.max_write_size
+
         self.begin_write(start_sector)
         try:
-            for _ in range(num_sectors * self.BLOCKS_PER_SECTOR):
-                block = read_func()
-                self.bulk_write(block)
-                yield
+            while length > 0:
+                read_size = min(block_size, length)
+                block = read_func(read_size)
+                if len(block) != read_size:
+                    raise IOError(f"Expected {read_size} bytes, but got {len(block)}")
+                self.bulk_write(self.pad_for_write(block))
+                yield block
+                length -= block_size
         finally:
             self.end_write()

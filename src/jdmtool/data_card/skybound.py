@@ -78,7 +78,7 @@ class SkyboundDevice(ProgrammingDevice):
         if info is None:
             raise ProgrammingException(f"Unknown data card with chip IIDs: {hex_iids}. Please file a bug!")
 
-        (self.sectors_per_chip, self.card_info) = info
+        (self.card_type, self.sectors_per_chip, self.card_info) = info
 
     def get_firmware_version(self) -> str:
         self.bulk_write(b"\x60")
@@ -161,7 +161,7 @@ class SkyboundDevice(ProgrammingDevice):
         self.set_led(i % 2 == 0)
         self.check_card()
 
-    def read_blocks(self, start_sector: int, num_sectors: int) -> Generator[bytes, bool, None]:
+    def read_blocks(self, start_sector: int, length: int) -> Generator[bytes, None, None]:
         self.before_read()
         for sector in range(start_sector, start_sector + num_sectors):
             self.select_sector(sector)
@@ -178,8 +178,8 @@ class SkyboundDevice(ProgrammingDevice):
             yield
 
     def write_blocks(
-        self, start_sector: int, num_sectors: int,
-        read_func: Callable[[], bytes]
+        self, start_sector: int, length: int,
+        read_func: Callable[[int], bytes]
     ) -> Generator[None, None, None]:
         self.before_write()
         for sector in range(start_sector, start_sector + num_sectors):
