@@ -65,6 +65,7 @@ class SecurityContext:
     cycle: str
     volume_id: int
     remaining_transfers: int
+    fleet_ids: list[str]
 
 
 @dataclass
@@ -482,6 +483,11 @@ class SFXFile:
                 write_u32(out, section.ctx.bitmask)
                 write_u32(out, section.ctx.conditional_info is not None)
                 if section.ctx.conditional_info:
+                    if ctx.fleet_ids:
+                        parts = section.ctx.conditional_info.split('\t')
+                        if parts[1] == 'TAIL_NUM':
+                            parts[3] = ctx.fleet_ids.pop(0)
+                            section.ctx.conditional_info = '\t'.join(parts)
                     write_string(out, section.ctx.conditional_info)
 
             write_string(out, section.ctx.param)

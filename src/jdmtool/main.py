@@ -466,6 +466,9 @@ def _transfer_avidyne_e2(service: Service, path: pathlib.Path, volume_id: int) -
     tail_drm = service.get_optional_property("oem_avidyne_taildrm_enabled", "") == "1"
     dsf_dir = pathlib.PurePosixPath("tail" if tail_drm else ".")
 
+    fleet_ids_str = service.get_optional_property("fleet_ids", "")
+    fleet_ids = [fid.rstrip() for fid in fleet_ids_str.split(",")] if fleet_ids_str else []
+
     def _dsf_filter(path_str: str):
         # Look for files ending with dsf.txt, even not preceeded by a dot, or anything at all.
         path = pathlib.PurePosixPath(path_str)
@@ -487,7 +490,7 @@ def _transfer_avidyne_e2(service: Service, path: pathlib.Path, volume_id: int) -
         if not dsf_name.endswith('.dsf'):
             dsf_name += '.dsf'
 
-        ctx = SecurityContext(service.get_property('display_version'), volume_id, 2)
+        ctx = SecurityContext(service.get_property('display_version'), volume_id, 2, fleet_ids)
 
         dest = path / dsf_name
         total = script.total_progress(database_zip)
