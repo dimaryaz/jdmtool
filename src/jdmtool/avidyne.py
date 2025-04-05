@@ -362,7 +362,7 @@ class SFXFile:
     VERSION_3_09 = '3.09'
 
     SECTION_RE = re.compile(r'(\d{1,2})\s+(.+?)( ~Conditional.*)?')
-    CONDITIONAL_RE = re.compile(r'Mask:0x([0-9a-fA-F]{1,8})\t(.+\t.+\t.+\t.+)')
+    CONDITIONAL_RE = re.compile(r'Mask:0x([0-9a-fA-F]{1,8})(?:\t(.+\t.+\t.+\t.+))?')
     CONDITIONAL_OLD_RE = re.compile(r'(\d):(\d):(\d)\t(.+\t.+\t.+\t.+)')
 
     version: str
