@@ -249,9 +249,9 @@ class SFXExecuteSection(SFXSection):
 
     @classmethod
     def parse_script(cls, dsf_dir: pathlib.PurePosixPath, fd: TextIO, ctx: SectionContext) -> Self:
-        unknown1 = next(fd)
-        next(fd)  # Unused?
-        return SFXExecuteSection(ctx, unknown1, 1)
+        unknown1 = next(fd).strip()
+        unknown2 = int(next(fd))
+        return SFXExecuteSection(ctx, unknown1, unknown2)
 
     def total_progress(self, zipfile: ZipFile) -> int:
         return 0
