@@ -1,0 +1,35 @@
+0 Start
+ End
+ 
+ Updating stuff!
+ 1
+
+14 Message1 ~Conditional
+Mask:0x0000000f	/some_path	some_text	1	2
+ -MsgBox-
+ 0
+ 0
+A Very Bad Error 
+Has Occurred
+~MsgEnd~
+
+14 Message2 ~Conditional
+Mask:0x0000000f	/some_path	some_text	3	4
+ -MsgBox-
+ 1
+ 1
+Actually, it's fine
+~MsgEnd~
+
+1 Copy Stuff ~Conditional
+Mask:0x0000000f	/some_path	some_text	5	6
+ /Dir1
+ 0444
+ hello.txt
+
+1 Copy More Stuff ~Conditional
+Mask:0x0000000f	/some_path	some_text	7	8
+ /Dir2
+ 0444
+ a/foo.txt
+ a/bar.txt

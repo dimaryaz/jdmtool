@@ -1,0 +1,55 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<getserviceslist>
+  <!-- Fake services.xml for testing IFD400 -->
+  <customer_id>1</customer_id>
+  <customer_num>123</customer_num>
+  <email>test@example.com</email>
+  <customer_name>Test</customer_name>
+  <service>
+    <customer_number>123</customer_number>
+    <category>10</category>
+    <service_code>TEST12345</service_code>
+    <order_code>TEST123</order_code>
+    <unique_service_id>123456</unique_service_id>
+    <product_item>TEST12345</product_item>
+    <oracle_aircraft_tail_number>N12345</oracle_aircraft_tail_number>
+    <oracle_aircraft_manufacturer>Cessna</oracle_aircraft_manufacturer>
+    <oracle_aircraft_model>Skyhawk</oracle_aircraft_model>
+    <service_type>Test Service</service_type>
+    <service_type_code>Service</service_type_code>
+    <avionics>Avidyne IFD 400</avionics>
+    <coverage_desc>Antarctica</coverage_desc>
+    <oem_avidyne_e2>1</oem_avidyne_e2>
+    <oem_metadata>1</oem_metadata>
+    <data_revision>0</data_revision>
+    <filename>service.zip</filename>
+    <version>2401</version>
+    <display_version>2401</display_version>
+    <max_initial_counter>1</max_initial_counter>
+    <downloads>0</downloads>
+    <file_size>0</file_size>
+    <file_crc>0</file_crc>
+    <short_desc>Test Service for Avidyne IFD 400</short_desc>
+    <long_desc>Test Service for Avidyne IFD 400</long_desc>
+    <version_start_date>2024-01-01 00:00:00</version_start_date>
+    <version_end_date>2024-01-01 00:00:00</version_end_date>
+    <next_version>2402</next_version>
+    <next_display_version>2402</next_display_version>
+    <next_version_avail_date>2024-02-01 00:00:00</next_version_avail_date>
+    <next_version_start_date>2024-02-01 00:00:00</next_version_start_date>
+    <date_label_override>Effective Date:</date_label_override>
+    <media>
+      <card_type>2</card_type>
+      <install_dir>\\</install_dir>
+      <filename>whatever.dsf</filename>
+      <card_format>2</card_format>
+      <required>0</required>
+    </media>
+    <media>
+      <card_type>2</card_type>
+      <card_format>2</card_format>
+      <required>1</required>
+    </media>
+  </service>
+  <response_code>0x0</response_code>
+</getserviceslist>

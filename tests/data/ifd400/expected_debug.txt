@@ -1,0 +1,63 @@
+Version: 3.09
+
+Header: 2401 Start
+Bitmask: 0x0000000f
+Conditional: 0
+Param: End
+Section type: 0
+Message: Updating stuff!
+Security enabled: 1
+Unknown value: 3
+Cycle: 2401
+Card volume ID: 12345678
+Remaining transfers: 2
+
+Header: Message1
+Bitmask: 0x0000000f
+Conditional: 1
+Condition info: /some_path	some_text	1	2
+Param: -MsgBox-
+Section type: 14
+Has proceed: 0
+Has cancel: 0
+Message: A Very Bad Error Has Occurred
+
+Header: Message2
+Bitmask: 0x0000000f
+Conditional: 1
+Condition info: /some_path	some_text	3	4
+Param: -MsgBox-
+Section type: 14
+Has proceed: 1
+Has cancel: 1
+Message: Actually, it's fine
+
+Header: Copy Stuff
+Bitmask: 0x0000000f
+Conditional: 1
+Condition info: /some_path	some_text	5	6
+Param: /Dir1
+Section type: 1
+File count: 1
+Mode: 0444
+Filename: hello.txt
+Unknown value: 3
+Uncompressed size: 7
+Checksum: 7bf0831e
+
+Header: Copy More Stuff
+Bitmask: 0x0000000f
+Conditional: 1
+Condition info: /some_path	some_text	7	8
+Param: /Dir2
+Section type: 1
+File count: 2
+Mode: 0444
+Filename: foo.txt
+Unknown value: 3
+Uncompressed size: 4
+Checksum: 3132330a
+Filename: bar.txt
+Unknown value: 3
+Uncompressed size: 4
+Checksum: 3435360a
