@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.4.3 (2025-05-04)
+- Add support for the Avidyne IFD 400 "taildrm" feature
+- Fix a few bugs with parsing of IFD 400 .dsf.txt files
+
 ## 0.4.2 (2025-02-12)
 - Add an `extract-taw` command
 - Allow downloading multiple services at once
