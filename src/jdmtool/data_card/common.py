@@ -38,8 +38,11 @@ IID_MAP = {
     (0x01, 0x41): (DataCardType.NAVDATA, 0x40, "WAAS (silver)"),
     (0x89, 0x7e): (DataCardType.NAVDATA, 0x40, "WAAS (orange)"),
 
+    # 128MB
+    (0xec, 0x79): (DataCardType.TAWS, 0x800, "Terrain/Obstacles"),
+
+    # 256MB
     (0xec, 0xda): (DataCardType.TAWS, 0x1000, "Terrain/Obstacles"),
-    (0xec, 0x79): (DataCardType.TAWS, 0x1000, "Terrain/Obstacles"),
 }
 
 
