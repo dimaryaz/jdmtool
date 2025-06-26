@@ -523,7 +523,7 @@ def _transfer_avidyne_basic(service: Service, path: pathlib.Path, _: int) -> Dot
 
 
 def _transfer_g1000_basic(service: Service, path: pathlib.Path, volume_id: int) -> DotJdmConfig:
-    from .g1000 import copy_with_feat_unlk, FILENAME_TO_FEATURE
+    from .featunlk import copy_with_feat_unlk, FILENAME_TO_FEATURE
 
     databases = service.get_databases()
     assert len(databases) == 1
@@ -552,7 +552,7 @@ def _transfer_g1000_basic(service: Service, path: pathlib.Path, volume_id: int) 
 
 def _transfer_g1000_chartview(service: Service, path: pathlib.Path, volume_id: int) -> DotJdmConfig:
     from .chartview import ChartView
-    from .g1000 import Feature, feat_unlk_checksum, update_feat_unlk
+    from .featunlk import Feature, feat_unlk_checksum, update_feat_unlk
 
     charts_path = path / 'Charts'
     charts_path.mkdir(exist_ok=True)

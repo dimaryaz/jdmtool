@@ -1,21 +1,16 @@
-#!/usr/bin/env python3
-
 from __future__ import annotations
 
+import argparse
 import os
 import pathlib
 import struct
-import sys
 import zipfile
 from collections.abc import Callable
 from enum import Enum
 from io import BytesIO
 from typing import BinaryIO
 
-if __name__ == '__main__':
-    from checksum import feat_unlk_checksum
-else:
-    from .checksum import feat_unlk_checksum
+from .checksum import feat_unlk_checksum
 
 
 FEAT_UNLK = 'feat_unlk.dat'
@@ -54,10 +49,10 @@ DB_MAGIC = 0xA5DBACE1
 class Feature(Enum):
     NAVIGATION = 0, 0, ['ldr_sys/avtn_db.bin', 'avtn_db.bin', '.System/AVTN/avtn_db.bin']
     CONFIG_ENABLE = 913, 2, []
-    TERRAIN = 1826, 3, ['terrain_9as.tbd', 'trn.dat', '.System/AVTN/terrain.tdb']
+    TERRAIN = 1826, 3, ['terrain_9as.tdb', 'trn.dat', '.System/AVTN/terrain.tdb']
     OBSTACLE = 2739, 4, ['terrain.odb', '.System/AVTN/obstacle.odb']
     APT_TERRAIN = 3652, 5, ['terrain.adb']
-    CHARTVIEW = 4565, 6, ['crcfiles.txt']
+    CHARTVIEW = 4565, 6, ['Charts/crcfiles.txt', 'crcfiles.txt']
     SAFETAXI = 5478, 7, ['safetaxi.bin', '.System/AVTN/safetaxi.img']
     FLITE_CHARTS = 6391, 8, ['fc_tpc/fc_tpc.dat', 'fc_tpc.dat', '.System/AVTN/FliteCharts/fc_tpc.dat']
     BASEMAP = 7304, 10, ['bmap.bin']
@@ -77,46 +72,19 @@ class Feature(Enum):
     # LVL_4_CONFIG = 0, 1, []
     # INSTALLER_UNLOCK = 0, 9, []
 
-    def __init__(self, offset, bit, filenames):
+    def __init__(self, offset: int, bit: int, filenames: list[str]):
         self.offset = offset
         self.bit = bit
         self.filenames = filenames
 
-
 FILENAME_TO_FEATURE: dict[str, Feature] = {
-    'apt_dir.gca': Feature.AIRPORT_DIR,
-    'bmap.bin': Feature.BASEMAP,
-    'bmap2.bin': Feature.BASEMAP2,
-    'ldr_sys/avtn_db.bin': Feature.NAVIGATION,
-    'ldr_sys/nav_db2.bin': Feature.NAV_DB2,
-    'safetaxi.bin': Feature.SAFETAXI,
-    'safetaxi2.gca': Feature.SAFETAXI2,
-    'standard.odb': Feature.OBSTACLE2,
-    'terrain_9as.tdb': Feature.TERRAIN,
-    'terrain.odb': Feature.OBSTACLE,
-    'trn.dat': Feature.TERRAIN,
-    "air_sport.gpi": Feature.AIR_SPORT,
-    "avtn_db.bin": Feature.NAVIGATION,
-    "crcfiles.txt": Feature.CHARTVIEW,
-    "fbo.gpi": Feature.AIRPORT_DIR,
-    "nav_db2.bin": Feature.NAV_DB2,
-    "terrain.adb": Feature.APT_TERRAIN,
-
-    'fc_tpc/fc_tpc.dat': Feature.FLITE_CHARTS,
-    'fc_tpc.dat': Feature.FLITE_CHARTS,
-    'rasters/rasters.xml': Feature.SECTIONALS,
-    'rasters.xml': Feature.SECTIONALS,
-
-    '.System/AVTN/avtn_db.bin': Feature.NAVIGATION,
-    '.System/AVTN/terrain.tdb': Feature.TERRAIN,
-    '.System/AVTN/obstacle.odb': Feature.OBSTACLE,
-    '.System/AVTN/safetaxi.img': Feature.SAFETAXI,
-    '.System/AVTN/FliteCharts/fc_tpc.dat': Feature.FLITE_CHARTS,
-    'Poi/air_sport.gpi': Feature.AIRPORT_DIR,
+    filename: feature
+    for feature in Feature
+    for filename in feature.filenames
 }
 
 
-def calculate_crc_and_preview_of_file(filename):
+def calculate_crc_and_preview_of_file(filename: pathlib.Path) -> (int, bytes):
     chk = 0xFFFFFFFF
     with open(filename, 'rb') as fd:
         block = fd.read(CHUNK_SIZE)
@@ -130,7 +98,7 @@ def calculate_crc_and_preview_of_file(filename):
             block = next_block
 
         if chk != 0:
-            raise ValueError(f"{path} failed the checksum")
+            raise ValueError(f"{filename} failed the checksum")
         chk = int.from_bytes(block[-4:], 'little')
 
     return chk, preview
@@ -173,7 +141,7 @@ def copy_with_feat_unlk(
 
 def update_feat_unlk(
         dest_dir: pathlib.Path, feature: Feature, vol_id: int, security_id: int,
-        system_id: int, checksum: int, preview: str | None
+        system_id: int, checksum: int, preview: bytes | None
 ) -> None:
     content1 = BytesIO()
 
@@ -198,7 +166,7 @@ def update_feat_unlk(
 
     content1.write(b'\x00' * (CONTENT1_LEN - len(content1.getbuffer()) - 4))
 
-    chk1 = feat_unlk_checksum(content1.getbuffer())
+    chk1 = feat_unlk_checksum(bytes(content1.getbuffer()))
     content1.write(chk1.to_bytes(4, 'little'))
     assert len(content1.getbuffer()) == CONTENT1_LEN, len(content1.getbuffer())
 
@@ -209,7 +177,7 @@ def update_feat_unlk(
 
     content2.write(b'\x00' * (CONTENT2_LEN - len(content2.getbuffer()) - 4))
 
-    chk2 = feat_unlk_checksum(content2.getbuffer())
+    chk2 = feat_unlk_checksum(bytes(content2.getbuffer()))
     content2.write(chk2.to_bytes(4, 'little'))
     assert len(content2.getbuffer()) == CONTENT2_LEN, len(content2.getbuffer())
 
@@ -305,9 +273,9 @@ OTHER DB:
     if magic != MAGIC2:
         raise ValueError(f"Unexpected magic number: 0x{magic:08X}")
 
-    expected_bit_value = int.from_bytes(content1.read(4), 'little')
-    if expected_bit_value != 1 << feature.bit:
-        raise ValueError(f"Incorrect bit: file: {expected_bit_value:04x}, expected: {1 << feature.bit:04x}")
+    file_feature_bit = int.from_bytes(content1.read(4), 'little')
+    if file_feature_bit != 1 << feature.bit:
+        raise ValueError(f"Incorrect bit: file: {file_feature_bit:04x}, expected: {1 << feature.bit:04x}")
 
     if not all(b == 0 for b in content1.read(4)):
         raise ValueError("Expected zeros")
@@ -407,21 +375,16 @@ OTHER DB:
 def display_content_of_dat_file(dat_file: pathlib.Path):
     feature = FILENAME_TO_FEATURE.get(dat_file.name, None)
 
-    if feature in (Feature.SAFETAXI2, ):
-        if zipfile.is_zipfile(dat_file):
-            with zipfile.ZipFile(dat_file, 'r') as zip_fp:
-                with zip_fp.open('safetaxi2.bin') as fd:
-                    header_bytes = fd.read(0x200)
-                    fd.seek(0, os.SEEK_END)
-                    file_length = fd.tell()
-                    fd.seek(file_length - 0x102)
-                    footer_bytes = fd.read(0x102)
+    if feature in (Feature.SAFETAXI2, ) and zipfile.is_zipfile(dat_file):
+        with zipfile.ZipFile(dat_file, 'r') as zip_fp:
+            with zip_fp.open('safetaxi2.bin') as fd:
+                header_bytes = fd.read(0x200)
+                fd.seek(-0x102, os.SEEK_END)
+                footer_bytes = fd.read(0x102)
     else:
         with open(dat_file, 'rb') as fd:
             header_bytes = fd.read(0x200)
-            fd.seek(0, os.SEEK_END)
-            file_length = fd.tell()
-            fd.seek(file_length - 0x102)
+            fd.seek(-0x102, os.SEEK_END)
             footer_bytes = fd.read(0x102)
 
     if feature in (Feature.NAVIGATION, Feature.NAV_DB2):
@@ -479,25 +442,26 @@ def display_content_of_dat_file(dat_file: pathlib.Path):
 
 
 def main():
-    if len(sys.argv) == 2:
-        path = None
-        _, featunlk = sys.argv
-    elif len(sys.argv) == 3:
-        _, featunlk, path = sys.argv
-    else:
-        print(f"Usage: {sys.argv[0]} featunlk (path)")
-        return
+    parser = argparse.ArgumentParser(description="Read the contents of a featunlk.dat/feat_unlk.dat file")
+    parser.add_argument(
+        '-f',
+        '--feature',
+        help="Only verify info for one specific Feature (by filename). "
+             "CRC will be checked against file in same folder/subfolder of featunlk.dat/feat_unlk.dat file.",
+    )
+    parser.add_argument(
+        "featunlk",
+        help="Path to the featunlk.dat/feat_unlk.dat file",
+    )
 
-    if path is None:
-        display_all_content_of_feat_unlk(pathlib.Path(featunlk), True)
+    args = parser.parse_args()
+
+    if args.feature is None:
+        display_all_content_of_feat_unlk(pathlib.Path(args.featunlk), True)
     else:
-        path = pathlib.Path(path)
+        path = pathlib.Path(args.feature)
         feature = FILENAME_TO_FEATURE.get(path.name)
         if feature is None:
             raise ValueError(f"Unsupported filename: {path.name}")
 
-        display_content_of_feat_unlk(pathlib.Path(featunlk), feature, True)
-
-
-if __name__ == '__main__':
-    main()
+        display_content_of_feat_unlk(pathlib.Path(args.featunlk), feature, True)
