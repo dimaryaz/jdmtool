@@ -119,7 +119,7 @@ class ProgrammingDevice(BasicUsbDevice):
             block += b'\xFF' * (self.card_type.min_write_size - rem)
         return block
 
-    def read_blocks(self, start_sector: int, length: int) -> Generator[bytes, bool, None]:
+    def read_blocks(self, start_sector: int, length: int) -> Generator[bytes, None, None]:
         raise NotImplementedError()
 
     def erase_sectors(self, start_sector: int, num_sectors: int) -> Generator[None, None, None]:
