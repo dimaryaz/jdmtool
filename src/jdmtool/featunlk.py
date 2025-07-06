@@ -83,9 +83,25 @@ FILENAME_TO_FEATURE: dict[str, Feature] = {
     for filename in feature.filenames
 }
 
+def get_feature_for_filename(filepath: pathlib.Path) -> Feature|None:
+    filename = filepath.name
+    feature = FILENAME_TO_FEATURE.get(filename, None)
+
+    if feature is None:
+        for parent in filepath.parents:
+            filename = parent.name + '/' + filename
+            feature = FILENAME_TO_FEATURE.get(filename, None)
+            if feature != None:
+                break
+
+    return feature
+
 
 def calculate_crc_and_preview_of_file(filename: pathlib.Path) -> (int, bytes):
+    feature = get_feature_for_filename(filename)
+
     chk = 0xFFFFFFFF
+    file_chk = chk
     with open(filename, 'rb') as fd:
         block = fd.read(CHUNK_SIZE)
 
@@ -97,11 +113,15 @@ def calculate_crc_and_preview_of_file(filename: pathlib.Path) -> (int, bytes):
                 break
             block = next_block
 
-        if chk != 0:
-            raise ValueError(f"{filename} failed the checksum")
-        chk = int.from_bytes(block[-4:], 'little')
+        # TODO: check if this is needed for other features as well
+        if feature == Feature.CHARTVIEW:
+            file_chk = chk
+        else:
+            if chk != 0:
+                raise ValueError(f"{path} failed the checksum")
+            file_chk = int.from_bytes(block[-4:], 'little')
 
-    return chk, preview
+    return file_chk, preview
 
 
 def copy_with_feat_unlk(
@@ -373,7 +393,7 @@ OTHER DB:
 
 
 def display_content_of_dat_file(dat_file: pathlib.Path):
-    feature = FILENAME_TO_FEATURE.get(dat_file.name, None)
+    feature = get_feature_for_filename(dat_file)
 
     if feature in (Feature.SAFETAXI2, ) and zipfile.is_zipfile(dat_file):
         with zipfile.ZipFile(dat_file, 'r') as zip_fp:
@@ -460,7 +480,7 @@ def main():
         display_all_content_of_feat_unlk(pathlib.Path(args.featunlk), True)
     else:
         path = pathlib.Path(args.feature)
-        feature = FILENAME_TO_FEATURE.get(path.name)
+        feature = get_feature_for_filename(path)
         if feature is None:
             raise ValueError(f"Unsupported filename: {path.name}")
 
