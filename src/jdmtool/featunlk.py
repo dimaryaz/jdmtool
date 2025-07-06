@@ -107,6 +107,8 @@ def get_feature_for_filename(filepath: pathlib.Path) -> Feature|None:
 
 def calculate_crc_and_preview_of_file(filename: pathlib.Path) -> (int, bytes):
     chk = 0xFFFFFFFF
+    feature = get_feature_for_filename(filename)
+
     with open(filename, 'rb') as fd:
         block = fd.read(CHUNK_SIZE)
 
@@ -118,9 +120,10 @@ def calculate_crc_and_preview_of_file(filename: pathlib.Path) -> (int, bytes):
                 break
             block = next_block
 
-        if chk != 0:
-            raise ValueError(f"{filename} failed the checksum")
-        chk = int.from_bytes(block[-4:], 'little')
+        if feature != Feature.CHARTVIEW:
+            if chk != 0:
+                raise ValueError(f"{filename} failed the checksum")
+            chk = int.from_bytes(block[-4:], 'little')
 
     return chk, preview
 
@@ -331,11 +334,7 @@ OTHER DB:
     for filename in feature.filenames:
         dat_file = featunlk.parent.joinpath(filename)
         if dat_file.is_file():
-            if feature != Feature.CHARTVIEW:
-                crc, preview = calculate_crc_and_preview_of_file(dat_file)
-            else:
-                crc = 0
-                preview = 0
+            crc, preview = calculate_crc_and_preview_of_file(dat_file)
 
             # wrong file
             if crc != expected_chk:
