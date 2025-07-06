@@ -11,7 +11,7 @@ from io import BytesIO
 from typing import BinaryIO
 
 from .checksum import feat_unlk_checksum
-
+from .taw import TAW_DATABASE_TYPES, parse_taw_metadata
 
 FEAT_UNLK = 'feat_unlk.dat'
 
@@ -27,6 +27,12 @@ def encode_volume_id(vol_id: int) -> int:
 def truncate_system_id(system_id: int) -> int:
     return (system_id & 0xFFFFFFFF) + (system_id >> 32)
 
+def device_model(system_id: int) -> str:
+    try:
+        database_type_name = TAW_DATABASE_TYPES.get(system_id, "Unknown")
+    except ValueError as ex:
+        print(ex)
+    return (database_type_name)
 
 CONTENT1_LEN = 0x55   # 85
 CONTENT2_LEN = 0x338  # 824
@@ -44,6 +50,7 @@ CHUNK_SIZE = 0x8000
 
 # DATABASE CONTENT
 DB_MAGIC = 0xA5DBACE1
+DB_MAGIC2 = 0x63614030
 
 
 class Feature(Enum):
@@ -191,7 +198,9 @@ def update_feat_unlk(
     assert len(content1.getbuffer()) == CONTENT1_LEN, len(content1.getbuffer())
 
     content2 = BytesIO()
+    
     content2.write((0).to_bytes(4, 'little'))
+
 
     content2.write(truncate_system_id(system_id).to_bytes(4, 'little'))
 
@@ -257,7 +266,7 @@ OTHER DB:
       |  ..  |
       |------|
     """
-    print(f"---- {feature.name} ----")
+    print(f"\n---- {feature.name} ----")
 
     with open(featunlk, 'rb') as fd:
         fd.seek(feature.offset)
@@ -287,7 +296,8 @@ OTHER DB:
         raise ValueError(f"Unexpected magic number: 0x{magic:04X}")
 
     security_id = (int.from_bytes(content1.read(2), 'little') + SEC_ID_OFFSET) & 0xFFFF
-    print(f"* garmin_sec_id: {security_id}")
+    device_model_val = device_model(security_id)
+    print(f"* garmin_sec_id: {security_id}, device_model: {device_model_val}")
 
     magic = int.from_bytes(content1.read(4), 'little')
     if magic != MAGIC2:
@@ -302,7 +312,7 @@ OTHER DB:
 
     vol_id = decode_volume_id(int.from_bytes(content1.read(4), 'little'))
     print(f"* Volume ID: {vol_id:08X}")
-
+    print(feature)
     if feature == Feature.NAVIGATION:
         magic = int.from_bytes(content1.read(2), 'little')
         if magic != MAGIC3:
@@ -326,7 +336,11 @@ OTHER DB:
     for filename in feature.filenames:
         dat_file = featunlk.parent.joinpath(filename)
         if dat_file.is_file():
-            crc, preview = calculate_crc_and_preview_of_file(dat_file)
+            if feature != Feature.CHARTVIEW:
+                crc, preview = calculate_crc_and_preview_of_file(dat_file)
+            else:
+                crc = 0
+                preview = 0
 
             # wrong file
             if crc != expected_chk:
@@ -368,6 +382,10 @@ OTHER DB:
     content2 = BytesIO(content2_bytes[:-4])
     unit_count = int.from_bytes(content2.read(2), 'little')
 
+    if unit_count == 0:
+        content2.read(2)
+        content2.read(2)
+
     byte = content2.tell()
     if not all(b == 0 for b in content2.read(2)):
         if show_missing:
@@ -380,6 +398,7 @@ OTHER DB:
     if unit_count != 0:
         print(f'* Still allowed onto {unit_count} systems')
     else:
+        print(f'* Still allowed onto {unit_count} systems')
         print(f"* Truncated avionics_id: {system_id:08X}")
         possible_system_ids = [system_id - i | i << 32 for i in range(1, 4)]
         print(f"  (Possible values: {', '.join(f'{v:X}' for v in possible_system_ids)}, ...)")
@@ -416,12 +435,27 @@ def display_content_of_dat_file(dat_file: pathlib.Path):
         print('** Revision:' + chr(header_bytes[0x92]))
         (cycle, f_month, f_day, f_year, t_month, t_day, t_year) = struct.unpack('<HBBHBBH', header_bytes[0x81:0x81+0xa])
         print('** Cycle: ', cycle)
-        print(f'** Date: {f_day}.{f_month}.{f_year} - {t_day}.{t_month}.{t_year}')
+        print(f'** Effective: {f_day}.{f_month}.{f_year} to {t_day}.{t_month}.{t_year}')
     elif feature in (Feature.OBSTACLE, ):
-        print('** ' + header_bytes[0x58:0x6F].decode('ascii') + ' ' + header_bytes[0x78:0x8F].decode('ascii'))
-    elif feature in (Feature.TERRAIN, Feature.OBSTACLE2, Feature.AIRPORT_DIR, Feature.SAFETAXI2):
+        if header_bytes[0x30:0x30+10] == b'Garmin Ltd':
+            print('** ' + header_bytes[0x30:0x30+10].decode('ascii'))
+            (f_day, f_month, f_year) = struct.unpack('<HHH', header_bytes[0x10:0x10+0x6])
+            (t_day, t_month, t_year) = struct.unpack('<HHH', header_bytes[0x92:0x92+0x6])
+            print(f'** Effective: {f_day}.{f_month}.{f_year} to {t_day}.{t_month}.{t_year}')
+    elif feature in (Feature.TERRAIN, Feature.OBSTACLE2, Feature.SAFETAXI2):
         if DB_MAGIC != int.from_bytes(footer_bytes[0:4], 'little'):
             print('WRONG MAGIC!!')
+            print(f"0x{int.from_bytes(footer_bytes[0:4], 'little'):08X}")
+        print('** ' + footer_bytes[-0x6a:-0x61].decode('ascii') + ' ' +
+              footer_bytes[4:8].decode('ascii') + ' ' + '\n** ' + footer_bytes[28:43].decode('ascii') +
+              '\n** ' + footer_bytes[43:55].decode('ascii'))
+        (f_month, f_day, f_year) = struct.unpack('<BBH', footer_bytes[-0xFA:-0xFA+0x4])
+        (t_month, t_day, t_year) = struct.unpack('<BBH', footer_bytes[-0xF6:-0xF6+0x4])
+        print(f'** Effective : {f_day}.{f_month}.{f_year} to {t_day}.{t_month}.{t_year}')      
+    elif feature in (Feature.AIRPORT_DIR, ):
+        if DB_MAGIC2 != int.from_bytes(footer_bytes[0:4], 'little'):
+            print('WRONG MAGIC!!')
+            print(f"0x{int.from_bytes(footer_bytes[0:4], 'little'):08X}")
         print('** ' + footer_bytes[-0x6a:-0x50].decode('ascii') + ' ' +
               footer_bytes[4:9].decode('ascii') + ' ' + footer_bytes[28:51].decode('ascii'))
     elif feature in (Feature.FLITE_CHARTS, Feature.CHARTVIEW):
@@ -445,16 +479,27 @@ def display_content_of_dat_file(dat_file: pathlib.Path):
         update_year = int(header_bytes[0x0b]) + 1900
         print(f'** Update: {update_month}/{update_year}')
 
-        name = header_bytes[0x49:0x5D].decode('ascii')
+        name = header_bytes[0x49:0x49+20].decode('ascii')
         print(f'** {name}')
         description = header_bytes[0x65:0x83].decode('ascii')
         if description.strip():
             print(f'** {description}')
-
+        year  = int.from_bytes(header_bytes[0x39:0x39+2], 'little')
+        month = int(header_bytes[0x3B])
+        day   = int(header_bytes[0x3c])
+        print(f'** Creation Date: {day}.{month}.{year}')
+        
+        release = int.from_bytes(header_bytes[0x87:0x89], 'little')
+        
         if int.from_bytes(header_bytes[0x83:0x85], 'little') == 0xDEAD:
             version = str(header_bytes[0x85]) + '.' + str(header_bytes[0x86])
             release = int.from_bytes(header_bytes[0x87:0x89], 'little')
             print(f'** Creation Software Version: {version} ({release})')
+    elif feature in (Feature.AIR_SPORT,):
+        print('** header_bytes')
+        print(f'** {header_bytes[0x18:0x2A].decode('ascii')}')
+        print(f'** {header_bytes[0x5A:0x76].decode('ascii')}')
+        print(f'** {header_bytes[0x7B:0x89].decode('ascii')}')
 
     else:  # Feature.APT_TERRAIN
         print('** UNKNOWN DATA TYPE')
