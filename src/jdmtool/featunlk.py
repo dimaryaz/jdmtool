@@ -13,6 +13,7 @@ from typing import BinaryIO
 from .checksum import feat_unlk_checksum
 from .taw import TAW_DATABASE_TYPES, parse_taw_metadata
 
+
 FEAT_UNLK = 'feat_unlk.dat'
 
 
@@ -105,10 +106,7 @@ def get_feature_for_filename(filepath: pathlib.Path) -> Feature|None:
 
 
 def calculate_crc_and_preview_of_file(filename: pathlib.Path) -> (int, bytes):
-    feature = get_feature_for_filename(filename)
-
     chk = 0xFFFFFFFF
-    file_chk = chk
     with open(filename, 'rb') as fd:
         block = fd.read(CHUNK_SIZE)
 
@@ -120,15 +118,11 @@ def calculate_crc_and_preview_of_file(filename: pathlib.Path) -> (int, bytes):
                 break
             block = next_block
 
-        # TODO: check if this is needed for other features as well
-        if feature == Feature.CHARTVIEW:
-            file_chk = chk
-        else:
-            if chk != 0:
-                raise ValueError(f"{path} failed the checksum")
-            file_chk = int.from_bytes(block[-4:], 'little')
+        if chk != 0:
+            raise ValueError(f"{filename} failed the checksum")
+        chk = int.from_bytes(block[-4:], 'little')
 
-    return file_chk, preview
+    return chk, preview
 
 
 def copy_with_feat_unlk(
@@ -313,6 +307,7 @@ OTHER DB:
     vol_id = decode_volume_id(int.from_bytes(content1.read(4), 'little'))
     print(f"* Volume ID: {vol_id:08X}")
     print(feature)
+
     if feature == Feature.NAVIGATION:
         magic = int.from_bytes(content1.read(2), 'little')
         if magic != MAGIC3:
@@ -398,7 +393,6 @@ OTHER DB:
     if unit_count != 0:
         print(f'* Still allowed onto {unit_count} systems')
     else:
-        print(f'* Still allowed onto {unit_count} systems')
         print(f"* Truncated avionics_id: {system_id:08X}")
         possible_system_ids = [system_id - i | i << 32 for i in range(1, 4)]
         print(f"  (Possible values: {', '.join(f'{v:X}' for v in possible_system_ids)}, ...)")
