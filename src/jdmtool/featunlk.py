@@ -377,10 +377,6 @@ OTHER DB:
     content2 = BytesIO(content2_bytes[:-4])
     unit_count = int.from_bytes(content2.read(2), 'little')
 
-    if unit_count == 0:
-        content2.read(2)
-        content2.read(2)
-
     byte = content2.tell()
     if not all(b == 0 for b in content2.read(2)):
         if show_missing:
