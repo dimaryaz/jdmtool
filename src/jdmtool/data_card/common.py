@@ -16,11 +16,19 @@ IID_MAP = {
     # 033: 3 MB Intel Series 2 (1 MB x 3)
     # 034: 4 MB Intel Series 2 (1 MB x 4)
     (0x89, 0xa2): (0x10, "non-WAAS (white)"),
+    #      2 MB Intel          (1 MB x 2)
+    #      3 MB Intel          (1 MB x 3)
+    #      4 MB Intel          (1 MB x 4)
+    (0x89, 0xa6): (0x10, "non-WAAS (white)"),
 
     # 421: 4 MB AMD Series C/D (2 MB x 2)
     # 431: 6 MB AMD Series C/D (2 MB x 3)
     # 441: 8 MB AMD Series C/D (2 MB x 4)
     (0x01, 0xad): (0x20, "non-WAAS (green)"),
+    #      4 MB Intel Series   (2 MB x 2)
+    #      6 MB Intel Series   (2 MB x 3)
+    #      8 MB Intel Series   (2 MB x 4)
+    (0x89, 0xaa): (0x20, "non-WAAS (green)"),
 
     # 451: 16MB AMD Series C/D (4 MB x 4)
     (0x01, 0x41): (0x40, "WAAS (silver)"),
