@@ -467,9 +467,9 @@ def display_content_of_dat_file(dat_file: pathlib.Path):
             print(f'** Creation Software Version: {version} ({release})')
     elif feature in (Feature.AIR_SPORT,):
         print('** header_bytes')
-        print(f'** {header_bytes[0x18:0x2A].decode('ascii')}')
-        print(f'** {header_bytes[0x5A:0x76].decode('ascii')}')
-        print(f'** {header_bytes[0x7B:0x89].decode('ascii')}')
+        print('** ' + header_bytes[0x18:0x2A].decode('ascii'))
+        print('** ' + header_bytes[0x5A:0x76].decode('ascii'))
+        print('** ' + header_bytes[0x7B:0x89].decode('ascii'))
 
     else:  # Feature.APT_TERRAIN
         print('** UNKNOWN DATA TYPE')
