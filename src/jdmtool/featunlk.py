@@ -8,11 +8,11 @@ import zipfile
 from collections.abc import Callable
 from enum import Enum
 from io import BytesIO
+from pathlib import PurePosixPath
 from typing import BinaryIO
 
 from .checksum import feat_unlk_checksum
-from .taw import TAW_DATABASE_TYPES, parse_taw_metadata
-
+from .taw import TAW_DATABASE_TYPES
 
 FEAT_UNLK = 'feat_unlk.dat'
 
@@ -28,12 +28,6 @@ def encode_volume_id(vol_id: int) -> int:
 def truncate_system_id(system_id: int) -> int:
     return (system_id & 0xFFFFFFFF) + (system_id >> 32)
 
-def device_model(system_id: int) -> str:
-    try:
-        database_type_name = TAW_DATABASE_TYPES.get(system_id, "Unknown")
-    except ValueError as ex:
-        print(ex)
-    return (database_type_name)
 
 CONTENT1_LEN = 0x55   # 85
 CONTENT2_LEN = 0x338  # 824
@@ -85,29 +79,17 @@ class Feature(Enum):
         self.bit = bit
         self.filenames = filenames
 
+
 FILENAME_TO_FEATURE: dict[str, Feature] = {
-    filename: feature
+    PurePosixPath(filename).name: feature
     for feature in Feature
     for filename in feature.filenames
 }
 
-def get_feature_for_filename(filepath: pathlib.Path) -> Feature|None:
-    filename = filepath.name
-    feature = FILENAME_TO_FEATURE.get(filename, None)
-
-    if feature is None:
-        for parent in filepath.parents:
-            filename = parent.name + '/' + filename
-            feature = FILENAME_TO_FEATURE.get(filename, None)
-            if feature != None:
-                break
-
-    return feature
-
 
 def calculate_crc_and_preview_of_file(filename: pathlib.Path) -> (int, bytes):
     chk = 0xFFFFFFFF
-    feature = get_feature_for_filename(filename)
+    feature = FILENAME_TO_FEATURE.get(filename.name)
 
     with open(filename, 'rb') as fd:
         block = fd.read(CHUNK_SIZE)
@@ -197,7 +179,6 @@ def update_feat_unlk(
     content2 = BytesIO()
     
     content2.write((0).to_bytes(4, 'little'))
-
 
     content2.write(truncate_system_id(system_id).to_bytes(4, 'little'))
 
@@ -293,7 +274,7 @@ OTHER DB:
         raise ValueError(f"Unexpected magic number: 0x{magic:04X}")
 
     security_id = (int.from_bytes(content1.read(2), 'little') + SEC_ID_OFFSET) & 0xFFFF
-    device_model_val = device_model(security_id)
+    device_model_val = TAW_DATABASE_TYPES.get(security_id, "Unknown")
     print(f"* garmin_sec_id: {security_id}, device_model: {device_model_val}")
 
     magic = int.from_bytes(content1.read(4), 'little')
@@ -309,7 +290,6 @@ OTHER DB:
 
     vol_id = decode_volume_id(int.from_bytes(content1.read(4), 'little'))
     print(f"* Volume ID: {vol_id:08X}")
-    print(feature)
 
     if feature == Feature.NAVIGATION:
         magic = int.from_bytes(content1.read(2), 'little')
@@ -401,7 +381,7 @@ OTHER DB:
 
 
 def display_content_of_dat_file(dat_file: pathlib.Path):
-    feature = get_feature_for_filename(dat_file)
+    feature = FILENAME_TO_FEATURE.get(dat_file.name)
 
     if feature in (Feature.SAFETAXI2, ) and zipfile.is_zipfile(dat_file):
         with zipfile.ZipFile(dat_file, 'r') as zip_fp:
@@ -473,13 +453,14 @@ def display_content_of_dat_file(dat_file: pathlib.Path):
         description = header_bytes[0x65:0x83].decode('ascii')
         if description.strip():
             print(f'** {description}')
-        year  = int.from_bytes(header_bytes[0x39:0x39+2], 'little')
+        year = int.from_bytes(header_bytes[0x39:0x39+2], 'little')
         month = int(header_bytes[0x3B])
-        day   = int(header_bytes[0x3c])
+        day = int(header_bytes[0x3c])
         print(f'** Creation Date: {day}.{month}.{year}')
         
         release = int.from_bytes(header_bytes[0x87:0x89], 'little')
-        
+        print(f'** Release: {release}')
+
         if int.from_bytes(header_bytes[0x83:0x85], 'little') == 0xDEAD:
             version = str(header_bytes[0x85]) + '.' + str(header_bytes[0x86])
             release = int.from_bytes(header_bytes[0x87:0x89], 'little')
@@ -514,7 +495,7 @@ def main():
         display_all_content_of_feat_unlk(pathlib.Path(args.featunlk), True)
     else:
         path = pathlib.Path(args.feature)
-        feature = get_feature_for_filename(path)
+        feature = FILENAME_TO_FEATURE.get(path.name)
         if feature is None:
             raise ValueError(f"Unsupported filename: {path.name}")
 
