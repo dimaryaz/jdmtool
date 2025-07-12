@@ -87,7 +87,7 @@ FILENAME_TO_FEATURE: dict[str, Feature] = {
 }
 
 
-def calculate_crc_and_preview_of_file(filename: pathlib.Path) -> (int, bytes):
+def calculate_crc_and_preview_of_file(filename: pathlib.Path) -> tuple[int, bytes]:
     chk = 0xFFFFFFFF
     feature = FILENAME_TO_FEATURE.get(filename.name)
 
@@ -165,7 +165,7 @@ def update_feat_unlk(
 
     preview_len = NAVIGATION_PREVIEW_END - NAVIGATION_PREVIEW_START
     if feature == Feature.NAVIGATION:
-        assert len(preview) == preview_len, preview
+        assert preview is not None and len(preview) == preview_len, preview
         content1.write(preview)
     else:
         content1.write(b'\x00' * preview_len)
@@ -457,7 +457,7 @@ def display_content_of_dat_file(dat_file: pathlib.Path):
         month = int(header_bytes[0x3B])
         day = int(header_bytes[0x3c])
         print(f'** Creation Date: {day}.{month}.{year}')
-        
+
         release = int.from_bytes(header_bytes[0x87:0x89], 'little')
         print(f'** Release: {release}')
 
@@ -486,6 +486,7 @@ def main():
     )
     parser.add_argument(
         "featunlk",
+        metavar="featunlk.dat",
         help="Path to the featunlk.dat/feat_unlk.dat file",
     )
 
