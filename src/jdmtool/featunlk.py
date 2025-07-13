@@ -13,6 +13,7 @@ from typing import BinaryIO
 
 from .checksum import feat_unlk_checksum
 from .taw import TAW_DATABASE_TYPES
+from datetime import datetime
 
 FEAT_UNLK = 'feat_unlk.dat'
 
@@ -275,7 +276,7 @@ OTHER DB:
 
     security_id = (int.from_bytes(content1.read(2), 'little') + SEC_ID_OFFSET) & 0xFFFF
     device_model_val = TAW_DATABASE_TYPES.get(security_id, "Unknown")
-    print(f"* garmin_sec_id: {security_id}, device_model: {device_model_val}")
+    print(f"* garmin_sec_id: {security_id}, device_model: ({device_model_val})")
 
     magic = int.from_bytes(content1.read(4), 'little')
     if magic != MAGIC2:
@@ -389,11 +390,20 @@ def display_content_of_dat_file(dat_file: pathlib.Path):
                 header_bytes = fd.read(0x200)
                 fd.seek(-0x102, os.SEEK_END)
                 footer_bytes = fd.read(0x102)
+    elif (feature in (Feature.CHARTVIEW,) ):
+        with open('Charts/chartview.hif', 'rb') as fd:
+            header_bytes = fd.read(0x200)
+            fd.seek(-0x102, os.SEEK_END)
+            footer_bytes = fd.read(0x102)
+            fd.seek(-0x1F2, os.SEEK_END)
+            footer2_bytes = fd.read(0x1F2)
     else:
         with open(dat_file, 'rb') as fd:
             header_bytes = fd.read(0x200)
             fd.seek(-0x102, os.SEEK_END)
             footer_bytes = fd.read(0x102)
+            fd.seek(-0x1F2, os.SEEK_END)
+            footer2_bytes = fd.read(0x1F2)
 
     if feature in (Feature.NAVIGATION, Feature.NAV_DB2):
         (region, year, man, _) = [x.strip() for x in header_bytes[0x9f:0xEF].decode('ascii').split("\0")]
@@ -411,24 +421,53 @@ def display_content_of_dat_file(dat_file: pathlib.Path):
             (f_day, f_month, f_year) = struct.unpack('<HHH', header_bytes[0x10:0x10+0x6])
             (t_day, t_month, t_year) = struct.unpack('<HHH', header_bytes[0x92:0x92+0x6])
             print(f'** Effective: {f_day}.{f_month}.{f_year} to {t_day}.{t_month}.{t_year}')
-    elif feature in (Feature.TERRAIN, Feature.OBSTACLE2, Feature.SAFETAXI2):
+        else:
+            print('** Cycle: ' + footer_bytes[0x4:0x4+4].decode('ascii'))
+            print('** ' + footer_bytes[0x20:0x20+11].decode('ascii'))
+            print('** ' + footer_bytes[0x2B:0x2B+20].decode('ascii'))
+            print('** ' + footer_bytes[0x98:0x98+20].decode('ascii'))
+    elif feature in (Feature.TERRAIN,):
+        print(f"DB_MAGIC: 0x{int.from_bytes(header_bytes[0:4], 'little'):08X}")
+        print('** ' + header_bytes[0x58:0x58+20].decode('ascii'))
+        print('** Cycle: ' + footer2_bytes[0x1:0x1+4].decode('ascii'))
+        print('** ' + header_bytes[0x78:0x78+12].decode('ascii'))
+        print('** ' + header_bytes[0x86:0x86+4].decode('ascii'))
+        print('** ' + header_bytes[0x8c:0x8c+4].decode('ascii'))
+    elif feature in (Feature.OBSTACLE2, Feature.SAFETAXI2):
         if DB_MAGIC != int.from_bytes(footer_bytes[0:4], 'little'):
             print('WRONG MAGIC!!')
             print(f"0x{int.from_bytes(footer_bytes[0:4], 'little'):08X}")
-        print('** ' + footer_bytes[-0x6a:-0x61].decode('ascii') + ' ' +
-              footer_bytes[4:8].decode('ascii') + ' ' + '\n** ' + footer_bytes[28:43].decode('ascii') +
-              '\n** ' + footer_bytes[43:55].decode('ascii'))
+        print('** ' + footer_bytes[-0x6a:-0x61].decode('ascii')) 
+        print('** ' + footer_bytes[4:8].decode('ascii'))
+        print('** ' + footer_bytes[28:43].decode('ascii'))
+        print('** ' + footer_bytes[43:43+30].decode('ascii'))
+        print('** ' + footer_bytes[152:152+20].decode('ascii'))
         (f_month, f_day, f_year) = struct.unpack('<BBH', footer_bytes[-0xFA:-0xFA+0x4])
         (t_month, t_day, t_year) = struct.unpack('<BBH', footer_bytes[-0xF6:-0xF6+0x4])
         print(f'** Effective : {f_day}.{f_month}.{f_year} to {t_day}.{t_month}.{t_year}')      
     elif feature in (Feature.AIRPORT_DIR, ):
-        if DB_MAGIC2 != int.from_bytes(footer_bytes[0:4], 'little'):
+        if (DB_MAGIC2 == int.from_bytes(footer_bytes[0:4], 'little')):
+            print('** ' + header_bytes[0x54:0x54+40].decode('ascii'))
+            timestamp = int.from_bytes(header_bytes[0x10:0x10+4], 'little')
+        if (str(dat_file) == 'apt_dir.gca'): 
+            print('** Cycle: ' + footer_bytes[0x4:0x4+4].decode('ascii'))
+            print('** ' + footer_bytes[0x20:0x20+11].decode('ascii'))
+            print('** ' + footer_bytes[0x2B:0x2B+20].decode('ascii'))
+            print('** ' + footer_bytes[0x98:0x98+20].decode('ascii'))
+        if (DB_MAGIC2 != int.from_bytes(footer_bytes[0:4], 'little') and 
+            (str(dat_file) != 'apt_dir.gca')):
             print('WRONG MAGIC!!')
             print(f"0x{int.from_bytes(footer_bytes[0:4], 'little'):08X}")
-        print('** ' + footer_bytes[-0x6a:-0x50].decode('ascii') + ' ' +
-              footer_bytes[4:9].decode('ascii') + ' ' + footer_bytes[28:51].decode('ascii'))
-    elif feature in (Feature.FLITE_CHARTS, Feature.CHARTVIEW):
-        print('** ' + header_bytes[0x18:0x79].decode('ascii'))
+    elif feature in (Feature.FLITE_CHARTS, ):
+        print('** ' + header_bytes[0x18:0x18+12].decode('ascii'))
+        print('** ' + header_bytes[0x24:0x24+20].decode('ascii'))
+        print('** ' + header_bytes[0x95:0x95+20].decode('ascii'))
+        (f_month, f_day, f_year) = struct.unpack('<BBH', header_bytes[0x6:0x6+0x4])
+        (t_month, t_day, t_year) = struct.unpack('<BBH', header_bytes[0x0A:0x0A+0x4])
+        print(f'** Effective : {f_day}.{f_month}.{f_year} to {t_day}.{t_month}.{t_year}')      
+    elif feature in (Feature.CHARTVIEW, ):
+        print('** ' + header_bytes[0x0A:0x0A+9].decode('ascii'))
+        print('** Cycle: ' + header_bytes[0x23:0x23+7].decode('ascii'))
     elif feature in (Feature.SAFETAXI, Feature.BASEMAP, Feature.BASEMAP2):
         xor_byte = header_bytes[0x00]
         if xor_byte:
@@ -450,6 +489,8 @@ def display_content_of_dat_file(dat_file: pathlib.Path):
 
         name = header_bytes[0x49:0x49+20].decode('ascii')
         print(f'** {name}')
+        cycle = header_bytes[0x59:0x59+4].decode('ascii')
+        print(f'** Cycle: {cycle}')
         description = header_bytes[0x65:0x83].decode('ascii')
         if description.strip():
             print(f'** {description}')
@@ -459,12 +500,15 @@ def display_content_of_dat_file(dat_file: pathlib.Path):
         print(f'** Creation Date: {day}.{month}.{year}')
 
         release = int.from_bytes(header_bytes[0x87:0x89], 'little')
-        print(f'** Release: {release}')
 
         if int.from_bytes(header_bytes[0x83:0x85], 'little') == 0xDEAD:
             version = str(header_bytes[0x85]) + '.' + str(header_bytes[0x86])
             release = int.from_bytes(header_bytes[0x87:0x89], 'little')
             print(f'** Creation Software Version: {version} ({release})')
+    elif feature in (Feature.SECTIONALS,):
+        print('** Cycle: ' + header_bytes[101:101+4].decode('ascii'))
+        print('** effective_date: ' + header_bytes[171:171+10].decode('ascii'))
+        print('** ' + header_bytes[216:216+21].decode('ascii'))
     elif feature in (Feature.AIR_SPORT,):
         print('** header_bytes')
         print('** ' + header_bytes[0x18:0x2A].decode('ascii'))

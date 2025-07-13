@@ -9,20 +9,20 @@ TAW_SEPARATOR = b'\x00\x02\x00\x00\x00Dd\x00\x1b\x00\x00\x00A\xc8\x00'
 TAW_MAGIC = b'KpGrd'
 
 TAW_DATABASE_TYPES = {
-    0x0091: "GPSMAP196",
+    0x0091: "GPSMAP 196",
     0x00BF: "Gx000",
-    0x0104: "GPSMAP296",
+    0x0104: "GPSMAP 296",
     0x0190: "G500",
     0x01F2: "G500H/GPSx75",
-    0x0253: "GPSMAP496",
-    0x0294: "AERA660",
-    0x02E9: "GPSMAP696",
+    0x0253: "GPSMAP 496",
+    0x0294: "AERA 660",
+    0x02E9: "GPSMAP 696",
     0x02EA: "G3X",
     0x02F0: "GPS175",
     0x0402: "GtnXi",
     0x0465: "GI275",
-    0x0618: "AERA760",
-    0x06BF: "G3XT",
+    0x0618: "AERA 760",
+    0x06BF: "G3X Touch",
     0x0738: "GTR2X5",
     0x07DC: "GTXi",
 }
