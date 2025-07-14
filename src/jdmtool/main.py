@@ -756,7 +756,7 @@ def _transfer_data_card(dev: ProgrammingDevice, service: Service, full_erase: bo
 
     if dev.card_type is DataCardType.TAWS:
         print()
-        print("WARNING: You are trying to transfer a Nav database to a TAWS data card!")
+        print("WARNING: You are trying to transfer a Nav database to a Terrain/Obstacles data card!")
     elif not card_size_min <= dev.get_total_size() <= card_size_max:
         print()
         print(
@@ -949,6 +949,12 @@ def _write_database(dev: ProgrammingDevice, path: str, full_erase: bool) -> None
 
 @with_data_card
 def cmd_write_database(dev: ProgrammingDevice, path: str, full_erase: bool) -> None:
+    if dev.card_type is DataCardType.TAWS:
+        print()
+        print("WARNING: Terrain/Obstacles data cards are not yet supported!")
+        print("See https://github.com/dimaryaz/jdmtool/issues/28")
+        print()
+
     confirm(f"Transfer {path} to the data card?")
 
     start = time.perf_counter()
