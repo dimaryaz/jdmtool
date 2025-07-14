@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable, Generator
+from enum import Enum
 from typing import TYPE_CHECKING
 
 from ..common import JdmToolException
@@ -10,29 +11,47 @@ if TYPE_CHECKING:
     from usb1 import USBDeviceHandle
 
 
-# (manufactorer_id, chip_id) -> (sectors_per_chip, description)
+class DataCardType(Enum):
+    def __init__(self, sector_size: int, read_size, min_write_size: int, max_write_size: int):
+        self.sector_size = sector_size
+        self.read_size = read_size
+        self.min_write_size = min_write_size
+        self.max_write_size = max_write_size
+
+    NONE    = (0x0,     0x0,    0x0,    0x0)
+    NAVDATA = (0x10000, 0x1000, 0x1000, 0x1000)
+    TAWS    = (0x10800, 0xf800, 0x0840, 0xffc0)
+
+
+# (manufactorer_id, chip_id) -> (card_type, sectors_per_chip, description)
 IID_MAP = {
     # 032: 2 MB Intel Series 2 (1 MB x 2)
     # 033: 3 MB Intel Series 2 (1 MB x 3)
     # 034: 4 MB Intel Series 2 (1 MB x 4)
-    (0x89, 0xa2): (0x10, "non-WAAS (white)"),
+    (0x89, 0xa2): (DataCardType.NAVDATA, 0x10, "non-WAAS (white)"),
     #      2 MB Intel          (1 MB x 2)
     #      3 MB Intel          (1 MB x 3)
     #      4 MB Intel          (1 MB x 4)
-    (0x89, 0xa6): (0x10, "non-WAAS (white)"),
+    (0x89, 0xa6): (DataCardType.NAVDATA, 0x10, "non-WAAS (white)"),
 
     # 421: 4 MB AMD Series C/D (2 MB x 2)
     # 431: 6 MB AMD Series C/D (2 MB x 3)
     # 441: 8 MB AMD Series C/D (2 MB x 4)
-    (0x01, 0xad): (0x20, "non-WAAS (green)"),
+    (0x01, 0xad): (DataCardType.NAVDATA, 0x20, "non-WAAS (green)"),
     #      4 MB Intel Series   (2 MB x 2)
     #      6 MB Intel Series   (2 MB x 3)
     #      8 MB Intel Series   (2 MB x 4)
-    (0x89, 0xaa): (0x20, "non-WAAS (green)"),
+    (0x89, 0xaa): (DataCardType.NAVDATA, 0x20, "non-WAAS (green)"),
 
     # 451: 16MB AMD Series C/D (4 MB x 4)
-    (0x01, 0x41): (0x40, "WAAS (silver)"),
-    (0x89, 0x7e): (0x40, "WAAS (orange)"),
+    (0x01, 0x41): (DataCardType.NAVDATA, 0x40, "WAAS (silver)"),
+    (0x89, 0x7e): (DataCardType.NAVDATA, 0x40, "WAAS (orange)"),
+
+    # 128MB
+    (0xec, 0x79): (DataCardType.TAWS, 0x800, "Terrain/Obstacles"),
+
+    # 256MB
+    (0xec, 0xda): (DataCardType.TAWS, 0x1000, "Terrain/Obstacles"),
 }
 
 
@@ -65,10 +84,7 @@ class BasicUsbDevice():
 
 
 class ProgrammingDevice(BasicUsbDevice):
-    BLOCK_SIZE = 0x1000
-    BLOCKS_PER_SECTOR = 0x10
-    SECTOR_SIZE = BLOCK_SIZE * BLOCKS_PER_SECTOR  # 64KB
-
+    card_type = DataCardType.NONE
     chips = 0
     sectors_per_chip = 0x0
     card_info = ""
@@ -86,7 +102,7 @@ class ProgrammingDevice(BasicUsbDevice):
         return f"{self.chips * self.sectors_per_chip // 0x10}MB {self.card_info}"
 
     def get_card_description(self) -> str:
-        return f"{self.chips} chips of {self.sectors_per_chip//0x10}MB"
+        return f"{self.chips} chip(s) of {self.sectors_per_chip//0x10}MB"
 
     def get_firmware_version(self) -> str:
         raise NotImplementedError()
@@ -104,18 +120,24 @@ class ProgrammingDevice(BasicUsbDevice):
         return self.chips * self.sectors_per_chip
 
     def get_total_size(self) -> int:
-        return self.get_total_sectors() * self.SECTOR_SIZE
+        return self.get_total_sectors() * self.card_type.sector_size
 
-    def read_blocks(self, start_sector: int, num_sectors: int) -> Generator[bytes, bool, None]:
+    def pad_for_write(self, block: bytes) -> bytes:
+        rem = len(block) % self.card_type.min_write_size
+        if rem != 0:
+            block += b'\xFF' * (self.card_type.min_write_size - rem)
+        return block
+
+    def read_blocks(self, start_sector: int, length: int) -> Generator[bytes, None, None]:
         raise NotImplementedError()
 
     def erase_sectors(self, start_sector: int, num_sectors: int) -> Generator[None, None, None]:
         raise NotImplementedError()
 
     def write_blocks(
-        self, start_sector: int, num_sectors: int,
-        read_func: Callable[[], bytes]
-    ) -> Generator[None, None, None]:
+        self, start_sector: int, length: int,
+        read_func: Callable[[int], bytes]
+    ) -> Generator[bytes, None, None]:
         raise NotImplementedError()
 
     def check_card(self):
