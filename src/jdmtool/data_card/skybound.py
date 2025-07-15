@@ -162,12 +162,23 @@ class SkyboundDevice(ProgrammingDevice):
         self.check_card()
 
     def read_blocks(self, start_sector: int, length: int) -> Generator[bytes, None, None]:
+        block_size = self.card_type.read_size
+        blocks_per_sector = self.card_type.sector_size // block_size
+
         self.before_read()
-        for sector in range(start_sector, start_sector + num_sectors):
-            self.select_sector(sector)
-            for i in range(self.BLOCKS_PER_SECTOR):
-                self._loop_helper(i)
-                yield self.read_block()
+        block_idx = 0
+
+        while length > 0:
+            if block_idx % blocks_per_sector == 0:
+                self.select_sector(start_sector + block_idx // blocks_per_sector)
+
+            self._loop_helper(block_idx)
+            block_idx += 1
+
+            block = self.read_block()
+            assert len(block) == block_size
+            yield block[:min(block_size, length)]
+            length -= block_size
 
     def erase_sectors(self, start_sector: int, num_sectors: int) -> Generator[None, None, None]:
         self.before_write()
@@ -180,12 +191,24 @@ class SkyboundDevice(ProgrammingDevice):
     def write_blocks(
         self, start_sector: int, length: int,
         read_func: Callable[[int], bytes]
-    ) -> Generator[None, None, None]:
+    ) -> Generator[bytes, None, None]:
+        block_size = self.card_type.max_write_size
+        blocks_per_sector = self.card_type.sector_size // block_size
+
         self.before_write()
-        for sector in range(start_sector, start_sector + num_sectors):
-            self.select_sector(sector)
-            for i in range(self.BLOCKS_PER_SECTOR):
-                self._loop_helper(i)
-                block = read_func()
-                self.write_block(block)
-                yield
+        block_idx = 0
+
+        while length > 0:
+            if block_idx % blocks_per_sector == 0:
+                self.select_sector(start_sector + block_idx // blocks_per_sector)
+
+            self._loop_helper(block_idx)
+            block_idx += 1
+
+            read_size = min(block_size, length)
+            block = read_func(read_size)
+            if len(block) != read_size:
+                raise IOError(f"Expected {read_size} bytes, but got {len(block)}")
+            self.write_block(self.pad_for_write(block))
+            yield block
+            length -= block_size
