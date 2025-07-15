@@ -51,11 +51,11 @@ DB_MAGIC2 = 0x63614030
 class Feature(Enum):
     NAVIGATION = 0, 0, ['ldr_sys/avtn_db.bin', 'avtn_db.bin', '.System/AVTN/avtn_db.bin']
     CONFIG_ENABLE = 913, 2, []
-    TERRAIN = 1826, 3, ['terrain_9as.tdb', 'trn.dat', '.System/AVTN/terrain.tdb']
-    OBSTACLE = 2739, 4, ['terrain.odb', '.System/AVTN/obstacle.odb']
+    TERRAIN = 1826, 3, ['terrain_9as.tdb', 'trn.dat', '.System/AVTN/terrain.tdb', 'terrain.tdb']
+    OBSTACLE = 2739, 4, ['terrain.odb', '.System/AVTN/obstacle.odb', 'obstacle.odb']
     APT_TERRAIN = 3652, 5, ['terrain.adb']
     CHARTVIEW = 4565, 6, ['Charts/crcfiles.txt', 'crcfiles.txt']
-    SAFETAXI = 5478, 7, ['safetaxi.bin', '.System/AVTN/safetaxi.img']
+    SAFETAXI = 5478, 7, ['safetaxi.bin', '.System/AVTN/safetaxi.img', 'safetaxi.img']
     FLITE_CHARTS = 6391, 8, ['fc_tpc/fc_tpc.dat', 'fc_tpc.dat', '.System/AVTN/FliteCharts/fc_tpc.dat']
     BASEMAP = 7304, 10, ['bmap.bin']
     AIRPORT_DIR = 8217, 10, ['apt_dir.gca', 'fbo.gpi']
@@ -471,6 +471,9 @@ def display_content_of_dat_file(dat_file: pathlib.Path):
         (f_month, f_day, f_year) = struct.unpack('<BBH', header_bytes[0x6:0x6+0x4])
         (t_month, t_day, t_year) = struct.unpack('<BBH', header_bytes[0x0A:0x0A+0x4])
         print(f'** Effective : {f_day}.{f_month}.{f_year} to {t_day}.{t_month}.{t_year}')      
+        cus_date1 = (datetime.strptime(f'{f_day:02}{f_month:02}{f_year}', "%d%m%Y").date()).strftime("%d-%b-%Y")
+        cus_date2 = (datetime.strptime(f'{t_day:02}{t_month:02}{t_year}', "%d%m%Y").date()).strftime("%d-%b-%Y")
+        print(f'** Effective {cus_date1} to {cus_date2}')    
     elif feature in (Feature.CHARTVIEW, ):
         print('** ' + header_bytes[0x0A:0x0A+9].decode('ascii'))
         print('** Cycle: ' + header_bytes[0x23:0x23+7].decode('ascii'))
@@ -507,7 +510,6 @@ def display_content_of_dat_file(dat_file: pathlib.Path):
         print(f'** Creation Date: {cus_date1}')
 
         release = int.from_bytes(header_bytes[0x87:0x89], 'little')
-        print(f'** Release: {release}')
 
         if int.from_bytes(header_bytes[0x83:0x85], 'little') == 0xDEAD:
             version = str(header_bytes[0x85]) + '.' + str(header_bytes[0x86])
@@ -515,7 +517,8 @@ def display_content_of_dat_file(dat_file: pathlib.Path):
             print(f'** Creation Software Version: {version} ({release})')
     elif feature in (Feature.SECTIONALS,):
         print('** Cycle: ' + header_bytes[101:101+4].decode('ascii'))
-        print('** effective_date: ' + header_bytes[171:171+10].decode('ascii'))
+        cus_date1 = (datetime.strptime(f'{header_bytes[171:171+10].decode('ascii')}', "%m/%d/%Y").date()).strftime("%d-%b-%Y")
+        print(f'** Effective_date: {cus_date1}')       
         print('** ' + header_bytes[216:216+21].decode('ascii'))
     elif feature in (Feature.AIR_SPORT,):
         print('** header_bytes')
