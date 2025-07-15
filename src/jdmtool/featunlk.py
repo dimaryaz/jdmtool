@@ -412,13 +412,17 @@ def display_content_of_dat_file(dat_file: pathlib.Path):
         print('** Revision: ' + chr(header_bytes[0x92]))
         (cycle, f_month, f_day, f_year, t_month, t_day, t_year) = struct.unpack('<HBBHBBH', header_bytes[0x81:0x81+0xa])
         print('** Cycle: ', cycle)
-        print(f'** Effective: {f_year}-{f_month:02}-{f_day:02} to {t_year}-{t_month:02}-{t_day:02}')
+        cus_date1 = (datetime.strptime(f'{f_day:02}{f_month:02}{f_year}', "%d%m%Y").date()).strftime("%d-%b-%Y")
+        cus_date2 = (datetime.strptime(f'{t_day:02}{t_month:02}{t_year}', "%d%m%Y").date()).strftime("%d-%b-%Y")
+        print(f'** Effective {cus_date1} to {cus_date2}')
     elif feature in (Feature.OBSTACLE, ):
         if header_bytes[0x30:0x30+10] == b'Garmin Ltd':
             print('** ' + header_bytes[0x30:0x30+10].decode('ascii'))
             (f_day, f_month, f_year) = struct.unpack('<HHH', header_bytes[0x10:0x10+0x6])
             (t_day, t_month, t_year) = struct.unpack('<HHH', header_bytes[0x92:0x92+0x6])
-            print(f'** Effective: {f_year}-{f_month:02}-{f_day:02} to {t_year}-{t_month:02}-{t_day:02}')
+            cus_date1 = (datetime.strptime(f'{f_day:02}{f_month:02}{f_year}', "%d%m%Y").date()).strftime("%d-%b-%Y")
+            cus_date2 = (datetime.strptime(f'{t_day:02}{t_month:02}{t_year}', "%d%m%Y").date()).strftime("%d-%b-%Y")
+            print(f'** Effective {cus_date1} to {cus_date2}')
         else:
             print('** Cycle: ' + footer_bytes[0x4:0x4+4].decode('ascii'))
             print('** ' + footer_bytes[0x20:0x20+11].decode('ascii'))
@@ -442,7 +446,11 @@ def display_content_of_dat_file(dat_file: pathlib.Path):
         print('** ' + footer_bytes[152:152+20].decode('ascii'))
         (f_month, f_day, f_year) = struct.unpack('<BBH', footer_bytes[-0xFA:-0xFA+0x4])
         (t_month, t_day, t_year) = struct.unpack('<BBH', footer_bytes[-0xF6:-0xF6+0x4])
-        print(f'** Effective: {f_year}-{f_month:02}-{f_day:02} to {t_year}-{t_month:02}-{t_day:02}')
+        cus_date1 = (datetime.strptime(f'{f_day:02}{f_month:02}{f_year}', "%d%m%Y").date()).strftime("%d-%b-%Y")
+        cus_date2 = (datetime.strptime(f'{t_day:02}{t_month:02}{t_year}', "%d%m%Y").date()).strftime("%d-%b-%Y")
+        print(f'** Effective {cus_date1} to {cus_date2}')
+        
+        
     elif feature in (Feature.AIRPORT_DIR, ):
         if (DB_MAGIC2 == int.from_bytes(footer_bytes[0:4], 'little')):
             print('** ' + header_bytes[0x54:0x54+40].decode('ascii'))
@@ -495,9 +503,11 @@ def display_content_of_dat_file(dat_file: pathlib.Path):
         year = int.from_bytes(header_bytes[0x39:0x39+2], 'little')
         month = int(header_bytes[0x3B])
         day = int(header_bytes[0x3c])
-        print(f'** Creation Date: {year}-{month:02}-{day:02}')
+        cus_date1 = (datetime.strptime(f'{day:02}{month:02}{year}', "%d%m%Y").date()).strftime("%d-%b-%Y")
+        print(f'** Creation Date: {cus_date1}')
 
         release = int.from_bytes(header_bytes[0x87:0x89], 'little')
+        print(f'** Release: {release}')
 
         if int.from_bytes(header_bytes[0x83:0x85], 'little') == 0xDEAD:
             version = str(header_bytes[0x85]) + '.' + str(header_bytes[0x86])
