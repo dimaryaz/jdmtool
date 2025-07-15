@@ -470,7 +470,6 @@ def display_content_of_dat_file(dat_file: pathlib.Path):
         print('** ' + header_bytes[0x95:0x95+20].decode('ascii'))
         (f_month, f_day, f_year) = struct.unpack('<BBH', header_bytes[0x6:0x6+0x4])
         (t_month, t_day, t_year) = struct.unpack('<BBH', header_bytes[0x0A:0x0A+0x4])
-        print(f'** Effective : {f_day}.{f_month}.{f_year} to {t_day}.{t_month}.{t_year}')      
         cus_date1 = (datetime.strptime(f'{f_day:02}{f_month:02}{f_year}', "%d%m%Y").date()).strftime("%d-%b-%Y")
         cus_date2 = (datetime.strptime(f'{t_day:02}{t_month:02}{t_year}', "%d%m%Y").date()).strftime("%d-%b-%Y")
         print(f'** Effective {cus_date1} to {cus_date2}')    
