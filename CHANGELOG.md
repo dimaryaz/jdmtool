@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.4.4 (2025-07-14)
+- More features supported in `featunlk.dat` and a `featunlk` script for displaying various info
+- Support for a few more data cards
+- Very experimental, unfinished support for Terrain/Obstacles data cards
+  - Does **not** support writing the databases yet; only raw bytes
+
+Thank you [@ELD400](https://github.com/ELD400) and [sHorst](https://github.com/sHorst)!
+
 ## 0.4.3 (2025-05-04)
 - Add support for the Avidyne IFD 400 "taildrm" feature
 - Fix a few bugs with parsing of IFD 400 .dsf.txt files
