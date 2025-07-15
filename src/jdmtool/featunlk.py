@@ -8,7 +8,6 @@ import zipfile
 from collections.abc import Callable
 from enum import Enum
 from io import BytesIO
-from pathlib import PurePosixPath
 from typing import BinaryIO
 
 from .checksum import feat_unlk_checksum
@@ -81,15 +80,14 @@ class Feature(Enum):
 
 
 FILENAME_TO_FEATURE: dict[str, Feature] = {
-    PurePosixPath(filename).name: feature
+    filename: feature
     for feature in Feature
     for filename in feature.filenames
 }
 
 
-def calculate_crc_and_preview_of_file(filename: pathlib.Path) -> tuple[int, bytes]:
+def calculate_crc_and_preview_of_file(feature: Feature, filename: pathlib.Path) -> tuple[int, bytes]:
     chk = 0xFFFFFFFF
-    feature = FILENAME_TO_FEATURE.get(filename.name)
 
     with open(filename, 'rb') as fd:
         block = fd.read(CHUNK_SIZE)
@@ -314,7 +312,7 @@ OTHER DB:
     for filename in feature.filenames:
         dat_file = featunlk.parent.joinpath(filename)
         if dat_file.is_file():
-            crc, preview = calculate_crc_and_preview_of_file(dat_file)
+            crc, preview = calculate_crc_and_preview_of_file(feature, dat_file)
 
             # wrong file
             if crc != expected_chk:
