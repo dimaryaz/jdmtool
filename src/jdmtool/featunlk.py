@@ -5,6 +5,9 @@ import os
 import pathlib
 import struct
 import zipfile
+import datetime
+import datetime as dt
+
 from collections.abc import Callable
 from enum import Enum
 from io import BytesIO
@@ -12,7 +15,6 @@ from typing import BinaryIO
 
 from .checksum import feat_unlk_checksum
 from .taw import TAW_DATABASE_TYPES
-from datetime import datetime
 
 FEAT_UNLK = 'feat_unlk.dat'
 
@@ -381,6 +383,7 @@ OTHER DB:
 
 def display_content_of_dat_file(dat_file: pathlib.Path):
     feature = FILENAME_TO_FEATURE.get(dat_file.name)
+    format_date = "%d-%b-%Y"
 
     if feature in (Feature.SAFETAXI2, ) and zipfile.is_zipfile(dat_file):
         with zipfile.ZipFile(dat_file, 'r') as zip_fp:
@@ -388,14 +391,8 @@ def display_content_of_dat_file(dat_file: pathlib.Path):
                 header_bytes = fd.read(0x200)
                 fd.seek(-0x102, os.SEEK_END)
                 footer_bytes = fd.read(0x102)
-    elif (feature in (Feature.CHARTVIEW,) ):
-        with open('Charts/chartview.hif', 'rb') as fd:
-            header_bytes = fd.read(0x200)
-            fd.seek(-0x102, os.SEEK_END)
-            footer_bytes = fd.read(0x102)
-            fd.seek(-0x1F2, os.SEEK_END)
-            footer2_bytes = fd.read(0x1F2)
-    else:
+                footer2_bytes = ''
+    elif (feature not in (Feature.CHARTVIEW,) ):
         with open(dat_file, 'rb') as fd:
             header_bytes = fd.read(0x200)
             fd.seek(-0x102, os.SEEK_END)
@@ -412,16 +409,16 @@ def display_content_of_dat_file(dat_file: pathlib.Path):
         print('** Revision: ' + chr(header_bytes[0x92]))
         (cycle, f_month, f_day, f_year, t_month, t_day, t_year) = struct.unpack('<HBBHBBH', header_bytes[0x81:0x81+0xa])
         print('** Cycle: ', cycle)
-        cus_date1 = (datetime.strptime(f'{f_day:02}{f_month:02}{f_year}', "%d%m%Y").date()).strftime("%d-%b-%Y")
-        cus_date2 = (datetime.strptime(f'{t_day:02}{t_month:02}{t_year}', "%d%m%Y").date()).strftime("%d-%b-%Y")
+        cus_date1 = datetime.date(f_year, f_month, f_day).strftime(format_date).upper()
+        cus_date2 = datetime.date(t_year, t_month, t_day).strftime(format_date).upper()
         print(f'** Effective {cus_date1} to {cus_date2}')
     elif feature in (Feature.OBSTACLE, ):
         if header_bytes[0x30:0x30+10] == b'Garmin Ltd':
             print('** ' + header_bytes[0x30:0x30+10].decode('ascii'))
             (f_day, f_month, f_year) = struct.unpack('<HHH', header_bytes[0x10:0x10+0x6])
             (t_day, t_month, t_year) = struct.unpack('<HHH', header_bytes[0x92:0x92+0x6])
-            cus_date1 = (datetime.strptime(f'{f_day:02}{f_month:02}{f_year}', "%d%m%Y").date()).strftime("%d-%b-%Y")
-            cus_date2 = (datetime.strptime(f'{t_day:02}{t_month:02}{t_year}', "%d%m%Y").date()).strftime("%d-%b-%Y")
+            cus_date1 = datetime.date(f_year, f_month, f_day).strftime(format_date).upper()
+            cus_date2 = datetime.date(t_year, t_month, t_day).strftime(format_date).upper()
             print(f'** Effective {cus_date1} to {cus_date2}')
         else:
             print('** Cycle: ' + footer_bytes[0x4:0x4+4].decode('ascii'))
@@ -446,22 +443,32 @@ def display_content_of_dat_file(dat_file: pathlib.Path):
         print('** ' + footer_bytes[152:152+20].decode('ascii'))
         (f_month, f_day, f_year) = struct.unpack('<BBH', footer_bytes[-0xFA:-0xFA+0x4])
         (t_month, t_day, t_year) = struct.unpack('<BBH', footer_bytes[-0xF6:-0xF6+0x4])
-        cus_date1 = (datetime.strptime(f'{f_day:02}{f_month:02}{f_year}', "%d%m%Y").date()).strftime("%d-%b-%Y")
-        cus_date2 = (datetime.strptime(f'{t_day:02}{t_month:02}{t_year}', "%d%m%Y").date()).strftime("%d-%b-%Y")
+        cus_date1 = datetime.date(f_year, f_month, f_day).strftime(format_date).upper()
+        cus_date2 = datetime.date(t_year, t_month, t_day).strftime(format_date).upper()
         print(f'** Effective {cus_date1} to {cus_date2}')
         
         
     elif feature in (Feature.AIRPORT_DIR, ):
-        if (DB_MAGIC2 == int.from_bytes(footer_bytes[0:4], 'little')):
-            print('** ' + header_bytes[0x54:0x54+40].decode('ascii'))
-            timestamp = int.from_bytes(header_bytes[0x10:0x10+4], 'little')
-        if (str(dat_file) == 'apt_dir.gca'): 
+        if (DB_MAGIC == int.from_bytes(footer_bytes[0:4], 'little')):
+            # print('DBMAGIC = DB_MAGIC')
             print('** Cycle: ' + footer_bytes[0x4:0x4+4].decode('ascii'))
+            (f_month, f_day, f_year, t_month, t_day, t_year) = struct.unpack('<BBHBBH', footer_bytes[0x8:0x8+8])
+            cus_date1 = datetime.date(f_year, f_month, f_day).strftime(format_date).upper()
+            cus_date2 = datetime.date(t_year, t_month, t_day).strftime(format_date).upper()
+            print(f'** Effective {cus_date1} to {cus_date2}')
             print('** ' + footer_bytes[0x20:0x20+11].decode('ascii'))
             print('** ' + footer_bytes[0x2B:0x2B+20].decode('ascii'))
             print('** ' + footer_bytes[0x98:0x98+20].decode('ascii'))
-        if (DB_MAGIC2 != int.from_bytes(footer_bytes[0:4], 'little') and 
-            (str(dat_file) != 'apt_dir.gca')):
+        if (DB_MAGIC2 == int.from_bytes(footer_bytes[0:4], 'little')):
+            # print('DBMAGIC = DB_MAGIC2')
+            print('** ' + header_bytes[0x54:0x54+40].decode('ascii'))
+            cus_date1 = dt.date.fromordinal(int.from_bytes(header_bytes[0xCA:0xCA+4], 'little')- 3840609).strftime("%d-%b-%Y").upper()
+            cus_date2 = dt.date.fromordinal(int.from_bytes(header_bytes[0x94:0x94+4], 'little')- 3840611).strftime("%d-%b-%Y").upper()
+            cus_date3 = dt.date.fromordinal(int.from_bytes(header_bytes[0x90:0x90+4], 'little')- 3840609).strftime("%d-%b-%Y").upper()
+            print(f'** Effective {cus_date1} to {cus_date2}')
+        if (DB_MAGIC != int.from_bytes(footer_bytes[0:4], 'little') and
+            DB_MAGIC2 != int.from_bytes(footer_bytes[0:4], 'little')):
+            print('!= DB_MAGIC and != DB_MAGIC2')
             print('WRONG MAGIC!!')
             print(f"0x{int.from_bytes(footer_bytes[0:4], 'little'):08X}")
     elif feature in (Feature.FLITE_CHARTS, ):
@@ -470,12 +477,19 @@ def display_content_of_dat_file(dat_file: pathlib.Path):
         print('** ' + header_bytes[0x95:0x95+20].decode('ascii'))
         (f_month, f_day, f_year) = struct.unpack('<BBH', header_bytes[0x6:0x6+0x4])
         (t_month, t_day, t_year) = struct.unpack('<BBH', header_bytes[0x0A:0x0A+0x4])
-        cus_date1 = (datetime.strptime(f'{f_day:02}{f_month:02}{f_year}', "%d%m%Y").date()).strftime("%d-%b-%Y")
-        cus_date2 = (datetime.strptime(f'{t_day:02}{t_month:02}{t_year}', "%d%m%Y").date()).strftime("%d-%b-%Y")
+        cus_date1 = datetime.date(f_year, f_month, f_day).strftime(format_date).upper()
+        cus_date2 = datetime.date(t_year, t_month, t_day).strftime(format_date).upper()
         print(f'** Effective {cus_date1} to {cus_date2}')    
     elif feature in (Feature.CHARTVIEW, ):
+        with open(dat_file.parent / 'chartview.hif', 'rb') as fd:
+            header_bytes = fd.read(0x200)
         print('** ' + header_bytes[0x0A:0x0A+9].decode('ascii'))
         print('** Cycle: ' + header_bytes[0x23:0x23+7].decode('ascii'))
+        with open(dat_file.parent / 'charts.ini', 'rb') as fd:
+            header_bytes = fd.read(0x200)
+        cus_date1 = dt.date.fromordinal(int(header_bytes[30:30+7].decode('ascii'))- 1721424).strftime(format_date).upper()
+        cus_date2 = dt.date.fromordinal(int(header_bytes[59:59+7].decode('ascii'))- 1721424).strftime(format_date).upper()
+        print(f'** Effective {cus_date1} to {cus_date2}') 
     elif feature in (Feature.SAFETAXI, Feature.BASEMAP, Feature.BASEMAP2):
         xor_byte = header_bytes[0x00]
         if xor_byte:
@@ -505,7 +519,7 @@ def display_content_of_dat_file(dat_file: pathlib.Path):
         year = int.from_bytes(header_bytes[0x39:0x39+2], 'little')
         month = int(header_bytes[0x3B])
         day = int(header_bytes[0x3c])
-        cus_date1 = (datetime.strptime(f'{day:02}{month:02}{year}', "%d%m%Y").date()).strftime("%d-%b-%Y")
+        cus_date1 = datetime.date(year, month, day).strftime(format_date).upper()
         print(f'** Creation Date: {cus_date1}')
 
         release = int.from_bytes(header_bytes[0x87:0x89], 'little')
@@ -514,9 +528,14 @@ def display_content_of_dat_file(dat_file: pathlib.Path):
             version = str(header_bytes[0x85]) + '.' + str(header_bytes[0x86])
             release = int.from_bytes(header_bytes[0x87:0x89], 'little')
             print(f'** Creation Software Version: {version} ({release})')
+        if feature in (Feature.SAFETAXI, ):
+            #Todo find the reel formula to culculate date in future
+            cus_date1 = dt.date.fromordinal(int(int.from_bytes(header_bytes[0x20:0x20+2], 'little')/135)+739221).strftime("%d-%b-%Y").upper()
+            cus_date2 = dt.date.fromordinal(int(int.from_bytes(header_bytes[0x22:0x22+2], 'little')/135)+739221).strftime("%d-%b-%Y").upper()
+            print(f'** Effective {cus_date1} to {cus_date2}')
     elif feature in (Feature.SECTIONALS,):
         print('** Cycle: ' + header_bytes[101:101+4].decode('ascii'))
-        cus_date1 = (datetime.strptime(f'{header_bytes[171:171+10].decode('ascii')}', "%m/%d/%Y").date()).strftime("%d-%b-%Y")
+        cus_date1 = dt.datetime.strptime(header_bytes[171:171+10].decode('ascii'), "%m/%d/%Y").date().strftime(format_date).upper()
         print(f'** Effective_date: {cus_date1}')       
         print('** ' + header_bytes[216:216+21].decode('ascii'))
     elif feature in (Feature.AIR_SPORT,):
@@ -524,7 +543,9 @@ def display_content_of_dat_file(dat_file: pathlib.Path):
         print('** ' + header_bytes[0x18:0x2A].decode('ascii'))
         print('** ' + header_bytes[0x5A:0x76].decode('ascii'))
         print('** ' + header_bytes[0x7B:0x89].decode('ascii'))
-
+        cus_date1 = dt.date.fromordinal(int.from_bytes(header_bytes[0x8C:0x8C+4], 'little')+ 490625).strftime("%d-%b-%Y").upper()
+        cus_date2 = dt.date.fromordinal(int.from_bytes(header_bytes[0x90:0x90+4], 'little')+ 491001).strftime("%d-%b-%Y").upper()
+        print(f'** Effective {cus_date1} to {cus_date2}')
     else:  # Feature.APT_TERRAIN
         print('** UNKNOWN DATA TYPE')
         print(header_bytes)
