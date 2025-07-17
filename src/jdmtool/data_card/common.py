@@ -143,3 +143,6 @@ class ProgrammingDevice(BasicUsbDevice):
     def check_card(self):
         if not self.has_card():
             raise ProgrammingException("Data card has disappeared!")
+
+    def check_supports_write(self) -> None:
+        pass

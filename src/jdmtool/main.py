@@ -756,6 +756,8 @@ def _transfer_data_card(dev: ProgrammingDevice, service: Service, full_erase: bo
 
     assert dev.card_type is not DataCardType.NONE
 
+    dev.check_supports_write()
+
     if dev.card_type is DataCardType.TAWS:
         print()
         print("WARNING: You are trying to transfer a Nav database to a Terrain/Obstacles data card!")
@@ -955,6 +957,8 @@ def _write_database(dev: ProgrammingDevice, path: str, full_erase: bool) -> None
 def cmd_write_database(dev: ProgrammingDevice, path: str, full_erase: bool) -> None:
     assert dev.card_type is not DataCardType.NONE
 
+    dev.check_supports_write()
+
     if dev.card_type is DataCardType.TAWS:
         print()
         print("WARNING: Terrain/Obstacles data cards are not yet supported!")
@@ -984,6 +988,10 @@ def _clear_card(dev: ProgrammingDevice) -> None:
 
 @with_data_card
 def cmd_clear_card(dev: ProgrammingDevice) -> None:
+    assert dev.card_type is not DataCardType.NONE
+
+    dev.check_supports_write()
+
     confirm("Clear all bytes on the data card?")
 
     start = time.perf_counter()

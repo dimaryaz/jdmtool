@@ -92,7 +92,9 @@ class UsbHandleMock:
             self.writing = False
             return
 
-        if data == b'\x18':
+        if data == b"\x60":
+            self.pending_response = b"20140530" if self.g2_orange else b"20071203"
+        elif data == b'\x18':
             self.pending_response = self._has_card()
         elif data.startswith(b'\x30\x00\x00'):
             assert len(data) == 5
@@ -194,6 +196,12 @@ def test_init_card(g2_orange, chip, n_chips, name):
 
     assert device.sectors_per_chip == chip.sectors
     assert device.get_card_name() == name
+
+    if not g2_orange and chip == CHIP_AMD_4MB_ORANGE:
+        with pytest.raises(ProgrammingException):
+            device.check_supports_write()
+    else:
+        device.check_supports_write()
 
 
 @pytest.mark.parametrize("g2_orange", [False, True])

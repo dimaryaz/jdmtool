@@ -327,7 +327,7 @@ OTHER DB:
             if feature == Feature.NAVIGATION and expected_preview != preview:
                 raise ValueError("Preview data mismatch")
 
-            display_content_of_dat_file(dat_file)
+            display_content_of_dat_file(feature, dat_file)
             break
     else:
         print('- Unknown Filename or CRC not found in files')
@@ -379,7 +379,6 @@ OTHER DB:
             print("- Expected zeros in the content2 but got: ", [hex(x) for x in content2_bytes[byte: -4]])
         else:
             print("- Expected zeros in the content2")
-
 
 def display_content_of_dat_file(dat_file: pathlib.Path):
     feature = FILENAME_TO_FEATURE.get(dat_file.name)
@@ -556,7 +555,7 @@ def main():
     parser.add_argument(
         '-f',
         '--feature',
-        help="Only verify info for one specific Feature (by filename). "
+        help="Only verify info for one specific Feature (by name or file path). "
              "CRC will be checked against file in same folder/subfolder of featunlk.dat/feat_unlk.dat file.",
     )
     parser.add_argument(
@@ -570,9 +569,19 @@ def main():
     if args.feature is None:
         display_all_content_of_feat_unlk(pathlib.Path(args.featunlk), True)
     else:
-        path = pathlib.Path(args.feature)
-        feature = FILENAME_TO_FEATURE.get(path.name)
-        if feature is None:
-            raise ValueError(f"Unsupported filename: {path.name}")
+        try:
+            feature = Feature[args.feature]
+        except KeyError:
+            feature = FILENAME_TO_FEATURE.get(args.feature)
+
+            if feature is None:
+                print(f"Unsupported feature: {args.feature}")
+                print()
+                print("Supported feature names and file paths:")
+                for f in Feature:
+                    print(f"  {f.name}: {', '.join(f.filenames)}")
+                return 1
 
         display_content_of_feat_unlk(pathlib.Path(args.featunlk), feature, True)
+
+    return 0

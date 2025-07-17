@@ -1,5 +1,8 @@
 # Changelog
 
+## 0.4.4.1 (2025-07-14)
+- Unbreak the Skybound programmer device. Oops.
+
 ## 0.4.4 (2025-07-14)
 - More features supported in `featunlk.dat` and a `featunlk` script for displaying various info
 - Support for a few more data cards
