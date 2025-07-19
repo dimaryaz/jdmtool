@@ -45,7 +45,7 @@ class GarminFirmwareWriter(BasicUsbDevice):
 
 class GarminProgrammingDevice(ProgrammingDevice):
     WRITE_ENDPOINT = 0x02
-    READ_ENDPOINT = 0x86
+    READ_ENDPOINT = 0x82
 
     NO_CARD = 0x00697641
 
