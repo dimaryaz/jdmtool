@@ -132,3 +132,6 @@ dmypy.json
 
 # macOS crap
 .DS_Store
+
+# Binary database file
+*.bin
