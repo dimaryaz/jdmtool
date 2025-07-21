@@ -5,6 +5,8 @@ from pathlib import Path
 from struct import unpack
 from typing import BinaryIO
 
+from usb1 import USBDeviceHandle
+
 from .common import IID_MAP, BasicUsbDevice, DataCardType, ProgrammingDevice, ProgrammingException
 
 
@@ -44,13 +46,19 @@ class GarminFirmwareWriter(BasicUsbDevice):
 
 
 class GarminProgrammingDevice(ProgrammingDevice):
-    WRITE_ENDPOINT = 0x02
-    READ_ENDPOINT = 0x86
 
-    NO_CARD = 0x00697641
+    NO_CARD_IDS = { # card reader / firmware versions
+        0x00697641, # "newer" 010-10579-20 
+        0x00090304  # "older" 011-01277-00
+        }
 
-    def __init__(self, handle):
+    # Standard values: WRITE_ENDPOINT = 0x02, READ_ENDPOINT = 0x86 ("newer"), 0x82 ("older") reader
+    def __init__(self, handle: USBDeviceHandle, read_endpoint: int = 0x86, write_endpoint: int = 0x02) -> None:
+         # Initialize base device
         super().__init__(handle)
+        # Override endpoints for this Garmin device
+        self.READ_ENDPOINT = read_endpoint
+        self.WRITE_ENDPOINT = write_endpoint
         self.firmware = ""
 
     def init(self) -> None:
@@ -65,7 +73,7 @@ class GarminProgrammingDevice(ProgrammingDevice):
 
     def init_data_card(self) -> None:
         card_id = self.get_card_id()
-        if card_id == self.NO_CARD:
+        if card_id in self.NO_CARD_IDS:
             raise ProgrammingException("Card is missing!")
 
         self.chips = (card_id & 0x00ff0000) >> 16
@@ -82,7 +90,7 @@ class GarminProgrammingDevice(ProgrammingDevice):
         self.end_write()
 
     def has_card(self) -> bool:
-        return self.get_card_id() != self.NO_CARD
+        return self.get_card_id() not in self.NO_CARD_IDS
 
     def get_firmware_version(self) -> str:
         return self.firmware

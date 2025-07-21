@@ -3,11 +3,10 @@ from __future__ import annotations
 from collections.abc import Callable, Generator
 
 from .common import IID_MAP, ProgrammingDevice, ProgrammingException
+from usb1 import USBDeviceHandle
 
 
 class SkyboundDevice(ProgrammingDevice):
-    WRITE_ENDPOINT = 0x02
-    READ_ENDPOINT = 0x81
 
     MEMORY_OFFSETS = [0x00E0, 0x0160, 0x01A0, 0x01C0]
 
@@ -17,6 +16,14 @@ class SkyboundDevice(ProgrammingDevice):
     }
 
     is_orange_card = False
+
+    # Standard values: WRITE_ENDPOINT = 0x02, READ_ENDPOINT = 0x81
+    def __init__(self, handle: USBDeviceHandle, read_endpoint: int = 0x81, write_endpoint: int = 0x02) -> None:
+        # Initialize base device
+        super().__init__(handle)
+        # Override endpoints for this Skybound device
+        self.READ_ENDPOINT = read_endpoint
+        self.WRITE_ENDPOINT = write_endpoint
 
     def init(self) -> None:
         self.set_led(True)
