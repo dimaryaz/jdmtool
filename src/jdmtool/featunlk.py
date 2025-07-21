@@ -5,6 +5,8 @@ import os
 import pathlib
 import struct
 import zipfile
+import datetime
+
 from collections.abc import Callable
 from enum import Enum
 from io import BytesIO
@@ -50,11 +52,11 @@ DB_MAGIC2 = 0x63614030
 class Feature(Enum):
     NAVIGATION = 0, 0, ['ldr_sys/avtn_db.bin', 'avtn_db.bin', '.System/AVTN/avtn_db.bin']
     CONFIG_ENABLE = 913, 2, []
-    TERRAIN = 1826, 3, ['terrain_9as.tdb', 'trn.dat', '.System/AVTN/terrain.tdb']
-    OBSTACLE = 2739, 4, ['terrain.odb', '.System/AVTN/obstacle.odb']
+    TERRAIN = 1826, 3, ['terrain_9as.tdb', 'trn.dat', '.System/AVTN/terrain.tdb', 'terrain.tdb']
+    OBSTACLE = 2739, 4, ['terrain.odb', '.System/AVTN/obstacle.odb', 'obstacle.odb']
     APT_TERRAIN = 3652, 5, ['terrain.adb']
     CHARTVIEW = 4565, 6, ['Charts/crcfiles.txt', 'crcfiles.txt']
-    SAFETAXI = 5478, 7, ['safetaxi.bin', '.System/AVTN/safetaxi.img']
+    SAFETAXI = 5478, 7, ['safetaxi.bin', '.System/AVTN/safetaxi.img', 'safetaxi.img']
     FLITE_CHARTS = 6391, 8, ['fc_tpc/fc_tpc.dat', 'fc_tpc.dat', '.System/AVTN/FliteCharts/fc_tpc.dat']
     BASEMAP = 7304, 10, ['bmap.bin']
     AIRPORT_DIR = 8217, 10, ['apt_dir.gca', 'fbo.gpi']
@@ -273,7 +275,7 @@ OTHER DB:
 
     security_id = (int.from_bytes(content1.read(2), 'little') + SEC_ID_OFFSET) & 0xFFFF
     device_model_val = TAW_DATABASE_TYPES.get(security_id, "Unknown")
-    print(f"* garmin_sec_id: {security_id}, device_model: {device_model_val}")
+    print(f"* garmin_sec_id: {security_id}, device_model: ({device_model_val})")
 
     magic = int.from_bytes(content1.read(4), 'little')
     if magic != MAGIC2:
@@ -377,19 +379,24 @@ OTHER DB:
         else:
             print("- Expected zeros in the content2")
 
-
 def display_content_of_dat_file(feature: Feature, dat_file: pathlib.Path):
-    if feature in (Feature.SAFETAXI2, ) and zipfile.is_zipfile(dat_file):
+    format_date = "%d-%b-%Y"
+
+    header_bytes = footer_bytes = footer2_bytes = b''
+
+    if feature == Feature.SAFETAXI2 and zipfile.is_zipfile(dat_file):
         with zipfile.ZipFile(dat_file, 'r') as zip_fp:
             with zip_fp.open('safetaxi2.bin') as fd:
                 header_bytes = fd.read(0x200)
                 fd.seek(-0x102, os.SEEK_END)
                 footer_bytes = fd.read(0x102)
-    else:
+    elif feature != Feature.CHARTVIEW:
         with open(dat_file, 'rb') as fd:
             header_bytes = fd.read(0x200)
             fd.seek(-0x102, os.SEEK_END)
             footer_bytes = fd.read(0x102)
+            fd.seek(-0x1F2, os.SEEK_END)
+            footer2_bytes = fd.read(0x1F2)
 
     if feature in (Feature.NAVIGATION, Feature.NAV_DB2):
         (region, year, man, _) = [x.strip() for x in header_bytes[0x9f:0xEF].decode('ascii').split("\0")]
@@ -400,31 +407,87 @@ def display_content_of_dat_file(feature: Feature, dat_file: pathlib.Path):
         print('** Revision: ' + chr(header_bytes[0x92]))
         (cycle, f_month, f_day, f_year, t_month, t_day, t_year) = struct.unpack('<HBBHBBH', header_bytes[0x81:0x81+0xa])
         print('** Cycle: ', cycle)
-        print(f'** Effective: {f_year}-{f_month:02}-{f_day:02} to {t_year}-{t_month:02}-{t_day:02}')
+        cus_date1 = datetime.date(f_year, f_month, f_day).strftime(format_date).upper()
+        cus_date2 = datetime.date(t_year, t_month, t_day).strftime(format_date).upper()
+        print(f'** Effective {cus_date1} to {cus_date2}')
     elif feature in (Feature.OBSTACLE, ):
         if header_bytes[0x30:0x30+10] == b'Garmin Ltd':
             print('** ' + header_bytes[0x30:0x30+10].decode('ascii'))
             (f_day, f_month, f_year) = struct.unpack('<HHH', header_bytes[0x10:0x10+0x6])
             (t_day, t_month, t_year) = struct.unpack('<HHH', header_bytes[0x92:0x92+0x6])
-            print(f'** Effective: {f_year}-{f_month:02}-{f_day:02} to {t_year}-{t_month:02}-{t_day:02}')
-    elif feature in (Feature.TERRAIN, Feature.OBSTACLE2, Feature.SAFETAXI2):
+            cus_date1 = datetime.date(f_year, f_month, f_day).strftime(format_date).upper()
+            cus_date2 = datetime.date(t_year, t_month, t_day).strftime(format_date).upper()
+            print(f'** Effective {cus_date1} to {cus_date2}')
+        else:
+            print('** Cycle: ' + footer_bytes[0x4:0x4+4].decode('ascii'))
+            print('** ' + footer_bytes[0x20:0x20+11].decode('ascii'))
+            print('** ' + footer_bytes[0x2B:0x2B+20].decode('ascii'))
+            print('** ' + footer_bytes[0x98:0x98+20].decode('ascii'))
+    elif feature in (Feature.TERRAIN,):
+        print(f"DB_MAGIC: 0x{int.from_bytes(header_bytes[0:4], 'little'):08X}")
+        print('** ' + header_bytes[0x58:0x58+20].decode('ascii'))
+        print('** Cycle: ' + footer2_bytes[0x1:0x1+4].decode('ascii'))
+        print('** ' + header_bytes[0x78:0x78+12].decode('ascii'))
+        print('** ' + header_bytes[0x86:0x86+4].decode('ascii'))
+        print('** ' + header_bytes[0x8c:0x8c+4].decode('ascii'))
+    elif feature in (Feature.OBSTACLE2, Feature.SAFETAXI2):
         if DB_MAGIC != int.from_bytes(footer_bytes[0:4], 'little'):
             print('WRONG MAGIC!!')
             print(f"0x{int.from_bytes(footer_bytes[0:4], 'little'):08X}")
-        print('** ' + footer_bytes[-0x6a:-0x61].decode('ascii') + ' ' +
-              footer_bytes[4:8].decode('ascii') + ' ' + '\n** ' + footer_bytes[28:43].decode('ascii') +
-              '\n** ' + footer_bytes[43:55].decode('ascii'))
+        print('** ' + footer_bytes[-0x6a:-0x61].decode('ascii')) 
+        print('** ' + footer_bytes[4:8].decode('ascii'))
+        print('** ' + footer_bytes[28:43].decode('ascii'))
+        print('** ' + footer_bytes[43:43+30].decode('ascii'))
+        print('** ' + footer_bytes[152:152+20].decode('ascii'))
         (f_month, f_day, f_year) = struct.unpack('<BBH', footer_bytes[-0xFA:-0xFA+0x4])
         (t_month, t_day, t_year) = struct.unpack('<BBH', footer_bytes[-0xF6:-0xF6+0x4])
-        print(f'** Effective: {f_year}-{f_month:02}-{f_day:02} to {t_year}-{t_month:02}-{t_day:02}')
+        cus_date1 = datetime.date(f_year, f_month, f_day).strftime(format_date).upper()
+        cus_date2 = datetime.date(t_year, t_month, t_day).strftime(format_date).upper()
+        print(f'** Effective {cus_date1} to {cus_date2}')
+        
+        
     elif feature in (Feature.AIRPORT_DIR, ):
-        if DB_MAGIC2 != int.from_bytes(footer_bytes[0:4], 'little'):
+        if (DB_MAGIC == int.from_bytes(footer_bytes[0:4], 'little')):
+            # print('DBMAGIC = DB_MAGIC')
+            print('** Cycle: ' + footer_bytes[0x4:0x4+4].decode('ascii'))
+            (f_month, f_day, f_year, t_month, t_day, t_year) = struct.unpack('<BBHBBH', footer_bytes[0x8:0x8+8])
+            cus_date1 = datetime.date(f_year, f_month, f_day).strftime(format_date).upper()
+            cus_date2 = datetime.date(t_year, t_month, t_day).strftime(format_date).upper()
+            print(f'** Effective {cus_date1} to {cus_date2}')
+            print('** ' + footer_bytes[0x20:0x20+11].decode('ascii'))
+            print('** ' + footer_bytes[0x2B:0x2B+20].decode('ascii'))
+            print('** ' + footer_bytes[0x98:0x98+20].decode('ascii'))
+        if (DB_MAGIC2 == int.from_bytes(footer_bytes[0:4], 'little')):
+            # print('DBMAGIC = DB_MAGIC2')
+            print('** ' + header_bytes[0x54:0x54+40].decode('ascii'))
+            cus_date1 = datetime.date.fromordinal(int.from_bytes(header_bytes[0xCA:0xCA+4], 'little')- 3840609).strftime(format_date).upper()
+            cus_date2 = datetime.date.fromordinal(int.from_bytes(header_bytes[0x94:0x94+4], 'little')- 3840611).strftime(format_date).upper()
+            cus_date3 = datetime.date.fromordinal(int.from_bytes(header_bytes[0x90:0x90+4], 'little')- 3840609).strftime(format_date).upper()
+            print(f'** Effective {cus_date1} to {cus_date2}')
+        if (DB_MAGIC != int.from_bytes(footer_bytes[0:4], 'little') and
+            DB_MAGIC2 != int.from_bytes(footer_bytes[0:4], 'little')):
+            print('!= DB_MAGIC and != DB_MAGIC2')
             print('WRONG MAGIC!!')
             print(f"0x{int.from_bytes(footer_bytes[0:4], 'little'):08X}")
-        print('** ' + footer_bytes[-0x6a:-0x50].decode('ascii') + ' ' +
-              footer_bytes[4:9].decode('ascii') + ' ' + footer_bytes[28:51].decode('ascii'))
-    elif feature in (Feature.FLITE_CHARTS, Feature.CHARTVIEW):
-        print('** ' + header_bytes[0x18:0x79].decode('ascii'))
+    elif feature in (Feature.FLITE_CHARTS, ):
+        print('** ' + header_bytes[0x18:0x18+12].decode('ascii'))
+        print('** ' + header_bytes[0x24:0x24+20].decode('ascii'))
+        print('** ' + header_bytes[0x95:0x95+20].decode('ascii'))
+        (f_month, f_day, f_year) = struct.unpack('<BBH', header_bytes[0x6:0x6+0x4])
+        (t_month, t_day, t_year) = struct.unpack('<BBH', header_bytes[0x0A:0x0A+0x4])
+        cus_date1 = datetime.date(f_year, f_month, f_day).strftime(format_date).upper()
+        cus_date2 = datetime.date(t_year, t_month, t_day).strftime(format_date).upper()
+        print(f'** Effective {cus_date1} to {cus_date2}')    
+    elif feature in (Feature.CHARTVIEW, ):
+        with open(dat_file.parent / 'chartview.hif', 'rb') as fd:
+            header_bytes = fd.read(0x200)
+        print('** ' + header_bytes[0x0A:0x0A+9].decode('ascii'))
+        print('** Cycle: ' + header_bytes[0x23:0x23+7].decode('ascii'))
+        with open(dat_file.parent / 'charts.ini', 'rb') as fd:
+            header_bytes = fd.read(0x200)
+        cus_date1 = datetime.date.fromordinal(int(header_bytes[30:30+7].decode('ascii'))- 1721424).strftime(format_date).upper()
+        cus_date2 = datetime.date.fromordinal(int(header_bytes[59:59+7].decode('ascii'))- 1721424).strftime(format_date).upper()
+        print(f'** Effective {cus_date1} to {cus_date2}') 
     elif feature in (Feature.SAFETAXI, Feature.BASEMAP, Feature.BASEMAP2):
         xor_byte = header_bytes[0x00]
         if xor_byte:
@@ -446,27 +509,41 @@ def display_content_of_dat_file(feature: Feature, dat_file: pathlib.Path):
 
         name = header_bytes[0x49:0x49+20].decode('ascii')
         print(f'** {name}')
+        cycle = header_bytes[0x59:0x59+4].decode('ascii')
+        print(f'** Cycle: {cycle}')
         description = header_bytes[0x65:0x83].decode('ascii')
         if description.strip():
             print(f'** {description}')
         year = int.from_bytes(header_bytes[0x39:0x39+2], 'little')
         month = int(header_bytes[0x3B])
         day = int(header_bytes[0x3c])
-        print(f'** Creation Date: {year}-{month:02}-{day:02}')
+        cus_date1 = datetime.date(year, month, day).strftime(format_date).upper()
+        print(f'** Creation Date: {cus_date1}')
 
         release = int.from_bytes(header_bytes[0x87:0x89], 'little')
-        print(f'** Release: {release}')
 
         if int.from_bytes(header_bytes[0x83:0x85], 'little') == 0xDEAD:
             version = str(header_bytes[0x85]) + '.' + str(header_bytes[0x86])
             release = int.from_bytes(header_bytes[0x87:0x89], 'little')
             print(f'** Creation Software Version: {version} ({release})')
+        if feature in (Feature.SAFETAXI, ):
+            # TODO: find the real formula to calculate date in future
+            cus_date1 = datetime.date.fromordinal(int(int.from_bytes(header_bytes[0x20:0x20+2], 'little')/135)+739221).strftime(format_date).upper()
+            cus_date2 = datetime.date.fromordinal(int(int.from_bytes(header_bytes[0x22:0x22+2], 'little')/135)+739221).strftime(format_date).upper()
+            print(f'** Effective {cus_date1} to {cus_date2}')
+    elif feature in (Feature.SECTIONALS,):
+        print('** Cycle: ' + header_bytes[101:101+4].decode('ascii'))
+        cus_date1 = datetime.datetime.strptime(header_bytes[171:171+10].decode('ascii'), "%m/%d/%Y").date().strftime(format_date).upper()
+        print(f'** Effective_date: {cus_date1}')       
+        print('** ' + header_bytes[216:216+21].decode('ascii'))
     elif feature in (Feature.AIR_SPORT,):
         print('** header_bytes')
         print('** ' + header_bytes[0x18:0x2A].decode('ascii'))
         print('** ' + header_bytes[0x5A:0x76].decode('ascii'))
         print('** ' + header_bytes[0x7B:0x89].decode('ascii'))
-
+        cus_date1 = datetime.date.fromordinal(int.from_bytes(header_bytes[0x8C:0x8C+4], 'little')+ 490625).strftime(format_date).upper()
+        cus_date2 = datetime.date.fromordinal(int.from_bytes(header_bytes[0x90:0x90+4], 'little')+ 491001).strftime(format_date).upper()
+        print(f'** Effective {cus_date1} to {cus_date2}')
     else:  # Feature.APT_TERRAIN
         print('** UNKNOWN DATA TYPE')
         print(header_bytes)
