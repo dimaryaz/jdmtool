@@ -383,13 +383,14 @@ OTHER DB:
 def display_content_of_dat_file(feature: Feature, dat_file: pathlib.Path):
     format_date = "%d-%b-%Y"
 
+    header_bytes = footer_bytes = footer2_bytes = b''
+
     if feature in (Feature.SAFETAXI2, ) and zipfile.is_zipfile(dat_file):
         with zipfile.ZipFile(dat_file, 'r') as zip_fp:
             with zip_fp.open('safetaxi2.bin') as fd:
                 header_bytes = fd.read(0x200)
                 fd.seek(-0x102, os.SEEK_END)
                 footer_bytes = fd.read(0x102)
-                footer2_bytes = ''
     elif (feature not in (Feature.CHARTVIEW,) ):
         with open(dat_file, 'rb') as fd:
             header_bytes = fd.read(0x200)
