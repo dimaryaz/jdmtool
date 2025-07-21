@@ -6,7 +6,6 @@ import pathlib
 import struct
 import zipfile
 import datetime
-import datetime as dt
 
 from collections.abc import Callable
 from enum import Enum
@@ -385,13 +384,13 @@ def display_content_of_dat_file(feature: Feature, dat_file: pathlib.Path):
 
     header_bytes = footer_bytes = footer2_bytes = b''
 
-    if feature in (Feature.SAFETAXI2, ) and zipfile.is_zipfile(dat_file):
+    if feature == Feature.SAFETAXI2 and zipfile.is_zipfile(dat_file):
         with zipfile.ZipFile(dat_file, 'r') as zip_fp:
             with zip_fp.open('safetaxi2.bin') as fd:
                 header_bytes = fd.read(0x200)
                 fd.seek(-0x102, os.SEEK_END)
                 footer_bytes = fd.read(0x102)
-    elif (feature not in (Feature.CHARTVIEW,) ):
+    elif feature != Feature.CHARTVIEW:
         with open(dat_file, 'rb') as fd:
             header_bytes = fd.read(0x200)
             fd.seek(-0x102, os.SEEK_END)
@@ -461,9 +460,9 @@ def display_content_of_dat_file(feature: Feature, dat_file: pathlib.Path):
         if (DB_MAGIC2 == int.from_bytes(footer_bytes[0:4], 'little')):
             # print('DBMAGIC = DB_MAGIC2')
             print('** ' + header_bytes[0x54:0x54+40].decode('ascii'))
-            cus_date1 = dt.date.fromordinal(int.from_bytes(header_bytes[0xCA:0xCA+4], 'little')- 3840609).strftime("%d-%b-%Y").upper()
-            cus_date2 = dt.date.fromordinal(int.from_bytes(header_bytes[0x94:0x94+4], 'little')- 3840611).strftime("%d-%b-%Y").upper()
-            cus_date3 = dt.date.fromordinal(int.from_bytes(header_bytes[0x90:0x90+4], 'little')- 3840609).strftime("%d-%b-%Y").upper()
+            cus_date1 = datetime.date.fromordinal(int.from_bytes(header_bytes[0xCA:0xCA+4], 'little')- 3840609).strftime(format_date).upper()
+            cus_date2 = datetime.date.fromordinal(int.from_bytes(header_bytes[0x94:0x94+4], 'little')- 3840611).strftime(format_date).upper()
+            cus_date3 = datetime.date.fromordinal(int.from_bytes(header_bytes[0x90:0x90+4], 'little')- 3840609).strftime(format_date).upper()
             print(f'** Effective {cus_date1} to {cus_date2}')
         if (DB_MAGIC != int.from_bytes(footer_bytes[0:4], 'little') and
             DB_MAGIC2 != int.from_bytes(footer_bytes[0:4], 'little')):
@@ -486,8 +485,8 @@ def display_content_of_dat_file(feature: Feature, dat_file: pathlib.Path):
         print('** Cycle: ' + header_bytes[0x23:0x23+7].decode('ascii'))
         with open(dat_file.parent / 'charts.ini', 'rb') as fd:
             header_bytes = fd.read(0x200)
-        cus_date1 = dt.date.fromordinal(int(header_bytes[30:30+7].decode('ascii'))- 1721424).strftime(format_date).upper()
-        cus_date2 = dt.date.fromordinal(int(header_bytes[59:59+7].decode('ascii'))- 1721424).strftime(format_date).upper()
+        cus_date1 = datetime.date.fromordinal(int(header_bytes[30:30+7].decode('ascii'))- 1721424).strftime(format_date).upper()
+        cus_date2 = datetime.date.fromordinal(int(header_bytes[59:59+7].decode('ascii'))- 1721424).strftime(format_date).upper()
         print(f'** Effective {cus_date1} to {cus_date2}') 
     elif feature in (Feature.SAFETAXI, Feature.BASEMAP, Feature.BASEMAP2):
         xor_byte = header_bytes[0x00]
@@ -528,13 +527,13 @@ def display_content_of_dat_file(feature: Feature, dat_file: pathlib.Path):
             release = int.from_bytes(header_bytes[0x87:0x89], 'little')
             print(f'** Creation Software Version: {version} ({release})')
         if feature in (Feature.SAFETAXI, ):
-            #Todo find the reel formula to culculate date in future
-            cus_date1 = dt.date.fromordinal(int(int.from_bytes(header_bytes[0x20:0x20+2], 'little')/135)+739221).strftime("%d-%b-%Y").upper()
-            cus_date2 = dt.date.fromordinal(int(int.from_bytes(header_bytes[0x22:0x22+2], 'little')/135)+739221).strftime("%d-%b-%Y").upper()
+            # TODO: find the real formula to calculate date in future
+            cus_date1 = datetime.date.fromordinal(int(int.from_bytes(header_bytes[0x20:0x20+2], 'little')/135)+739221).strftime(format_date).upper()
+            cus_date2 = datetime.date.fromordinal(int(int.from_bytes(header_bytes[0x22:0x22+2], 'little')/135)+739221).strftime(format_date).upper()
             print(f'** Effective {cus_date1} to {cus_date2}')
     elif feature in (Feature.SECTIONALS,):
         print('** Cycle: ' + header_bytes[101:101+4].decode('ascii'))
-        cus_date1 = dt.datetime.strptime(header_bytes[171:171+10].decode('ascii'), "%m/%d/%Y").date().strftime(format_date).upper()
+        cus_date1 = datetime.datetime.strptime(header_bytes[171:171+10].decode('ascii'), "%m/%d/%Y").date().strftime(format_date).upper()
         print(f'** Effective_date: {cus_date1}')       
         print('** ' + header_bytes[216:216+21].decode('ascii'))
     elif feature in (Feature.AIR_SPORT,):
@@ -542,8 +541,8 @@ def display_content_of_dat_file(feature: Feature, dat_file: pathlib.Path):
         print('** ' + header_bytes[0x18:0x2A].decode('ascii'))
         print('** ' + header_bytes[0x5A:0x76].decode('ascii'))
         print('** ' + header_bytes[0x7B:0x89].decode('ascii'))
-        cus_date1 = dt.date.fromordinal(int.from_bytes(header_bytes[0x8C:0x8C+4], 'little')+ 490625).strftime("%d-%b-%Y").upper()
-        cus_date2 = dt.date.fromordinal(int.from_bytes(header_bytes[0x90:0x90+4], 'little')+ 491001).strftime("%d-%b-%Y").upper()
+        cus_date1 = datetime.date.fromordinal(int.from_bytes(header_bytes[0x8C:0x8C+4], 'little')+ 490625).strftime(format_date).upper()
+        cus_date2 = datetime.date.fromordinal(int.from_bytes(header_bytes[0x90:0x90+4], 'little')+ 491001).strftime(format_date).upper()
         print(f'** Effective {cus_date1} to {cus_date2}')
     else:  # Feature.APT_TERRAIN
         print('** UNKNOWN DATA TYPE')
