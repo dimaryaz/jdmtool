@@ -135,3 +135,6 @@ dmypy.json
 
 # Binary database file
 *.bin
+
+# Wireshark files
+*.pcapng
