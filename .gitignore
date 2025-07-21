@@ -136,6 +136,7 @@ dmypy.json
 # Binary database and firmware files
 *.bin
 fw_*.*
+fw_writer.py
 
 # Wireshark files
 *.pcapng
