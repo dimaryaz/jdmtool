@@ -380,8 +380,7 @@ OTHER DB:
         else:
             print("- Expected zeros in the content2")
 
-def display_content_of_dat_file(dat_file: pathlib.Path):
-    feature = FILENAME_TO_FEATURE.get(dat_file.name)
+def display_content_of_dat_file(feature: Feature, dat_file: pathlib.Path):
     format_date = "%d-%b-%Y"
 
     if feature in (Feature.SAFETAXI2, ) and zipfile.is_zipfile(dat_file):
