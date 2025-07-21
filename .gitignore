@@ -133,8 +133,10 @@ dmypy.json
 # macOS crap
 .DS_Store
 
-# Binary database file
+# Binary database and firmware files
 *.bin
+fw_*.*
 
 # Wireshark files
 *.pcapng
+.gitignore

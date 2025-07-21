@@ -66,23 +66,32 @@ def open_programming_device() -> Generator[ProgrammingDevice, None, None]:
         read_ep: int | None = None
         write_ep: int | None = None
         for usbdev in usbcontext.getDeviceIterator():
-            vid_pid: tuple[int, int] = (usbdev.getVendorID(), usbdev.getProductID())
+            # Debug: log each device found
+            vid = usbdev.getVendorID()
+            pid = usbdev.getProductID()
+            vid_pid: tuple[int, int] = (vid, pid)
+            print(f"Debug: checking USB device at {usbdev}: Vendor ID=0x{vid:04X}, Product ID=0x{pid:04X}")
+
             if vid_pid == SKYBOUND_VID_PID:
                 print(f"Found a Skybound device at {usbdev}")
                 dev_cls = SkyboundDevice
                 break
 
-            elif vid_pid in (GARMIN_UNINITIALIZED_VID_PID, FX2_VID_PID):
+            elif vid_pid in GARMIN_UNINITIALIZED_VID_PID or vid_pid == FX2_VID_PID:
                 print(f"Found an un-initialized Garmin device at {usbdev}")
-                print("Writing stage 1 firmware...")
 
                 with _open_usb_device(usbdev) as handle:
                     writer = GarminFirmwareWriter(handle)
-                    writer.write_firmware_stage1()
-
+                    if pid == 0x0300:
+                        print("Configuring an early GARMIN programmer (0x0300)")
+                        writer.write_firmware_0x300()
+                    else:
+                        print("Configuring a current GARMIN programmer")
+                        # write stage 1
+                        writer.write_firmware_stage1()
                 print("Re-scanning devices...")
                 for _ in range(5):
-                    time.sleep(0.5)
+                    time.sleep(2)
                     new_usbdev = usbcontext.getByVendorIDAndProductID(GARMIN_VID_PID[0], GARMIN_VID_PID[1])
                     if new_usbdev is not None:
                         print(f"Found at {new_usbdev}")
@@ -91,7 +100,7 @@ def open_programming_device() -> Generator[ProgrammingDevice, None, None]:
                 else:
                     raise ProgrammingException("Could not find the new device!")
 
-                print("Writing stage 2 firmware...")
+                # check version and write stage 2 if required
                 with _open_usb_device(usbdev) as handle:
                     writer = GarminFirmwareWriter(handle)
                     writer.init_stage2()
@@ -99,7 +108,7 @@ def open_programming_device() -> Generator[ProgrammingDevice, None, None]:
 
                 print("Re-scanning devices...")
                 for _ in range(5):
-                    time.sleep(0.5)
+                    time.sleep(2)
                     new_usbdev = usbcontext.getByVendorIDAndProductID(GARMIN_VID_PID[0], GARMIN_VID_PID[1])
                     if new_usbdev is not None:
                         print(f"Found at {new_usbdev}")

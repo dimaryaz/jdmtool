@@ -5,7 +5,8 @@ from pathlib import Path
 from struct import unpack
 from typing import BinaryIO
 
-from usb1 import USBDeviceHandle
+import usb1
+from usb1 import USBDeviceHandle, USBError
 
 from .common import IID_MAP, BasicUsbDevice, DataCardType, ProgrammingDevice, ProgrammingException
 
@@ -21,20 +22,37 @@ class GarminFirmwareWriter(BasicUsbDevice):
     WRITE_ENDPOINT = -1
     READ_ENDPOINT = -1
 
+    def write_firmware_0x300(self) -> None:
+        import time
+        print("Writing 0x300 part 1 of 2")
+        with open(FIRMWARE_DIR / 'grmn0300-part1.dat', 'rb') as fd:
+            self.write_firmware(fd)
+        time.sleep(2)
+        print("Writing 0x300 part 2 of 2")
+        with open(FIRMWARE_DIR / 'grmn0300-part2.dat', 'rb') as fd:
+            self.write_firmware(fd)
+        time.sleep(2)
+
     def write_firmware_stage1(self) -> None:
+        print("Writing stage 1")
         with open(FIRMWARE_DIR / 'grmn0500.dat', 'rb') as fd:
             self.write_firmware(fd)
 
     def init_stage2(self) -> None:
         version = self.control_read(0xC0, 0x8A, 0x0000, 0x0000, 512)
+        print("Check if stage 2 required...")
+        # this will not catch the "old" card programmer as its FW has different build time
         if version != b'Aviation Card Programmer Ver 3.02 Aug 10 2015 13:21:51\x00':
+            print("No, we're good.")
             raise AlreadyUpdatedException()
 
     def write_firmware_stage2(self) -> None:
+        print("Writing stage 2")
         with open(FIRMWARE_DIR / 'grmn1300.dat', 'rb') as fd:
             self.write_firmware(fd)
 
     def write_firmware(self, fd: BinaryIO) -> None:
+        import time
         while True:
             buf = fd.read(4)
             if not buf:
@@ -42,9 +60,24 @@ class GarminFirmwareWriter(BasicUsbDevice):
 
             addr, data_len = unpack('<HH', buf)
             data = fd.read(data_len)
-            self.control_write(0x40, 0xA0, addr, 0x0000, data)
-
-
+            # self.control_write(0x40, 0xA0, addr, 0x0000, data)
+            attempts = 0
+            while True:
+                try:
+                    self.control_write(0x40, 0xA0, addr, 0x0000, data)
+                    break
+                except USBError as e:
+                    # If the device disappears (no device), exit immediately
+                    if e.value == -4:  # LIBUSB_ERROR_NO_DEVICE
+                        return
+                    # Otherwise only retry on I/O errors
+                    if e.value != -1:  # LIBUSB_ERROR_IO
+                        raise
+                    attempts += 1
+                    if attempts >= 3:
+                        raise
+                    time.sleep(0.1)
+                    
 class GarminProgrammingDevice(ProgrammingDevice):
 
     NO_CARD_IDS = { # card reader / firmware versions

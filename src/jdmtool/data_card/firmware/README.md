@@ -33,7 +33,11 @@ Only the `0xA0` requests contain the firmware:
 controlWrite(0x40, 0xA0, ..., 0x0000, b"...")
 ```
 
-Address `0xE600` appears to indicate beginning and end of firmware segments, but for our purposes, it doesn't matter.
+Address `0xE600` (and `0x7F92` for older parts) indicate beginning and end of firmware segments, but for our purposes, it doesn't matter.
+
+[Delevoper document](https://community.infineon.com/t5/Knowledge-Base-Articles/Examples-showing-how-to-download-firmware-to-a-EZ-USB-AN21xx-FX-FX1-FX2-FX2LP/ta-p/253105#.) says:
+
+> The firmware download to EZ-USB (AN21xx/FX/FX1/FX2/FX2LP) uses the A0 Vendor command and is called anchor download. The value field in this vendor command is used to specify the memory location to be written. The limitation of A0 vendor command is that it can write only to the internal memory and the CPU should be held in reset when it is used. A0 vendor command can also write to the 8051RES bit of CPUCS. To put the CPU in reset send A0 vendor command with E600H (for FX1/FX2/FX2LP for older parts like FX use 7F92H) as value and 01 as data. To bring the CPU out of reset send 00 as data.
 
 ## grmn0500.dat
 
