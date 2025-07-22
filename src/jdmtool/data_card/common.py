@@ -89,6 +89,11 @@ class ProgrammingDevice(BasicUsbDevice):
     sectors_per_chip = 0x0
     card_info = ""
 
+    def __init__(self, handle: "USBDeviceHandle", read_endpoint: int, write_endpoint: int) -> None:
+        super().__init__(handle)
+        self.READ_ENDPOINT = read_endpoint
+        self.WRITE_ENDPOINT = write_endpoint
+
     def init(self) -> None:
         pass
 

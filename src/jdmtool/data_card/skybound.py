@@ -20,10 +20,7 @@ class SkyboundDevice(ProgrammingDevice):
     # Standard values: WRITE_ENDPOINT = 0x02, READ_ENDPOINT = 0x81
     def __init__(self, handle: USBDeviceHandle, read_endpoint: int = 0x81, write_endpoint: int = 0x02) -> None:
         # Initialize base device
-        super().__init__(handle)
-        # Override endpoints for this Skybound device
-        self.READ_ENDPOINT = read_endpoint
-        self.WRITE_ENDPOINT = write_endpoint
+        super().__init__(handle,read_endpoint,write_endpoint)
 
     def init(self) -> None:
         self.set_led(True)

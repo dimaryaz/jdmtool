@@ -23,25 +23,19 @@ class GarminFirmwareWriter(BasicUsbDevice):
     READ_ENDPOINT = -1
 
     def write_firmware_0x300(self) -> None:
-        import time
-        print("Writing 0x300 part 1 of 2")
-        with open(FIRMWARE_DIR / 'grmn0300-part1.dat', 'rb') as fd:
+        print("Writing firmware for VID 0x300")
+        with open(FIRMWARE_DIR / 'grmn0300.dat', 'rb') as fd:
             self.write_firmware(fd)
-        time.sleep(2)
-        print("Writing 0x300 part 2 of 2")
-        with open(FIRMWARE_DIR / 'grmn0300-part2.dat', 'rb') as fd:
-            self.write_firmware(fd)
-        time.sleep(2)
 
     def write_firmware_stage1(self) -> None:
-        print("Writing stage 1")
+        print("Writing FW 3.02 for current model")
         with open(FIRMWARE_DIR / 'grmn0500.dat', 'rb') as fd:
             self.write_firmware(fd)
 
     def init_stage2(self) -> None:
         version = self.control_read(0xC0, 0x8A, 0x0000, 0x0000, 512)
-        print("Check if stage 2 required...")
-        # this will not catch the "old" card programmer as its FW has different build time
+        print("Check if upgrade to FW 3.05 is possible...")
+        # this will skip the "early" card programmer as its FW has different build time
         if version != b'Aviation Card Programmer Ver 3.02 Aug 10 2015 13:21:51\x00':
             print("No, we're good.")
             raise AlreadyUpdatedException()
@@ -88,10 +82,7 @@ class GarminProgrammingDevice(ProgrammingDevice):
     # Standard values: WRITE_ENDPOINT = 0x02, READ_ENDPOINT = 0x86 ("newer"), 0x82 ("older") reader
     def __init__(self, handle: USBDeviceHandle, read_endpoint: int = 0x86, write_endpoint: int = 0x02) -> None:
          # Initialize base device
-        super().__init__(handle)
-        # Override endpoints for this Garmin device
-        self.READ_ENDPOINT = read_endpoint
-        self.WRITE_ENDPOINT = write_endpoint
+        super().__init__(handle, read_endpoint,write_endpoint)
         self.firmware = ""
 
     def init(self) -> None:
