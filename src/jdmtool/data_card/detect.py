@@ -50,12 +50,15 @@ def _open_usb_device(usbdev: USBDevice):
 
 SKYBOUND_VID_PID = (0x0E39, 0x1250)
 GARMIN_UNINITIALIZED_VID_PID = {
-    (0x091E, 0x0500), # "newer" 010-10579-20 
-    (0x091E, 0x0300), # "older" 011-01277-00
+    (0x091E, 0x0500), # "current" 010-10579-20 
+    (0x091E, 0x0300), # "early" 011-01277-00
     (0x04B4, 0x8613), # Cypress EZ-USB FX2 (if EEPROM is reset)
 }
-
 GARMIN_VID_PID = (0x091E, 0x1300)
+
+GARMIN_EARLY_READ_ENDPOINT = 0x82
+GARMIN_CURRENT_READ_ENDPOINT = 0x86
+GARMIN_WRITE_ENDPOINT = 0x02
 
 @contextmanager
 def open_programming_device() -> Generator[ProgrammingDevice, None, None]:
@@ -64,11 +67,9 @@ def open_programming_device() -> Generator[ProgrammingDevice, None, None]:
         read_ep: int | None = None
         write_ep: int | None = None
         for usbdev in usbcontext.getDeviceIterator():
-            # Debug: log each device found
             vid = usbdev.getVendorID()
             pid = usbdev.getProductID()
             vid_pid: tuple[int, int] = (vid, pid)
-            print(f"Identified USB device at {usbdev}: Vendor ID=0x{vid:04X}, Product ID=0x{pid:04X}")
 
             if vid_pid == SKYBOUND_VID_PID:
                 print(f"Found a Skybound device at {usbdev}")
@@ -79,13 +80,14 @@ def open_programming_device() -> Generator[ProgrammingDevice, None, None]:
                 print(f"Found an un-initialized Garmin device at {usbdev}")
 
                 with _open_usb_device(usbdev) as handle:
-                    writer = GarminFirmwareWriter(handle)
                     if pid == 0x0300: # early model
+                        writer = GarminFirmwareWriter(handle, GARMIN_EARLY_READ_ENDPOINT, GARMIN_WRITE_ENDPOINT)
                         print("Configuring an early GARMIN programmer (0x0300)")
                         writer.write_firmware_0x300()
 
                     else: # current model
-                        print("Configuring a current GARMIN programmer")
+                        writer = GarminFirmwareWriter(handle, GARMIN_CURRENT_READ_ENDPOINT, GARMIN_WRITE_ENDPOINT)
+                        print("Configuring GARMIN programmer")
                         # write stage 1
                         writer.write_firmware_stage1()
                         print("Re-scanning devices...")
@@ -101,7 +103,6 @@ def open_programming_device() -> Generator[ProgrammingDevice, None, None]:
 
                         # check version and write stage 2 if required
                         with _open_usb_device(usbdev) as handle:
-                            writer = GarminFirmwareWriter(handle)
                             writer.init_stage2()
                             writer.write_firmware_stage2()
 
@@ -122,9 +123,9 @@ def open_programming_device() -> Generator[ProgrammingDevice, None, None]:
             elif vid_pid == GARMIN_VID_PID:
                 print(f"Found a Garmin device at {usbdev}")
 
-                try:
+                try: # updating the firmware for current device only
                     with _open_usb_device(usbdev) as handle:
-                        writer = GarminFirmwareWriter(handle)
+                        writer = GarminFirmwareWriter(handle, GARMIN_CURRENT_READ_ENDPOINT, GARMIN_WRITE_ENDPOINT)
                         writer.init_stage2()
                         print("Writing stage 2 firmware...")
                         writer.write_firmware_stage2()
@@ -166,7 +167,6 @@ def open_programming_device() -> Generator[ProgrammingDevice, None, None]:
             # Select first IN and OUT endpoints
             read_ep = int(in_eps[0])
             write_ep = int(out_eps[0])
-            print(f"Initializing {dev_cls.__name__} with read_ep=0x{read_ep:02X}, write_ep=0x{write_ep:02X}")
             dev = dev_cls(handle, read_endpoint=read_ep, write_endpoint=write_ep)
             dev.init()
 
