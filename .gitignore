@@ -129,15 +129,3 @@ dmypy.json
 .pyre/
 
 .vscode/
-
-# macOS crap
-.DS_Store
-
-# Binary database and firmware files
-*.bin
-fw_*.*
-fw_writer.py
-
-# Wireshark files
-*.pcapng
-.gitignore

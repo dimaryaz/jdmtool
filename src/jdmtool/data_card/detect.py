@@ -14,9 +14,27 @@ try:
 except ImportError:
     raise ProgrammingException("Please install USB support by running `pip3 install jdmtool[usb]") from None
 
+SKYBOUND_VID_PID = (0x0E39, 0x1250)
+GARMIN_UNINITIALIZED_VID_PID = {
+    (0x091E, 0x0500), # "current" 010-10579-20 
+    (0x091E, 0x0300), # "early" 011-01277-00
+    (0x04B4, 0x8613), # Cypress EZ-USB FX2 (if EEPROM is reset)
+}
+GARMIN_VID_PID = (0x091E, 0x1300)
 
 @contextmanager
 def _open_usb_device(usbdev: USBDevice):
+    """Open a USB device handle as a context manager. Retries up to 3 times on USBError.
+
+    Args:
+        usbdev (USBDevice): The USB device to open.
+
+    Yields:
+        USBDeviceHandle: The open handle to the USB device.
+
+    Raises:
+        ProgrammingException: If the device cannot be opened after 3 retries.
+    """
     handle: USBDeviceHandle | None = None
 
     try:
@@ -37,7 +55,7 @@ def _open_usb_device(usbdev: USBDevice):
                 break
             except USBError as ex:
                 retry += 1
-                if retry == 3:
+                if retry >= 3:
                     raise ProgrammingException(f"Could not open device: {ex}") from ex
                 time.sleep(.5)
 
@@ -45,31 +63,84 @@ def _open_usb_device(usbdev: USBDevice):
 
     finally:
         if handle is not None:
-            handle.close()
+            handle.close() # pyright: ignore[reportCallIssue]
 
 
-SKYBOUND_VID_PID = (0x0E39, 0x1250)
-GARMIN_UNINITIALIZED_VID_PID = {
-    (0x091E, 0x0500), # "current" 010-10579-20 
-    (0x091E, 0x0300), # "early" 011-01277-00
-    (0x04B4, 0x8613), # Cypress EZ-USB FX2 (if EEPROM is reset)
-}
-GARMIN_VID_PID = (0x091E, 0x1300)
+def _read_endpoints(usbdev: USBDevice) -> tuple[int, int]:
+    """Read and return the first IN and OUT endpoint addresses from a USB device.
 
-GARMIN_EARLY_READ_ENDPOINT = 0x82
-GARMIN_CURRENT_READ_ENDPOINT = 0x86
-GARMIN_WRITE_ENDPOINT = 0x02
+    Scans the device's first configuration to list all endpoint addresses, then selects
+    the first IN (0x8X) and first OUT (0x0X) endpoints. 
+    Bit 7 (MSB) of the endpoint address defines direction, Bits 0–3 define the endpoint number (max 15).
+
+    Args:
+        usbdev (USBDevice): The USB device to inspect.
+
+    Returns:
+        tuple[int, int]: A tuple (read_ep, write_ep) of the IN and OUT endpoint addresses.
+
+    Raises:
+        IndexError: If no IN or OUT endpoints are found.
+    """
+    # time.sleep(0.5) # wait for interface
+    config = usbdev[0]
+    endpoints = []
+    for interface in config:
+        for setting in interface:
+            num = setting.getNumber()
+            alt = setting.getAlternateSetting()
+            for endpoint in setting:
+                addr = endpoint.getAddress()
+                endpoints.append((num, alt, addr))
+    in_eps = [addr for (_, _, addr) in endpoints if (addr & 0xF0) == 0x80]
+    out_eps = [addr for (_, _, addr) in endpoints if (addr & 0xF0) == 0x00]
+    read_ep = int(in_eps[0])
+    write_ep = int(out_eps[0])
+    return read_ep, write_ep
+
+
+def _rescan_read_endpoints(usbcontext: USBContext, vid_pid: tuple[int, int]) -> tuple[USBDevice, int, int]:
+    """Rescan a USB device matching vid_pid and read its endpoints in one step.
+
+    Args:
+        usbcontext (USBContext): The USB context to scan.
+        vid_pid (tuple[int, int]): Vendor/Product ID tuple to match.
+
+    Returns:
+        tuple[USBDevice, int, int]: The USB device and its (read_ep, write_ep).
+
+    Raises:
+        ProgrammingException: If the device cannot be found.
+    """
+    # Try up to 5 times to find the device
+    for _ in range(20):
+        time.sleep(0.2) # wait for interface
+        usbdev = usbcontext.getByVendorIDAndProductID(vid_pid[0], vid_pid[1])
+        if usbdev is not None:
+            read_ep, write_ep = _read_endpoints(usbdev)
+            return usbdev, read_ep, write_ep
+    raise ProgrammingException("Could not find the new device!")
 
 @contextmanager
 def open_programming_device() -> Generator[ProgrammingDevice, None, None]:
+    """Discover and initialize a programming device as a context manager.
+
+    Searches for supported devices (Skybound or Garmin), performs necessary firmware flashing
+    for Garmin models, and opens the final programming device handle with detected endpoints.
+
+    Yields:
+        ProgrammingDevice: An initialized programming device ready for use.
+
+    Raises:
+        ProgrammingException: If no supported device is found or an operation fails.
+    """
     with USBContext() as usbcontext:
         dev_cls: type[ProgrammingDevice] | None = None
         read_ep: int | None = None
         write_ep: int | None = None
+
         for usbdev in usbcontext.getDeviceIterator():
-            vid = usbdev.getVendorID()
-            pid = usbdev.getProductID()
-            vid_pid: tuple[int, int] = (vid, pid)
+            vid_pid = (usbdev.getVendorID(), usbdev.getProductID())
 
             if vid_pid == SKYBOUND_VID_PID:
                 print(f"Found a Skybound device at {usbdev}")
@@ -80,93 +151,53 @@ def open_programming_device() -> Generator[ProgrammingDevice, None, None]:
                 print(f"Found an un-initialized Garmin device at {usbdev}")
 
                 with _open_usb_device(usbdev) as handle:
-                    if pid == 0x0300: # early model
-                        writer = GarminFirmwareWriter(handle, GARMIN_EARLY_READ_ENDPOINT, GARMIN_WRITE_ENDPOINT)
-                        print("Configuring an early GARMIN programmer (0x0300)")
+                    if vid_pid[1] == 0x0300: # early model
+                        writer = GarminFirmwareWriter(handle)
+                        print("Configuring early GARMIN programmer (0x0300)")
                         writer.write_firmware_0x300()
 
                     else: # current model
-                        writer = GarminFirmwareWriter(handle, GARMIN_CURRENT_READ_ENDPOINT, GARMIN_WRITE_ENDPOINT)
+                        writer = GarminFirmwareWriter(handle)
                         print("Configuring GARMIN programmer")
                         # write stage 1
                         writer.write_firmware_stage1()
-                        print("Re-scanning devices...")
-                        for _ in range(5):
-                            time.sleep(0.5)
-                            new_usbdev = usbcontext.getByVendorIDAndProductID(GARMIN_VID_PID[0], GARMIN_VID_PID[1])
-                            if new_usbdev is not None:
-                                print(f"Found at {new_usbdev}")
-                                usbdev = new_usbdev
-                                break
-                        else:
-                            raise ProgrammingException("Could not find the new device!")
-
+                        # get new handle (and endpoints we won't use)
+                        usbdev, read_ep, write_ep = _rescan_read_endpoints(usbcontext, GARMIN_VID_PID)
                         # check version and write stage 2 if required
-                        with _open_usb_device(usbdev) as handle:
-                            writer.init_stage2()
-                            writer.write_firmware_stage2()
-
-                print("Re-scanning devices...")
-                for _ in range(5):
-                    time.sleep(0.5)
-                    new_usbdev = usbcontext.getByVendorIDAndProductID(GARMIN_VID_PID[0], GARMIN_VID_PID[1])
-                    if new_usbdev is not None:
-                        print(f"Found at {new_usbdev}")
-                        usbdev = new_usbdev
-                        break
-                else:
-                    raise ProgrammingException("Could not find the new device!")
-
+                        try:
+                            with _open_usb_device(usbdev) as handle:
+                                writer = GarminFirmwareWriter(handle)
+                                writer.init_stage2()
+                                writer.write_firmware_stage2()
+                        except AlreadyUpdatedException:
+                            pass
+                        else:
+                            pass
                 dev_cls = GarminProgrammingDevice
                 break
 
             elif vid_pid == GARMIN_VID_PID:
                 print(f"Found a Garmin device at {usbdev}")
 
-                try: # updating the firmware for current device only
+                # First, update stage-2 firmware if possible
+                try:
                     with _open_usb_device(usbdev) as handle:
-                        writer = GarminFirmwareWriter(handle, GARMIN_CURRENT_READ_ENDPOINT, GARMIN_WRITE_ENDPOINT)
+                        writer = GarminFirmwareWriter(handle)
                         writer.init_stage2()
-                        print("Writing stage 2 firmware...")
                         writer.write_firmware_stage2()
                 except AlreadyUpdatedException:
                     pass
                 else:
-                    print("Re-scanning devices...")
-                    for _ in range(5):
-                        time.sleep(0.5)
-                        new_usbdev = usbcontext.getByVendorIDAndProductID(GARMIN_VID_PID[0], GARMIN_VID_PID[1])
-                        if new_usbdev is not None:
-                            print(f"Found at {new_usbdev}")
-                            usbdev = new_usbdev
-                            break
+                    pass
 
                 dev_cls = GarminProgrammingDevice
                 break
         else:
             raise ProgrammingException("Device not found")
 
+        # reader identified, firmware written, now get endpoints and set the programming device
+        usbdev, read_ep, write_ep = _rescan_read_endpoints(usbcontext, GARMIN_VID_PID)
         with _open_usb_device(usbdev) as handle:
-            # Get and list endpoints
-            # `0x8X` = IN endpoints, `0x0X` = OUT endpoints
-            # Bit 7 (MSB)of the endpoint address defines direction
-            # Bits 0–3 define the endpoint number (max 15).
-            config = usbdev[0]
-            endpoints = []
-            for interface in config:
-                for setting in interface:
-                    num = setting.getNumber()
-                    alt = setting.getAlternateSetting()
-                    for endpoint in setting:
-                        addr = endpoint.getAddress()
-                        # print(f"Interface {num}, Alt {alt}, Endpoint address: 0x{addr:02X}")
-                        endpoints.append((num, alt, addr))
-            # Determine read/write endpoints (IN endpoints start with 0x8_, OUT with 0x0_)
-            in_eps = [addr for (_, _, addr) in endpoints if (addr & 0xF0) == 0x80]
-            out_eps = [addr for (_, _, addr) in endpoints if (addr & 0xF0) == 0x00]
-            # Select first IN and OUT endpoints
-            read_ep = int(in_eps[0])
-            write_ep = int(out_eps[0])
             dev = dev_cls(handle, read_endpoint=read_ep, write_endpoint=write_ep)
             dev.init()
 

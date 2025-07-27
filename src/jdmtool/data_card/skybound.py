@@ -17,8 +17,7 @@ class SkyboundDevice(ProgrammingDevice):
 
     is_orange_card = False
 
-    # Standard values: WRITE_ENDPOINT = 0x02, READ_ENDPOINT = 0x81
-    def __init__(self, handle: USBDeviceHandle, read_endpoint: int = 0x81, write_endpoint: int = 0x02) -> None:
+    def __init__(self, handle: USBDeviceHandle, read_endpoint: int, write_endpoint: int) -> None:
         # Initialize base device
         super().__init__(handle,read_endpoint,write_endpoint)
 

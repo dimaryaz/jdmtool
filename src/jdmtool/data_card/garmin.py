@@ -5,8 +5,8 @@ from pathlib import Path
 from struct import unpack
 from typing import BinaryIO
 
-import usb1
 from usb1 import USBDeviceHandle, USBError
+from usb1.libusb1 import LIBUSB_ERROR_NO_DEVICE, LIBUSB_ERROR_IO # pyright: ignore[reportAttributeAccessIssue]
 
 from .common import IID_MAP, BasicUsbDevice, DataCardType, ProgrammingDevice, ProgrammingException
 
@@ -19,8 +19,10 @@ class AlreadyUpdatedException(ProgrammingException):
 
 
 class GarminFirmwareWriter(BasicUsbDevice):
-    WRITE_ENDPOINT = -1
-    READ_ENDPOINT = -1
+
+    def __init__(self, handle: USBDeviceHandle) -> None:
+         # Initialize base device
+        super().__init__(handle, -1, -1) # force control_writes
 
     def write_firmware_0x300(self) -> None:
         print("Writing firmware for VID 0x300")
@@ -41,36 +43,51 @@ class GarminFirmwareWriter(BasicUsbDevice):
             raise AlreadyUpdatedException()
 
     def write_firmware_stage2(self) -> None:
-        print("Writing stage 2")
+        print("Writing FW 3.05 for current model")
         with open(FIRMWARE_DIR / 'grmn1300.dat', 'rb') as fd:
             self.write_firmware(fd)
 
     def write_firmware(self, fd: BinaryIO) -> None:
         import time
-        while True:
-            buf = fd.read(4)
-            if not buf:
-                break
+        import os
+        from tqdm import tqdm
 
-            addr, data_len = unpack('<HH', buf)
-            data = fd.read(data_len)
-            # self.control_write(0x40, 0xA0, addr, 0x0000, data)
-            attempts = 0
+        # Determine total firmware size
+        total_size = os.fstat(fd.fileno()).st_size
+
+        # Show progress bar while writing
+        with tqdm(
+            desc="Writing firmware",
+            total=total_size,
+            unit='B',
+            unit_scale=True
+        ) as pbar:
             while True:
-                try:
-                    self.control_write(0x40, 0xA0, addr, 0x0000, data)
+                buf = fd.read(4)
+                if not buf:
                     break
-                except USBError as e:
-                    # If the device disappears (no device), exit immediately
-                    if e.value == -4:  # LIBUSB_ERROR_NO_DEVICE
-                        return
-                    # Otherwise only retry on I/O errors
-                    if e.value != -1:  # LIBUSB_ERROR_IO
-                        raise
-                    attempts += 1
-                    if attempts >= 3:
-                        raise
-                    time.sleep(0.1)
+
+                addr, data_len = unpack('<HH', buf)
+                data = fd.read(data_len)
+                attempts = 0
+                while True:
+                    try:
+                        self.control_write(0x40, 0xA0, addr, 0x0000, data)
+                        break
+                    except USBError as e:
+                        # Exit if device disconnects
+                        if e.value == LIBUSB_ERROR_NO_DEVICE:
+                            return
+                        # Retry on I/O errors only
+                        if e.value != LIBUSB_ERROR_IO:
+                            raise
+                        attempts += 1
+                        if attempts >= 3:
+                            raise
+                        time.sleep(0.1)
+
+                # Update progress bar by chunk size
+                pbar.update(4 + data_len)
                     
 class GarminProgrammingDevice(ProgrammingDevice):
 
@@ -79,12 +96,10 @@ class GarminProgrammingDevice(ProgrammingDevice):
         0x00090304  # "older" 011-01277-00
         }
 
-    # Standard values: WRITE_ENDPOINT = 0x02, READ_ENDPOINT = 0x86 ("newer"), 0x82 ("older") reader
-    def __init__(self, handle: USBDeviceHandle, read_endpoint: int = 0x86, write_endpoint: int = 0x02) -> None:
+    def __init__(self, handle: USBDeviceHandle, read_endpoint: int, write_endpoint: int) -> None:
          # Initialize base device
-        super().__init__(handle, read_endpoint,write_endpoint)
+        super().__init__(handle, read_endpoint, write_endpoint)
         self.firmware = ""
-
     def init(self) -> None:
         buf = self.control_read(0xC0, 0x8A, 0x0000, 0x0000, 512)
         self.firmware = buf.rstrip(b'\x00').decode()
