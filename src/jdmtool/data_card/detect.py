@@ -24,17 +24,7 @@ GARMIN_VID_PID = (0x091E, 0x1300)
 
 @contextmanager
 def _open_usb_device(usbdev: USBDevice):
-    """Open a USB device handle as a context manager. Retries up to 3 times on USBError.
-
-    Args:
-        usbdev (USBDevice): The USB device to open.
-
-    Yields:
-        USBDeviceHandle: The open handle to the USB device.
-
-    Raises:
-        ProgrammingException: If the device cannot be opened after 3 retries.
-    """
+    # Open a USB device handle as a context manager. Retries up to 3 times on USBError.
     handle: USBDeviceHandle | None = None
 
     try:
@@ -67,22 +57,10 @@ def _open_usb_device(usbdev: USBDevice):
 
 
 def _read_endpoints(usbdev: USBDevice) -> tuple[int, int]:
-    """Read and return the first IN and OUT endpoint addresses from a USB device.
+    # Scans the device's first configuration to list all endpoint addresses, then selects
+    # the first IN (0x8X) and first OUT (0x0X) endpoints. 
+    # Bit 7 (MSB) of the endpoint address defines direction, Bits 0–3 define the endpoint number (max 15).
 
-    Scans the device's first configuration to list all endpoint addresses, then selects
-    the first IN (0x8X) and first OUT (0x0X) endpoints. 
-    Bit 7 (MSB) of the endpoint address defines direction, Bits 0–3 define the endpoint number (max 15).
-
-    Args:
-        usbdev (USBDevice): The USB device to inspect.
-
-    Returns:
-        tuple[int, int]: A tuple (read_ep, write_ep) of the IN and OUT endpoint addresses.
-
-    Raises:
-        IndexError: If no IN or OUT endpoints are found.
-    """
-    # time.sleep(0.5) # wait for interface
     config = usbdev[0]
     endpoints = []
     for interface in config:
@@ -100,18 +78,7 @@ def _read_endpoints(usbdev: USBDevice) -> tuple[int, int]:
 
 
 def _rescan_read_endpoints(usbcontext: USBContext, vid_pid: tuple[int, int]) -> tuple[USBDevice, int, int]:
-    """Rescan a USB device matching vid_pid and read its endpoints in one step.
-
-    Args:
-        usbcontext (USBContext): The USB context to scan.
-        vid_pid (tuple[int, int]): Vendor/Product ID tuple to match.
-
-    Returns:
-        tuple[USBDevice, int, int]: The USB device and its (read_ep, write_ep).
-
-    Raises:
-        ProgrammingException: If the device cannot be found.
-    """
+    # Rescan a USB device matching vid_pid and read its endpoints in one step
     # Try up to 5 times to find the device
     for _ in range(20):
         time.sleep(0.2) # wait for interface
@@ -123,17 +90,9 @@ def _rescan_read_endpoints(usbcontext: USBContext, vid_pid: tuple[int, int]) -> 
 
 @contextmanager
 def open_programming_device() -> Generator[ProgrammingDevice, None, None]:
-    """Discover and initialize a programming device as a context manager.
-
-    Searches for supported devices (Skybound or Garmin), performs necessary firmware flashing
-    for Garmin models, and opens the final programming device handle with detected endpoints.
-
-    Yields:
-        ProgrammingDevice: An initialized programming device ready for use.
-
-    Raises:
-        ProgrammingException: If no supported device is found or an operation fails.
-    """
+    #Searches for supported devices (Skybound or Garmin), performs necessary firmware flashing
+    # for Garmin models, and opens the final programming device handle with detected endpoints.
+    
     with USBContext() as usbcontext:
         dev_cls: type[ProgrammingDevice] | None = None
         read_ep: int | None = None
