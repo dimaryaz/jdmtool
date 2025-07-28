@@ -175,7 +175,7 @@ def open_programming_device() -> Generator[ProgrammingDevice, None, None]:
                         print("Configuring Garmin programmer")
                         # write stage 1
                         writer.write_firmware_stage1()
-                        # get new handle (and endpoints we won't use)
+                        # get new handle
                         usbdev = _rescan(usbcontext, GARMIN_VID_PID)
                         # check version and write stage 2 if required
                         try:
