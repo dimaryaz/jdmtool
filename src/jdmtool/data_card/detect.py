@@ -111,13 +111,13 @@ def open_programming_device() -> Generator[ProgrammingDevice, None, None]:
                 with _open_usb_device(usbdev) as handle:
                     if vid_pid[1] == 0x0300: # early model
                         writer = GarminFirmwareWriter(handle)
-                        print("Configuring early GARMIN programmer (0x0300)")
+                        print("Configuring early Garmin programmer (0x0300)")
                         writer.write_firmware_0x300()
                         usbdev = _rescan(usbcontext, GARMIN_VID_PID)
 
                     else: # current model
                         writer = GarminFirmwareWriter(handle)
-                        print("Configuring GARMIN programmer")
+                        print("Configuring Garmin programmer")
                         # write stage 1
                         writer.write_firmware_stage1()
                         # get new handle (and endpoints we won't use)
