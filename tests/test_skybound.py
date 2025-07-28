@@ -181,7 +181,7 @@ class UsbHandleMockNoCard(UsbHandleMock):
 def test_init_no_card(g2_orange):
     mock = UsbHandleMockNoCard(g2_orange)
 
-    device = SkyboundDevice(mock)
+    device = SkyboundDevice(mock, 0x81, 0x02)
     with pytest.raises(ProgrammingException, match="Card is missing"):
         device.init_data_card()
 
@@ -191,7 +191,7 @@ def test_init_no_card(g2_orange):
 def test_init_card(g2_orange, chip, n_chips, name):
     mock = UsbHandleMock(n_chips, chip, g2_orange)
 
-    device = SkyboundDevice(mock)
+    device = SkyboundDevice(mock, 0x81, 0x02)
     device.init_data_card()
 
     assert device.sectors_per_chip == chip.sectors
@@ -209,21 +209,21 @@ def test_init_errors(g2_orange):
     # No chips
     mock = UsbHandleMock(0, FAKE_CHIP, g2_orange)
 
-    device = SkyboundDevice(mock)
+    device = SkyboundDevice(mock, 0x81, 0x02)
     with pytest.raises(ProgrammingException, match="Unsupported"):
         device.init_data_card()
 
     # One chip (not supported, even if it's a real chip)
     mock = UsbHandleMock(1, CHIP_AMD_2MB, g2_orange)
 
-    device = SkyboundDevice(mock)
+    device = SkyboundDevice(mock, 0x81, 0x02)
     with pytest.raises(ProgrammingException, match="Unknown"):
         device.init_data_card()
 
     # Four chips, but unknown ID
     mock = UsbHandleMock(4, FAKE_CHIP, g2_orange)
 
-    device = SkyboundDevice(mock)
+    device = SkyboundDevice(mock, 0x81, 0x02)
     with pytest.raises(ProgrammingException, match="Unknown"):
         device.init_data_card()
 
@@ -232,7 +232,7 @@ def test_init_errors(g2_orange):
 def test_simple_read(chip, n_chips, name):
     mock = UsbHandleMock(n_chips, chip, True)
 
-    device = SkyboundDevice(mock)
+    device = SkyboundDevice(mock, 0x81, 0x02)
     device.init_data_card()
 
     block1 = b"a" * 0x1000
@@ -255,7 +255,7 @@ def test_simple_read(chip, n_chips, name):
 def test_simple_write(chip, n_chips, name):
     mock = UsbHandleMock(n_chips, chip, True)
 
-    device = SkyboundDevice(mock)
+    device = SkyboundDevice(mock, 0x81, 0x02)
     device.init_data_card()
 
     block1 = b"a" * 0x1000
@@ -274,7 +274,7 @@ def test_simple_write(chip, n_chips, name):
 def test_read_write_erase(chip, n_chips, name):
     mock = UsbHandleMock(n_chips, chip, True)
 
-    device = SkyboundDevice(mock)
+    device = SkyboundDevice(mock, 0x81, 0x02)
     device.init_data_card()
 
     block1 = b"a" * 0x1000
@@ -301,7 +301,7 @@ def test_read_write_erase(chip, n_chips, name):
 def test_write_16mb():
     mock = UsbHandleMock(4, CHIP_AMD_4MB_SILVER, False)
 
-    device = SkyboundDevice(mock)
+    device = SkyboundDevice(mock, 0x81, 0x02)
     device.init_data_card()
 
     device.before_write()

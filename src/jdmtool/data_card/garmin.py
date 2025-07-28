@@ -100,6 +100,7 @@ class GarminProgrammingDevice(ProgrammingDevice):
          # Initialize base device
         super().__init__(handle, read_endpoint, write_endpoint)
         self.firmware = ""
+
     def init(self) -> None:
         buf = self.control_read(0xC0, 0x8A, 0x0000, 0x0000, 512)
         self.firmware = buf.rstrip(b'\x00').decode()

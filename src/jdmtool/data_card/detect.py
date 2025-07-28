@@ -1,3 +1,8 @@
+"""
+Device detection and initialization logic for Garmin and Skybound programming tools.
+Includes USB device discovery, firmware staging, and endpoint extraction.
+"""
+
 from __future__ import annotations
 
 from collections.abc import Generator
@@ -24,7 +29,7 @@ GARMIN_UNINITIALIZED_VID_PID = {
 }
 
 @contextmanager
-def _open_usb_device(usbdev: USBDevice):
+def _open_usb_device(usbdev: USBDevice) -> Generator[USBDeviceHandle, None, None]:
     """
     Open a USB device handle as a context manager with automatic retry.
 
@@ -104,7 +109,7 @@ def _read_endpoints(usbdev: USBDevice) -> tuple[int, int]:
     return read_ep, write_ep
 
 
-def _rescan_read_endpoints(usbcontext: USBContext, vid_pid: tuple[int, int]) -> tuple[USBDevice, int, int]:
+def _rescan(usbcontext: USBContext, vid_pid: tuple[int, int]) -> USBDevice:
     """
     Locate a USB device by vendor/product ID and read its endpoints.
 
@@ -125,9 +130,9 @@ def _rescan_read_endpoints(usbcontext: USBContext, vid_pid: tuple[int, int]) -> 
         time.sleep(0.2) # wait for interface
         usbdev = usbcontext.getByVendorIDAndProductID(vid_pid[0], vid_pid[1])
         if usbdev is not None:
-            read_ep, write_ep = _read_endpoints(usbdev)
-            return usbdev, read_ep, write_ep
+            return usbdev
     raise ProgrammingException("Could not find the new device!")
+
 
 @contextmanager
 def open_programming_device() -> Generator[ProgrammingDevice, None, None]:
@@ -163,16 +168,17 @@ def open_programming_device() -> Generator[ProgrammingDevice, None, None]:
                 with _open_usb_device(usbdev) as handle:
                     if vid_pid[1] == 0x0300: # early model
                         writer = GarminFirmwareWriter(handle)
-                        print("Configuring early GARMIN programmer (0x0300)")
+                        print("Configuring early Garmin programmer (0x0300)")
                         writer.write_firmware_0x300()
+                        usbdev = _rescan(usbcontext, GARMIN_VID_PID)
 
                     else: # current model
                         writer = GarminFirmwareWriter(handle)
-                        print("Configuring GARMIN programmer")
+                        print("Configuring Garmin programmer")
                         # write stage 1
                         writer.write_firmware_stage1()
                         # get new handle (and endpoints we won't use)
-                        usbdev, read_ep, write_ep = _rescan_read_endpoints(usbcontext, GARMIN_VID_PID)
+                        usbdev = _rescan(usbcontext, GARMIN_VID_PID)
                         # check version and write stage 2 if required
                         try:
                             with _open_usb_device(usbdev) as handle:
@@ -182,7 +188,8 @@ def open_programming_device() -> Generator[ProgrammingDevice, None, None]:
                         except AlreadyUpdatedException:
                             pass
                         else:
-                            pass
+                            usbdev = _rescan(usbcontext, GARMIN_VID_PID)
+
                 dev_cls = GarminProgrammingDevice
                 break
 
@@ -198,7 +205,7 @@ def open_programming_device() -> Generator[ProgrammingDevice, None, None]:
                 except AlreadyUpdatedException:
                     pass
                 else:
-                    pass
+                    usbdev = _rescan(usbcontext, GARMIN_VID_PID)
 
                 dev_cls = GarminProgrammingDevice
                 break
@@ -206,7 +213,7 @@ def open_programming_device() -> Generator[ProgrammingDevice, None, None]:
             raise ProgrammingException("Device not found")
 
         # reader identified, firmware written, now get endpoints and set the programming device
-        usbdev, read_ep, write_ep = _rescan_read_endpoints(usbcontext, GARMIN_VID_PID)
+        read_ep, write_ep = _read_endpoints(usbdev)
         with _open_usb_device(usbdev) as handle:
             dev = dev_cls(handle, read_endpoint=read_ep, write_endpoint=write_ep)
             dev.init()
