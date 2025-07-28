@@ -15,16 +15,31 @@ except ImportError:
     raise ProgrammingException("Please install USB support by running `pip3 install jdmtool[usb]") from None
 
 SKYBOUND_VID_PID = (0x0E39, 0x1250)
+GARMIN_VID_PID = (0x091E, 0x1300)
+
 GARMIN_UNINITIALIZED_VID_PID = {
     (0x091E, 0x0500), # "current" 010-10579-20 
     (0x091E, 0x0300), # "early" 011-01277-00
     (0x04B4, 0x8613), # Cypress EZ-USB FX2 (if EEPROM is reset)
 }
-GARMIN_VID_PID = (0x091E, 0x1300)
 
 @contextmanager
 def _open_usb_device(usbdev: USBDevice):
-    # Open a USB device handle as a context manager. Retries up to 3 times on USBError.
+    """
+    Open a USB device handle as a context manager with automatic retry.
+
+    Tries to open the device up to three times in case of USBError, claiming interface 0
+    and resetting the device before yielding the handle.
+
+    Args:
+        usbdev (USBDevice): The USB device to open.
+
+    Yields:
+        USBDeviceHandle: The open handle to the USB device.
+
+    Raises:
+        ProgrammingException: If the device cannot be opened after 3 retries.
+    """
     handle: USBDeviceHandle | None = None
 
     try:
@@ -57,9 +72,21 @@ def _open_usb_device(usbdev: USBDevice):
 
 
 def _read_endpoints(usbdev: USBDevice) -> tuple[int, int]:
-    # Scans the device's first configuration to list all endpoint addresses, then selects
-    # the first IN (0x8X) and first OUT (0x0X) endpoints. 
-    # Bit 7 (MSB) of the endpoint address defines direction, Bits 0–3 define the endpoint number (max 15).
+    """
+    Extract the first IN and OUT endpoint addresses from a USB device.
+
+    Parses the first configuration and its interface settings to collect endpoint addresses.
+    The first endpoint with IN direction (0x8X) and the first with OUT direction (0x0X) are returned.
+
+    Args:
+        usbdev (USBDevice): The USB device to inspect.
+
+    Returns:
+        tuple[int, int]: A tuple containing the IN and OUT endpoint addresses.
+
+    Raises:
+        IndexError: If no IN or OUT endpoints are found.
+    """
 
     config = usbdev[0]
     endpoints = []
@@ -78,8 +105,22 @@ def _read_endpoints(usbdev: USBDevice) -> tuple[int, int]:
 
 
 def _rescan_read_endpoints(usbcontext: USBContext, vid_pid: tuple[int, int]) -> tuple[USBDevice, int, int]:
-    # Rescan a USB device matching vid_pid and read its endpoints in one step
-    # Try up to 5 times to find the device
+    """
+    Locate a USB device by vendor/product ID and read its endpoints.
+
+    Polls the USB context up to 20 times with short delays to find the device,
+    then retrieves the first IN and OUT endpoint addresses.
+
+    Args:
+        usbcontext (USBContext): The USB context used for scanning.
+        vid_pid (tuple[int, int]): Vendor ID and Product ID tuple to match.
+
+    Returns:
+        tuple[USBDevice, int, int]: The found USB device and its endpoint addresses.
+
+    Raises:
+        ProgrammingException: If the device cannot be found after polling.
+    """
     for _ in range(20):
         time.sleep(0.2) # wait for interface
         usbdev = usbcontext.getByVendorIDAndProductID(vid_pid[0], vid_pid[1])
@@ -90,9 +131,19 @@ def _rescan_read_endpoints(usbcontext: USBContext, vid_pid: tuple[int, int]) -> 
 
 @contextmanager
 def open_programming_device() -> Generator[ProgrammingDevice, None, None]:
-    #Searches for supported devices (Skybound or Garmin), performs necessary firmware flashing
-    # for Garmin models, and opens the final programming device handle with detected endpoints.
-    
+    """
+    Discover, initialize, and yield a programming device context.
+
+    Searches for supported devices (Skybound or Garmin). For uninitialized Garmin devices,
+    performs necessary firmware staging and upgrades before yielding an operational device.
+
+    Yields:
+        ProgrammingDevice: A ready-to-use programming device instance.
+
+    Raises:
+        ProgrammingException: If no supported device is found or initialization fails.
+    """
+        
     with USBContext() as usbcontext:
         dev_cls: type[ProgrammingDevice] | None = None
         read_ep: int | None = None
