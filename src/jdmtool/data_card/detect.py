@@ -23,7 +23,7 @@ GARMIN_UNINITIALIZED_VID_PID = {
 GARMIN_VID_PID = (0x091E, 0x1300)
 
 @contextmanager
-def _open_usb_device(usbdev: USBDevice):
+def _open_usb_device(usbdev: USBDevice) -> Generator[USBDeviceHandle, None, None]:
     # Open a USB device handle as a context manager. Retries up to 3 times on USBError.
     handle: USBDeviceHandle | None = None
 
@@ -77,22 +77,21 @@ def _read_endpoints(usbdev: USBDevice) -> tuple[int, int]:
     return read_ep, write_ep
 
 
-def _rescan_read_endpoints(usbcontext: USBContext, vid_pid: tuple[int, int]) -> tuple[USBDevice, int, int]:
-    # Rescan a USB device matching vid_pid and read its endpoints in one step
-    # Try up to 5 times to find the device
+def _rescan(usbcontext: USBContext, vid_pid: tuple[int, int]) -> USBDevice:
+    # Rescan a USB device matching vid_pid. Try up to 5 times to find the device.
     for _ in range(20):
         time.sleep(0.2) # wait for interface
         usbdev = usbcontext.getByVendorIDAndProductID(vid_pid[0], vid_pid[1])
         if usbdev is not None:
-            read_ep, write_ep = _read_endpoints(usbdev)
-            return usbdev, read_ep, write_ep
+            return usbdev
     raise ProgrammingException("Could not find the new device!")
+
 
 @contextmanager
 def open_programming_device() -> Generator[ProgrammingDevice, None, None]:
-    #Searches for supported devices (Skybound or Garmin), performs necessary firmware flashing
+    # Searches for supported devices (Skybound or Garmin), performs necessary firmware flashing
     # for Garmin models, and opens the final programming device handle with detected endpoints.
-    
+
     with USBContext() as usbcontext:
         dev_cls: type[ProgrammingDevice] | None = None
         read_ep: int | None = None
@@ -114,6 +113,7 @@ def open_programming_device() -> Generator[ProgrammingDevice, None, None]:
                         writer = GarminFirmwareWriter(handle)
                         print("Configuring early GARMIN programmer (0x0300)")
                         writer.write_firmware_0x300()
+                        usbdev = _rescan(usbcontext, GARMIN_VID_PID)
 
                     else: # current model
                         writer = GarminFirmwareWriter(handle)
@@ -121,7 +121,7 @@ def open_programming_device() -> Generator[ProgrammingDevice, None, None]:
                         # write stage 1
                         writer.write_firmware_stage1()
                         # get new handle (and endpoints we won't use)
-                        usbdev, read_ep, write_ep = _rescan_read_endpoints(usbcontext, GARMIN_VID_PID)
+                        usbdev = _rescan(usbcontext, GARMIN_VID_PID)
                         # check version and write stage 2 if required
                         try:
                             with _open_usb_device(usbdev) as handle:
@@ -131,7 +131,8 @@ def open_programming_device() -> Generator[ProgrammingDevice, None, None]:
                         except AlreadyUpdatedException:
                             pass
                         else:
-                            pass
+                            usbdev = _rescan(usbcontext, GARMIN_VID_PID)
+
                 dev_cls = GarminProgrammingDevice
                 break
 
@@ -147,7 +148,7 @@ def open_programming_device() -> Generator[ProgrammingDevice, None, None]:
                 except AlreadyUpdatedException:
                     pass
                 else:
-                    pass
+                    usbdev = _rescan(usbcontext, GARMIN_VID_PID)
 
                 dev_cls = GarminProgrammingDevice
                 break
@@ -155,7 +156,7 @@ def open_programming_device() -> Generator[ProgrammingDevice, None, None]:
             raise ProgrammingException("Device not found")
 
         # reader identified, firmware written, now get endpoints and set the programming device
-        usbdev, read_ep, write_ep = _rescan_read_endpoints(usbcontext, GARMIN_VID_PID)
+        read_ep, write_ep = _read_endpoints(usbdev)
         with _open_usb_device(usbdev) as handle:
             dev = dev_cls(handle, read_endpoint=read_ep, write_endpoint=write_ep)
             dev.init()
