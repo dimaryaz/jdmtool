@@ -1,5 +1,5 @@
-"""
-Device detection and initialization logic for Garmin and Skybound programming tools.
+"""Device detection and initialization logic for Garmin and Skybound programming tools.
+
 Includes USB device discovery, firmware staging, and endpoint extraction.
 """
 
@@ -30,8 +30,7 @@ GARMIN_UNINITIALIZED_VID_PID = {
 
 @contextmanager
 def _open_usb_device(usbdev: USBDevice) -> Generator[USBDeviceHandle, None, None]:
-    """
-    Open a USB device handle as a context manager with automatic retry.
+    """Open a USB device handle as a context manager with automatic retry.
 
     Tries to open the device up to three times in case of USBError, claiming interface 0
     and resetting the device before yielding the handle.
@@ -44,7 +43,8 @@ def _open_usb_device(usbdev: USBDevice) -> Generator[USBDeviceHandle, None, None
 
     Raises:
         ProgrammingException: If the device cannot be opened after 3 retries.
-    """
+    @public"""
+
     handle: USBDeviceHandle | None = None
 
     try:
@@ -77,8 +77,7 @@ def _open_usb_device(usbdev: USBDevice) -> Generator[USBDeviceHandle, None, None
 
 
 def _read_endpoints(usbdev: USBDevice) -> tuple[int, int]:
-    """
-    Extract the first IN and OUT endpoint addresses from a USB device.
+    """Extract the first IN and OUT endpoint addresses from a USB device.
 
     Parses the first configuration and its interface settings to collect endpoint addresses.
     The first endpoint with IN direction (0x8X) and the first with OUT direction (0x0X) are returned.
@@ -91,7 +90,7 @@ def _read_endpoints(usbdev: USBDevice) -> tuple[int, int]:
 
     Raises:
         IndexError: If no IN or OUT endpoints are found.
-    """
+     @public"""
 
     config = usbdev[0]
     endpoints = []
@@ -110,22 +109,21 @@ def _read_endpoints(usbdev: USBDevice) -> tuple[int, int]:
 
 
 def _rescan(usbcontext: USBContext, vid_pid: tuple[int, int]) -> USBDevice:
-    """
-    Locate a USB device by vendor/product ID and read its endpoints.
+    """Locate a USB device by vendor/product ID.
 
-    Polls the USB context up to 20 times with short delays to find the device,
-    then retrieves the first IN and OUT endpoint addresses.
+    Polls the USB context up to 20 times with short delays to find the device.
 
     Args:
         usbcontext (USBContext): The USB context used for scanning.
         vid_pid (tuple[int, int]): Vendor ID and Product ID tuple to match.
 
     Returns:
-        tuple[USBDevice, int, int]: The found USB device and its endpoint addresses.
+        USBDevice: The found USB device.
 
     Raises:
         ProgrammingException: If the device cannot be found after polling.
-    """
+    @public"""
+
     for _ in range(20):
         time.sleep(0.2) # wait for interface
         usbdev = usbcontext.getByVendorIDAndProductID(vid_pid[0], vid_pid[1])
