@@ -5,6 +5,9 @@ from pathlib import Path
 from struct import unpack
 from typing import BinaryIO
 
+from usb1 import USBDeviceHandle, USBError
+from usb1.libusb1 import LIBUSB_ERROR_NO_DEVICE, LIBUSB_ERROR_IO # pyright: ignore[reportAttributeAccessIssue]
+
 from .common import IID_MAP, BasicUsbDevice, DataCardType, ProgrammingDevice, ProgrammingException
 
 
@@ -16,41 +19,86 @@ class AlreadyUpdatedException(ProgrammingException):
 
 
 class GarminFirmwareWriter(BasicUsbDevice):
-    WRITE_ENDPOINT = -1
-    READ_ENDPOINT = -1
+
+    def __init__(self, handle: USBDeviceHandle) -> None:
+         # Initialize base device
+        super().__init__(handle, -1, -1) # force control_writes
+
+    def write_firmware_0x300(self) -> None:
+        print("Writing firmware for VID 0x300")
+        with open(FIRMWARE_DIR / 'grmn0300.dat', 'rb') as fd:
+            self.write_firmware(fd)
 
     def write_firmware_stage1(self) -> None:
+        print("Writing FW 3.02 for current model")
         with open(FIRMWARE_DIR / 'grmn0500.dat', 'rb') as fd:
             self.write_firmware(fd)
 
     def init_stage2(self) -> None:
         version = self.control_read(0xC0, 0x8A, 0x0000, 0x0000, 512)
+        print("Check if upgrade to FW 3.05 is possible...")
+        # this will skip the "early" card programmer as its FW has different build time
         if version != b'Aviation Card Programmer Ver 3.02 Aug 10 2015 13:21:51\x00':
+            print("No, we're good.")
             raise AlreadyUpdatedException()
 
     def write_firmware_stage2(self) -> None:
+        print("Writing FW 3.05 for current model")
         with open(FIRMWARE_DIR / 'grmn1300.dat', 'rb') as fd:
             self.write_firmware(fd)
 
     def write_firmware(self, fd: BinaryIO) -> None:
-        while True:
-            buf = fd.read(4)
-            if not buf:
-                break
+        import time
+        import os
+        from tqdm import tqdm
 
-            addr, data_len = unpack('<HH', buf)
-            data = fd.read(data_len)
-            self.control_write(0x40, 0xA0, addr, 0x0000, data)
+        # Determine total firmware size
+        total_size = os.fstat(fd.fileno()).st_size
 
+        # Show progress bar while writing
+        with tqdm(
+            desc="Writing firmware",
+            total=total_size,
+            unit='B',
+            unit_scale=True
+        ) as pbar:
+            while True:
+                buf = fd.read(4)
+                if not buf:
+                    break
 
+                addr, data_len = unpack('<HH', buf)
+                data = fd.read(data_len)
+                attempts = 0
+                while True:
+                    try:
+                        self.control_write(0x40, 0xA0, addr, 0x0000, data)
+                        break
+                    except USBError as e:
+                        # Exit if device disconnects
+                        if e.value == LIBUSB_ERROR_NO_DEVICE:
+                            return
+                        # Retry on I/O errors only
+                        if e.value != LIBUSB_ERROR_IO:
+                            raise
+                        attempts += 1
+                        if attempts >= 3:
+                            raise
+                        time.sleep(0.1)
+
+                # Update progress bar by chunk size
+                pbar.update(4 + data_len)
+                    
 class GarminProgrammingDevice(ProgrammingDevice):
-    WRITE_ENDPOINT = 0x02
-    READ_ENDPOINT = 0x86
 
-    NO_CARD = 0x00697641
+    NO_CARD_IDS = { # card reader / firmware versions
+        0x00697641, # "newer" 010-10579-20 
+        0x00090304  # "older" 011-01277-00
+        }
 
-    def __init__(self, handle):
-        super().__init__(handle)
+    def __init__(self, handle: USBDeviceHandle, read_endpoint: int, write_endpoint: int) -> None:
+         # Initialize base device
+        super().__init__(handle, read_endpoint, write_endpoint)
         self.firmware = ""
 
     def init(self) -> None:
@@ -65,7 +113,7 @@ class GarminProgrammingDevice(ProgrammingDevice):
 
     def init_data_card(self) -> None:
         card_id = self.get_card_id()
-        if card_id == self.NO_CARD:
+        if card_id in self.NO_CARD_IDS:
             raise ProgrammingException("Card is missing!")
 
         self.chips = (card_id & 0x00ff0000) >> 16
@@ -82,7 +130,7 @@ class GarminProgrammingDevice(ProgrammingDevice):
         self.end_write()
 
     def has_card(self) -> bool:
-        return self.get_card_id() != self.NO_CARD
+        return self.get_card_id() not in self.NO_CARD_IDS
 
     def get_firmware_version(self) -> str:
         return self.firmware

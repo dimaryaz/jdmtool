@@ -6,8 +6,6 @@ from .common import IID_MAP, ProgrammingDevice, ProgrammingException
 
 
 class SkyboundDevice(ProgrammingDevice):
-    WRITE_ENDPOINT = 0x02
-    READ_ENDPOINT = 0x81
 
     MEMORY_OFFSETS = [0x00E0, 0x0160, 0x01A0, 0x01C0]
 

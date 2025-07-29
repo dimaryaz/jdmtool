@@ -60,21 +60,22 @@ class ProgrammingException(JdmToolException):
 
 
 class BasicUsbDevice():
-    WRITE_ENDPOINT: int
-    READ_ENDPOINT: int
+    handle: USBDeviceHandle
+    read_endpoint: int
+    write_endpoint: int
 
     TIMEOUT = 5000
 
-    handle: USBDeviceHandle
-
-    def __init__(self, handle: USBDeviceHandle) -> None:
+    def __init__(self, handle: USBDeviceHandle, read_endpoint: int, write_endpoint: int) -> None:
         self.handle = handle
+        self.read_endpoint = read_endpoint
+        self.write_endpoint = write_endpoint
 
     def bulk_read(self, length: int) -> bytes:
-        return self.handle.bulkRead(self.READ_ENDPOINT, length, self.TIMEOUT)
+        return self.handle.bulkRead(self.read_endpoint, length, self.TIMEOUT)
 
     def bulk_write(self, data: bytes) -> None:
-        self.handle.bulkWrite(self.WRITE_ENDPOINT, data, self.TIMEOUT)
+        self.handle.bulkWrite(self.write_endpoint, data, self.TIMEOUT)
 
     def control_read(self, request_type: int, request: int, value: int, index: int, length: int) -> bytes:
         return self.handle.controlRead(request_type, request, value, index, length, self.TIMEOUT)
@@ -88,6 +89,9 @@ class ProgrammingDevice(BasicUsbDevice):
     chips = 0
     sectors_per_chip = 0x0
     card_info = ""
+
+    def __init__(self, handle: "USBDeviceHandle", read_endpoint: int, write_endpoint: int) -> None:
+        super().__init__(handle, read_endpoint, write_endpoint)
 
     def init(self) -> None:
         pass
