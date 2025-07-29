@@ -34,7 +34,7 @@ class ChartHeader:
     @classmethod
     def from_bytes(cls, data: bytes) -> Self:
         db_begin_date: bytes
-        checksum, magic, num_files, index_offset, db_begin_date = struct.unpack('<4i11s', data)
+        checksum, magic, num_files, index_offset, db_begin_date = struct.unpack('<4I11s', data)  # all sizes should be UINT
 
         if magic != cls.MAGIC:
             raise ValueError("Invalid file")
@@ -43,7 +43,7 @@ class ChartHeader:
 
     def to_bytes(self) -> bytes:
         return struct.pack(
-            '<4i11s',
+            '<4I11s',
             self.checksum, self.MAGIC, self.num_files,
             self.index_offset, self.db_begin_date.encode(),
         )
@@ -56,16 +56,17 @@ class ChartRecord:
     name: str
     offset: int
     size: int
+    uncompress_size: int
     metadata: bytes
 
     @classmethod
     def from_bytes(cls, data: bytes) -> Self:
         name: bytes
-        name, offset, size, metadata = struct.unpack('<26s2i6s', data)
-        return cls(name.rstrip(b'\x00').decode(), offset, size, metadata)
+        name, offset, size, uncompress_size, metadata = struct.unpack('<26s3I2s', data)  # all sizes should be UINT
+        return cls(name.rstrip(b'\x00').decode(), offset, size, uncompress_size, metadata)
 
     def to_bytes(self) -> bytes:
-        return struct.pack('<26s2i6s', self.name.encode(), self.offset, self.size, self.metadata)
+        return struct.pack('<26s3I2s', self.name.encode(), self.offset, self.size, self.uncompress_size, self.metadata)
 
 
 class ChartView:
