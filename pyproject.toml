@@ -44,3 +44,7 @@ Changelog = "https://github.com/dimaryaz/jdmtool/blob/main/CHANGELOG.md"
 jdmtool = "jdmtool.main:main"
 chartview = "jdmtool.chartview:main"
 featunlk = "jdmtool.featunlk:main"
+
+[tool.pytest.ini_options]
+log_cli = true
+log_cli_level = "INFO"
