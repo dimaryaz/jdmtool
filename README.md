@@ -45,7 +45,7 @@ This should significantly improve transfer speeds.
 
 ### GNS 400/500
 
-You must install usb library: 
+You must install the USB library:
 ```
 pip3 install jdmtool[usb]
 ```
@@ -54,7 +54,7 @@ Make sure you have access to the USB device.
 
 On Linux, see [Installing udev rules on Linux](udev/README.md). 
 
-On Windows, you will need the WinUSB drivers. You do need the official Skybound/Garmin drivers (though they might still work for you).
+On Windows, you will need the WinUSB drivers; [Zadig](https://zadig.akeo.ie/) is recommended. Jeppesen drivers should also work for Skybound devices. Garmin drivers will **NOT** work for Garmin programmer devices; you will need to uninstall them and install WinUSB.
 
 ## Basic Usage
 
