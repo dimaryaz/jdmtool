@@ -8,19 +8,14 @@ It requires a Jeppesen subscription, and currenty supports the following service
     - Jeppesen Skybound G2 USB Adapter (USB ID `0e39:1250`), or
     - Garmin USB Aviation Data Card Programmer (USB ID `091e:0500` / `091e:1300`)
   - Requires a NavData card (16MB WAAS, 8MB, 6MB, 4MB, 3MB, 2MB)
+- All database types for Garmin G1000, G900X, G950, GTN650, Aera660, Aera760, G3X Touch
+  - Electronic Charts support is somewhat experimental; see [more info here](ElectronicCharts.md).
 - NavData and Obstacles for Avidyne IFD 400 Series
 - NavData for Avidyne EX5000
-- (Very experimental) Garmin G1000 support
-  - If you try it, please [file a bug](https://github.com/dimaryaz/jdmtool/issues/) to report your results - even just to say "it worked".
-  - Services other than Electronic Charts should produce byte-for-byte identical results to JDM, and are expected to work.
-  - Electronic Charts _may_ work, but are completely untested! See [more info here](ElectronicCharts.md).
-
 
 It is mainly tested on Linux, but should work on OS X and Windows.
 
 ## Installing
-
-You may want to create a Python virtual environment using e.g. [virtualenvwrapper](https://pypi.org/project/virtualenvwrapper/).
 
 Install the latest `jdmtool` release:
 
@@ -34,9 +29,9 @@ Or install the latest code from GitHub:
 pip3 install "git+https://github.com/dimaryaz/jdmtool.git#egg=jdmtool"
 ```
 
-### IFD 400 and G1000
+### Optional Just-in-Time compiler
 
-You should install an optional Just-in-Time compiler by running:
+For all avionics that use an SD card or USB drive, you should install a Just-in-Time compiler by running:
 ```
 pip3 install jdmtool[jit]
 ```
@@ -50,9 +45,9 @@ You must install the USB library:
 pip3 install jdmtool[usb]
 ```
 
-Make sure you have access to the USB device. 
+On Linux, make sure you have access to the USB device; see [Installing udev rules on Linux](udev/README.md).
 
-On Linux, see [Installing udev rules on Linux](udev/README.md). 
+On Mac OS X, everything should just work; if you get permission errors, you could try using `sudo`.
 
 On Windows, you will need the WinUSB drivers; [Zadig](https://zadig.akeo.ie/) is recommended. Jeppesen drivers should also work for Skybound devices. Garmin drivers will **NOT** work for Garmin programmer devices; you will need to uninstall them and install WinUSB.
 
@@ -152,11 +147,11 @@ Verifying the database: 100%|█████████████████
 Done in: 291.9s.
 ```
 
-### Transfer the database to the USB drive (IFD 440 or G1000)
+### Transfer the database to the SD card / USB drive
 
 You can specify a single service ID, multiple IDs separated by commas, `curr` for all services that are current, or `next` for all services that are not yet current.
 
-Note: the final database file requires the FAT32 volume ID of the USB drive. `jdmtool` will attempt to find it automatically - which requires the destination to be an actual FAT32-formatted device, not any random directory. Alternatively, you may set the volume ID manually using the `--vol-id` parameter.
+Note: the final database file requires the FAT32 volume ID of the device. `jdmtool` will attempt to find it automatically - which requires the destination to be an actual FAT32-formatted device, not any random directory. Alternatively, you may set the volume ID manually using the `--vol-id` parameter.
 
 > Getting the volume ID automatically is currently not supported on Mac OS, so you will need to use the `--vol-id` parameter. You can try [these instructions](https://apple.stackexchange.com/questions/408562/how-can-i-get-the-volume-serial-number-of-a-fat-volume) for finding the volume ID.
 
@@ -211,7 +206,7 @@ You can extract other database types, but `jdmtool` cannot do anything with them
 
 ## More Information
 
-- [Experimental support for G1000 Electronic Charts](ElectronicCharts.md)
+- [Experimental support for Electronic Charts](ElectronicCharts.md)
 - [Troubleshooting data cards (GNS 400/500)](DataCards.md)
 
 ## Bugs
