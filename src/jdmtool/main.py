@@ -1070,6 +1070,48 @@ def cmd_extract_taw(input_file: str, verbose: bool, list_only: bool) -> None:
                 print(f"{database_size:>10} {database}")
 
 
+def _get_garmin_access_token():
+    auth_file = get_data_dir() / 'garmin_auth.json'
+    try:
+        with open(auth_file, encoding="utf-8") as fd:
+            data = json.load(fd)
+    except FileNotFoundError:
+        raise JdmToolException("Please run `jdmtool flygarmin login` first.")
+    return data["access_token"]
+
+
+def cmd_flygarmin_login() -> None:
+    from .flygarmin.oauth import do_login
+
+    oauth = do_login()
+
+    auth_file = get_data_dir() / 'garmin_auth.json'
+    with open(auth_file, "w", encoding="utf-8") as fd:
+        json.dump(oauth, fd)
+
+
+def cmd_flygarmin_list_aircraft() -> None:
+    from .flygarmin.api import list_aircraft
+
+    token = _get_garmin_access_token()
+
+    data = list_aircraft(token)
+    for aircraft in data:
+        print(f"{aircraft['id']} ({aircraft['aircraftMakeName']} {aircraft['aircraftModelName']})")
+        for device in aircraft["devices"]:
+            print(f"  {device['name']} ({device['displaySerial']})")
+            for avdb in device["avdbTypes"]:
+                print(f"    {avdb['name']}")
+                for series in avdb["series"]:
+                    print(f"      region: {series['region']['name']}")
+                    print("      available:")
+                    for issue in series["availableIssues"]:
+                        print(f"        {issue['name']} {issue['effectiveAt']} - {issue['invalidAt']}")
+                    print("      installable:")
+                    for issue in series["installableIssues"]:
+                        print(f"        {issue['name']} {issue['effectiveAt']} - {issue['invalidAt']}")
+
+
 def _parse_ids(ids: str) -> list[int] | IdPreset:
     try:
         return IdPreset(ids)
@@ -1241,6 +1283,25 @@ def main():
         help="List databases without extracting",
     )
     extract_taw_p.set_defaults(func=cmd_extract_taw)
+
+    flygarmin_p = subparsers.add_parser(
+        "flygarmin",
+        help="EXPERIMANTAL: Interact with fly.garmin.com",
+    )
+    flygarmin_subparsers = flygarmin_p.add_subparsers(metavar="<command>")
+    flygarmin_subparsers.required = True
+
+    flygarmin_login_p = flygarmin_subparsers.add_parser(
+        "login",
+        help="Log into fly.garmin.com",
+    )
+    flygarmin_login_p.set_defaults(func=cmd_flygarmin_login)
+
+    flygarmin_list_aircraft_p = flygarmin_subparsers.add_parser(
+        "list-aircraft",
+        help="List aircraft",
+    )
+    flygarmin_list_aircraft_p.set_defaults(func=cmd_flygarmin_list_aircraft)
 
     args = parser.parse_args()
 
