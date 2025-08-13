@@ -103,7 +103,7 @@ def parse_taw_metadata(metadata: bytes) -> TawMetadata:
     )
 
 
-def read_taw_header(fd: BinaryIO) -> tuple[bytes, bytes, bytes]:
+def read_taw_header(fd: BinaryIO) -> tuple[list[str], bytes, list[str]]:
     magic = fd.read(5)
     if magic not in (b'pWa.d', b'wAt.d'):
         raise JdmToolException(f"Unexpected bytes: {magic}")

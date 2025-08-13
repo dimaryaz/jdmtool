@@ -10,7 +10,7 @@ import datetime
 from collections.abc import Callable
 from enum import Enum
 from io import BytesIO
-from typing import BinaryIO
+from typing import Any, IO
 
 from .checksum import feat_unlk_checksum
 from .taw import TAW_DATABASE_TYPES
@@ -111,9 +111,9 @@ def calculate_crc_and_preview_of_file(feature: Feature, filename: pathlib.Path) 
 
 
 def copy_with_feat_unlk(
-        dest_dir: pathlib.Path, src: BinaryIO, filename: str,
+        dest_dir: pathlib.Path, src: IO[bytes], filename: str,
         vol_id: int, security_id: int, system_id: int,
-        progress_cb: Callable[[int], None]
+        progress_cb: Callable[[int], Any]
 ) -> None:
     feature = FILENAME_TO_FEATURE.get(filename)
     if feature is None:

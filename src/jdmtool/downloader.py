@@ -2,12 +2,14 @@ from __future__ import annotations
 
 import base64
 import binascii
-from collections.abc import Callable
 import datetime
 import hashlib
 import json
 import pathlib
 import xml.etree.ElementTree as ET
+
+from collections.abc import Callable
+from typing import Any
 
 import requests
 
@@ -138,7 +140,7 @@ class Downloader:
         params: dict[str, str],
         dest_path: pathlib.Path,
         expected_crc: int | None,
-        progress_cb: Callable[[int], None],
+        progress_cb: Callable[[int], Any],
     ) -> None:
         auth = self.get_auth()
         common_headers, common_params = self.get_common_headers_params()
