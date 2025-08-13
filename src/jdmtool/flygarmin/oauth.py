@@ -14,7 +14,7 @@ from pathlib import Path
 import requests
 
 
-SSO_DIR = Path(__file__).parent / "resources" / "flygarmin"
+SSO_DIR = Path(__file__).parent / "resources"
 SSO_HTML = SSO_DIR / "index.html"
 SSO_JS = SSO_DIR / "index.js"
 
