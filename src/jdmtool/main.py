@@ -1090,6 +1090,28 @@ def cmd_flygarmin_login() -> None:
         json.dump(oauth, fd)
 
 
+def _print_issue(issue: dict, prefix: str = "") -> None:
+    print(f"{prefix}{issue['name']}")
+    print(f"{prefix}  effective: {issue['effectiveAt']}")
+    print(f"{prefix}  invalid: {issue['invalidAt']}")
+    print(f"{prefix}  available: {issue['availableAt']}")
+
+
+def _print_series(series: dict, installable=False, past=False, prefix="") -> None:
+    print(f"{prefix}region: {series['region']['name']}")
+    print(f"{prefix}available issues:")
+    for issue in series["availableIssues"]:
+        _print_issue(issue, prefix + "  ")
+    if installable:
+        print(f"{prefix}installable issues:")
+        for issue in series["installableIssues"]:
+            _print_issue(issue, prefix + "  ")
+    if past:
+        print(f"{prefix}past issues:")
+        for issue in series["pastIssues"]:
+            _print_issue(issue, prefix + "  ")
+
+
 def cmd_flygarmin_list_aircraft() -> None:
     from .flygarmin.api import list_aircraft
 
@@ -1103,13 +1125,25 @@ def cmd_flygarmin_list_aircraft() -> None:
             for avdb in device["avdbTypes"]:
                 print(f"    {avdb['name']}")
                 for series in avdb["series"]:
-                    print(f"      region: {series['region']['name']}")
-                    print("      available:")
-                    for issue in series["availableIssues"]:
-                        print(f"        {issue['name']} {issue['effectiveAt']} - {issue['invalidAt']}")
-                    print("      installable:")
-                    for issue in series["installableIssues"]:
-                        print(f"        {issue['name']} {issue['effectiveAt']} - {issue['invalidAt']}")
+                    print(f"      {series['id']}")
+                    _print_series(series, installable=True, prefix="        ")
+
+
+def cmd_flygarmin_list_series(series_id: int) -> None:
+    from .flygarmin.api import list_series
+
+    series = list_series(series_id)
+    _print_series(series, past=True)
+
+
+def cmd_flygarmin_list_files(series_id: int, issue_name: str) -> None:
+    from .flygarmin.api import list_files
+
+    files = list_files(series_id, issue_name)
+    print(f"issue type: {files['issueType']}")
+    print(f"removable paths: {files['removablePaths']}")
+    print(f"url: {files['url']}")
+    print(f"size: {files['mainFileSize']}")
 
 
 def _parse_ids(ids: str) -> list[int] | IdPreset:
@@ -1302,6 +1336,35 @@ def main():
         help="List aircraft",
     )
     flygarmin_list_aircraft_p.set_defaults(func=cmd_flygarmin_list_aircraft)
+
+    flygarmin_list_series_p = flygarmin_subparsers.add_parser(
+        "list-series",
+        help="List series",
+    )
+    flygarmin_list_series_p.add_argument(
+        "series_id",
+        metavar="series-id",
+        type=int,
+        help="Series ID",
+    )
+    flygarmin_list_series_p.set_defaults(func=cmd_flygarmin_list_series)
+
+    flygarmin_list_files_p = flygarmin_subparsers.add_parser(
+        "list-files",
+        help="List files",
+    )
+    flygarmin_list_files_p.add_argument(
+        "series_id",
+        metavar="series-id",
+        type=int,
+        help="Series ID",
+    )
+    flygarmin_list_files_p.add_argument(
+        "issue_name",
+        metavar="issue-name",
+        help="Issue Name",
+    )
+    flygarmin_list_files_p.set_defaults(func=cmd_flygarmin_list_files)
 
     args = parser.parse_args()
 
