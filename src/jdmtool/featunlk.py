@@ -10,7 +10,7 @@ import datetime
 from collections.abc import Callable
 from enum import Enum
 from io import BytesIO
-from typing import BinaryIO
+from typing import Any, IO
 
 from .checksum import feat_unlk_checksum
 from .taw import TAW_DATABASE_TYPES
@@ -111,9 +111,9 @@ def calculate_crc_and_preview_of_file(feature: Feature, filename: pathlib.Path) 
 
 
 def copy_with_feat_unlk(
-        dest_dir: pathlib.Path, src: BinaryIO, filename: str,
+        dest_dir: pathlib.Path, src: IO[bytes], filename: str,
         vol_id: int, security_id: int, system_id: int,
-        progress_cb: Callable[[int], None]
+        progress_cb: Callable[[int], Any]
 ) -> None:
     feature = FILENAME_TO_FEATURE.get(filename)
     if feature is None:
@@ -190,14 +190,26 @@ def update_feat_unlk(
 
     chk3 = feat_unlk_checksum(content1.getvalue() + content2.getvalue())
 
-    # Why is there no mode that accomplishes both of these in one call?
-    with open(dest_dir / FEAT_UNLK, 'ab'):
+    feat_unlk = dest_dir / FEAT_UNLK
+
+    # JDM makes the file read-only, so make it writable again (if it exists)
+    try:
+        feat_unlk.chmod(0o644)
+    except FileNotFoundError:
         pass
-    with open(dest_dir / FEAT_UNLK, 'r+b') as out:
+
+    # Open the file in read+write mode - but make sure it exists first.
+    # Why is there no mode that accomplishes both of these in one call?
+    with open(feat_unlk, 'ab'):
+        pass
+    with open(feat_unlk, 'r+b') as out:
         out.seek(feature.offset)
         out.write(content1.getbuffer())
         out.write(content2.getbuffer())
         out.write(chk3.to_bytes(4, 'little'))
+
+    # Make it read-only just to be consistent with JDM.
+    feat_unlk.chmod(0o444)
 
 
 def display_all_content_of_feat_unlk(featunlk: pathlib.Path, show_missing=False) -> None:

@@ -1248,7 +1248,7 @@ def main():
     func = kwargs.pop('func')
 
     if kwargs.pop('assume_yes'):
-        PROMPT_CTX.set(lambda _: None)
+        PROMPT_CTX.set(lambda prompt: None)
 
     try:
         func(**kwargs)

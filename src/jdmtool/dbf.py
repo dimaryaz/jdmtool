@@ -1,7 +1,7 @@
 from dataclasses import dataclass
 import datetime
 import struct
-from typing import Any, BinaryIO
+from typing import Any, IO
 try:
     from typing import Self  # type: ignore
 except ImportError:
@@ -55,7 +55,7 @@ class DbfField:
 
 class DbfFile:
     @classmethod
-    def read_header(cls, fd: BinaryIO) -> tuple[DbfHeader, list[DbfField]]:
+    def read_header(cls, fd: IO[bytes]) -> tuple[DbfHeader, list[DbfField]]:
         header = DbfHeader.from_bytes(fd.read(DbfHeader.SIZE))
         num_fields = (header.header_bytes - 33) // 32
         fields = [DbfField.from_bytes(fd.read(DbfField.SIZE)) for _ in range(num_fields)]
@@ -64,7 +64,7 @@ class DbfFile:
         return header, fields
 
     @classmethod
-    def write_header(cls, fd: BinaryIO, header: DbfHeader, fields: list[DbfField]) -> None:
+    def write_header(cls, fd: IO[bytes], header: DbfHeader, fields: list[DbfField]) -> None:
         header.header_bytes = len(fields) * 32 + 33
         fd.write(header.to_bytes())
         for field in fields:
@@ -72,7 +72,7 @@ class DbfFile:
         fd.write(b'\x0D')
 
     @classmethod
-    def read_record(cls, fd: BinaryIO, fields: list[DbfField]) -> list[Any]:
+    def read_record(cls, fd: IO[bytes], fields: list[DbfField]) -> list[Any]:
         del_marker = fd.read(1).decode()
         if del_marker == '*':
             raise ValueError("Deleted record?")
@@ -109,7 +109,7 @@ class DbfFile:
         return values
 
     @classmethod
-    def write_record(cls, fd: BinaryIO, fields: list[DbfField], values: list[Any]) -> None:
+    def write_record(cls, fd: IO[bytes], fields: list[DbfField], values: list[Any]) -> None:
         fd.write(b' ')
         for field, value in zip(fields, values):
             data = None
@@ -165,18 +165,18 @@ class DbtFile:
     DBT4_BLOCK_START = b'\xFF\xFF\x08\x00'
 
     @classmethod
-    def read_header(cls, fd: BinaryIO) -> DbtHeader:
+    def read_header(cls, fd: IO[bytes]) -> DbtHeader:
         fd.seek(0)
         block = fd.read(DbtHeader.SIZE)
         return DbtHeader.from_bytes(block)
 
     @classmethod
-    def write_header(cls, fd: BinaryIO, header: DbtHeader) -> None:
+    def write_header(cls, fd: IO[bytes], header: DbtHeader) -> None:
         fd.seek(0)
         fd.write(header.to_bytes())
 
     @classmethod
-    def read_record(cls, fd: BinaryIO, header: DbtHeader, idx: int) -> str:
+    def read_record(cls, fd: IO[bytes], header: DbtHeader, idx: int) -> str:
         if header.block_length:
             fd.seek(header.block_length * idx)
             block_start = fd.read(8)
@@ -199,7 +199,7 @@ class DbtFile:
         return data.decode('latin-1')
 
     @classmethod
-    def write_record(cls, fd: BinaryIO, header: DbtHeader, idx: int, data: str) -> int:
+    def write_record(cls, fd: IO[bytes], header: DbtHeader, idx: int, data: str) -> int:
         if header.block_length:
             block_length = header.block_length
             total_length = 8 + len(data)

@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.5 (2025-08-08)
+- Support for "older" Garmin USB Aviation Data Card Programmer devices (thanks [@alxwolf](https://github.com/alxwolf))
+- Improvements to the `featunlk` script (thanks [@ELD400](https://github.com/ELD400) and [sHorst](https://github.com/sHorst))
+- Display an error when trying to use an orange-label data card with a non-orange-label adapter
+- Fix a crash when trying to update a read-only feat_unlk.dat file
+- More Garmin devices are now officially supported
+
 ## 0.4.4.1 (2025-07-14)
 - Unbreak the Skybound programmer device. Oops.
 
