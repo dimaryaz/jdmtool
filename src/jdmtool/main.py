@@ -1121,12 +1121,15 @@ def cmd_flygarmin_list_aircraft() -> None:
     for aircraft in data:
         print(f"{aircraft['id']} ({aircraft['aircraftMakeName']} {aircraft['aircraftModelName']})")
         for device in aircraft["devices"]:
-            print(f"  {device['name']} ({device['displaySerial']})")
+            print(f"  {device['id']}")
+            print(f"    name: {device['name']}")
+            print(f"    serial: {device['displaySerial']}")
+            print("    databases:")
             for avdb in device["avdbTypes"]:
-                print(f"    {avdb['name']}")
+                print(f"      {avdb['name']}")
                 for series in avdb["series"]:
-                    print(f"      {series['id']}")
-                    _print_series(series, installable=True, prefix="        ")
+                    print(f"        {series['id']}")
+                    _print_series(series, installable=True, prefix="          ")
 
 
 def cmd_flygarmin_list_series(series_id: int) -> None:
@@ -1144,6 +1147,16 @@ def cmd_flygarmin_list_files(series_id: int, issue_name: str) -> None:
     print(f"removable paths: {files['removablePaths']}")
     print(f"url: {files['url']}")
     print(f"size: {files['mainFileSize']}")
+
+
+def cmd_flygarmin_unlock(series_id: int, issue_name: str, device_id: int, card_serial: int) -> None:
+    from .flygarmin.api import unlock
+
+    token = _get_garmin_access_token()
+
+    data = unlock(token, series_id, issue_name, device_id, card_serial)
+    for code in data["unlockCodes"]:
+        print(code["unlockCode"])
 
 
 def _parse_ids(ids: str) -> list[int] | IdPreset:
@@ -1365,6 +1378,35 @@ def main():
         help="Issue Name",
     )
     flygarmin_list_files_p.set_defaults(func=cmd_flygarmin_list_files)
+
+    flygarmin_unlock_p = flygarmin_subparsers.add_parser(
+        "unlock",
+        help="Unlock",
+    )
+    flygarmin_unlock_p.add_argument(
+        "series_id",
+        metavar="series-id",
+        type=int,
+        help="Series ID",
+    )
+    flygarmin_unlock_p.add_argument(
+        "issue_name",
+        metavar="issue-name",
+        help="Issue Name",
+    )
+    flygarmin_unlock_p.add_argument(
+        "device_id",
+        metavar="device-id",
+        type=int,
+        help="Device ID",
+    )
+    flygarmin_unlock_p.add_argument(
+        "card_serial",
+        metavar="card-serial",
+        type=int,
+        help="Card Serial",
+    )
+    flygarmin_unlock_p.set_defaults(func=cmd_flygarmin_unlock)
 
     args = parser.parse_args()
 
