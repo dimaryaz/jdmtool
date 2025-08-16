@@ -20,7 +20,6 @@ exception raising, ensuring robust integration of USB context and firmware write
 import logging
 
 logger = logging.getLogger(__name__)
-import sys
 import pytest
 from unittest import mock
 from jdmtool.data_card.detect import open_programming_device
