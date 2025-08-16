@@ -4,6 +4,8 @@ from abc import ABC, abstractmethod
 from collections import defaultdict
 from dataclasses import dataclass
 from datetime import datetime
+from typing import TypeVar
+
 import pathlib
 import xml.etree.ElementTree as ET
 
@@ -31,9 +33,12 @@ def get_services_path() -> pathlib.Path:
     return get_data_dir() / 'services.xml'
 
 
+T = TypeVar("T", str, None)
+
+
 class Service(ABC):
     @abstractmethod
-    def get_optional_property(self, name: str, default: str | None = None) -> str | None:
+    def get_optional_property(self, name: str, default: T = None) -> str | T:
         ...
 
     @abstractmethod
@@ -84,7 +89,7 @@ class SimpleService(Service):
         super().__init__()
         self._xml = xml
 
-    def get_optional_property(self, name: str, default: str | None = None) -> str | None:
+    def get_optional_property(self, name: str, default: T = None) -> str | T:
         return self._xml.findtext(f'./{name}', default)
 
     def get_media(self) -> list[ET.Element]:
@@ -178,7 +183,7 @@ class ChartViewService(Service):
         super().__init__()
         self._subservices = subservices
 
-    def get_optional_property(self, name: str, default: str | None = None) -> str | None:
+    def get_optional_property(self, name: str, default: T = None) -> str | T:
         if name == 'coverage_desc':
             values = [s.get_property(name) for s in self._subservices]
             return ', '.join(values)

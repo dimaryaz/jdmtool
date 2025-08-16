@@ -9,7 +9,7 @@ from dataclasses import dataclass
 import datetime
 import pathlib
 import struct
-from typing import Any, BinaryIO
+from typing import Any, IO
 try:
     from typing import Self  # type: ignore
 except ImportError:
@@ -119,7 +119,7 @@ class ChartView:
     def find_charts_bin(self) -> list[tuple[zipfile.ZipFile, zipfile.ZipInfo]]:
         return [value for name, value in self._entry_map.items() if name.endswith('.bin')]
 
-    def _open(self, name: str) -> BinaryIO:
+    def _open(self, name: str) -> IO[bytes]:
         handle, entry = self._entry_map[name]
         return handle.open(entry)
 
@@ -161,7 +161,7 @@ class ChartView:
                 crc32q = crc32q_checksum(data, crc32q)
                 progress_cb(len(data))
 
-            chart_fds: list[BinaryIO] = []
+            chart_fds: list[IO[bytes]] = []
             headers: list[ChartHeader] = []
             all_records: list[ChartRecord] = []
 

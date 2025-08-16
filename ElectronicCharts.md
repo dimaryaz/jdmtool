@@ -1,18 +1,18 @@
-## G1000 Electronic Charts
+## Electronic Charts
 
 ### Experimental Support
 
-Electronic Charts are significantly more complex than other databases, and are not fully reverse-engineered yet. jdmtool produces _almost_ identical results to JDM - however, they have not been tested yet.
+Electronic Charts are significantly more complex than other databases, and are not fully reverse-engineered yet. jdmtool produces _almost_ identical results to JDM, but not exactly.
 
 If you are willing to try it, please make sure you have a backup plan - i.e., you can update the database using the official JDM.
 
-Even if the G1000 update goes through, please make sure the expected data is there: approach plates, airport information, NOTAMs, etc.
+If the update goes through, please make sure the expected data is there: approach plates, airport information, NOTAMs, etc.
 
-Finally, please [file a bug](https://github.com/dimaryaz/jdmtool/issues/) to report your results (even if everything worked correctly).
+Please [file a bug](https://github.com/dimaryaz/jdmtool/issues/) to report any problems.
 
 ### Technical Info
 
-Unlike other G1000 databases that are simply copied to the USB drive, Electronic Charts require a lot of pre-processing.
+Unlike other databases that are simply copied to the SD card / USB drive, Electronic Charts require a lot of pre-processing.
 
 Zip files downloaded from Jeppesen contain the following files:
 
@@ -43,7 +43,7 @@ The official JDM software performs roughly the following steps:
 - Create the copy-protection file `featunlk.dat` based on `crcfiles.txt`
 - Update `.jdm`
 
-Unfortunately, I don't know how JDM determines the coverage in order to do the filtering. I also don't know if filtering is even important. (Does it hurt to have worldwide airport metadata and worldwide NOTAMs? I doubt it - but I don't have a G1000 to try it.)
+Unfortunately, I don't know how JDM determines the coverage in order to do the filtering. I also don't know if filtering is even important.
 
 Therefore, jdmtool instead performs the following:
 - Combine all `...Charts.bin` files from all Zips into a single `charts.bin`

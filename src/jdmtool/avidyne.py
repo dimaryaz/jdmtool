@@ -342,14 +342,14 @@ class SFXMessageBoxSection(SFXSection):
         write_string(out, self.message)
 
 
-SECTION_CLASSES: list[SFXSection] = [
+SECTION_CLASSES: list[type[SFXSection]] = [
     SFXScriptSection,
     SFXCopySection,
     SFXExecuteSection,
     SFXPersistSection,
     SFXMessageBoxSection,
 ]
-SECTION_BY_ID: Mapping[int, SFXSection] = { cls.SECTION_ID: cls for cls in SECTION_CLASSES }
+SECTION_BY_ID: Mapping[int, type[SFXSection]] = { cls.SECTION_ID: cls for cls in SECTION_CLASSES }
 
 
 @dataclass
