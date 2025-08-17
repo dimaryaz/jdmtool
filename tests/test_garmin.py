@@ -17,10 +17,9 @@ Each test asserts correct device detection, firmware writer method calls, and pr
 exception raising, ensuring robust integration of USB context and firmware writer factories.
 """
 
+import pytest
 import logging
 
-logger = logging.getLogger(__name__)
-import pytest
 from unittest import mock
 from jdmtool.data_card.detect import open_programming_device
 from jdmtool.data_card.common import ProgrammingException
@@ -30,6 +29,7 @@ from jdmtool.data_card.garmin import (
     GarminFirmwareWriter,
 )
 
+logger = logging.getLogger(__name__)
 
 # ---------------------
 # Pytest Fixtures
@@ -62,7 +62,6 @@ def fake_handle(monkeypatch):
     logger.debug("Setting up fake_handle fixture")
 
     def open_usb_device_side_effect(*args, **kwargs):
-        from jdmtool.data_card.detect import GarminFirmwareWriter
 
         class Context:
             def __init__(self):

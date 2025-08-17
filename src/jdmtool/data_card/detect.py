@@ -11,7 +11,10 @@ from contextlib import contextmanager
 import time
 import logging
 
-from .common import ProgrammingDevice, ProgrammingException
+from .common import (
+    ProgrammingDevice,
+    ProgrammingException,
+)
 from .garmin import (
     AlreadyUpdatedException,
     GarminFirmwareWriter,
@@ -112,8 +115,8 @@ def _read_endpoints(usbdev: USBDevice) -> tuple[int, int]:
                 for endpoint in setting:
                     addr = endpoint.getAddress()
                     endpoints.append((num, alt, addr))
-            except Exception:
-                raise ProgrammingException("Failed to read endpoints")
+            except USBError as ex:
+                raise ProgrammingException("Failed to read endpoints") from ex
     if not endpoints:
         raise ProgrammingException("No endpoints found in device configuration.")
     in_eps = [addr for (_, _, addr) in endpoints if (addr & 0xF0) == 0x80]
@@ -182,13 +185,19 @@ def open_programming_device() -> Generator[ProgrammingDevice, None, None]:
 
                 with _open_usb_device(usbdev) as handle:
                     if vid_pid[1] == 0x0300:  # early model
-                        writer = GarminFirmwareWriter(handle)
+                        try:
+                            writer = GarminFirmwareWriter(handle)
+                        except RuntimeError as e:
+                            raise ProgrammingException(str(e)) from e
                         logger.info("Configuring early Garmin programmer (0x0300)")
                         writer.write_firmware_0x300()
                         usbdev = _rescan(usbcontext, GARMIN_VID_PID)
 
                     else:  # current model
-                        writer = GarminFirmwareWriter(handle)
+                        try:
+                            writer = GarminFirmwareWriter(handle)
+                        except RuntimeError as e:
+                            raise ProgrammingException(str(e)) from e
                         logger.info("Configuring Garmin programmer")
                         # write stage 1
                         writer.write_firmware_stage1()
@@ -197,7 +206,10 @@ def open_programming_device() -> Generator[ProgrammingDevice, None, None]:
                         # check version and write stage 2 if required
                         try:
                             with _open_usb_device(usbdev) as handle:
-                                writer = GarminFirmwareWriter(handle)
+                                try:
+                                    writer = GarminFirmwareWriter(handle)
+                                except RuntimeError as e:
+                                    raise ProgrammingException(str(e)) from e
                                 writer.init_stage2()
                                 writer.write_firmware_stage2()
                         except AlreadyUpdatedException:
@@ -213,12 +225,15 @@ def open_programming_device() -> Generator[ProgrammingDevice, None, None]:
 
                 with _open_usb_device(usbdev) as handle:
                     try:  # to update stage-2 firmware if possible
-                        writer = GarminFirmwareWriter(handle)
+                        try:
+                            writer = GarminFirmwareWriter(handle)
+                        except RuntimeError as e:
+                            raise ProgrammingException(str(e)) from e
                         writer.init_stage2()
                         writer.write_firmware_stage2()
                     except AlreadyUpdatedException:
                         pass
-                    except Exception as e:
+                    except USBError as e:
                         raise ProgrammingException(str(e)) from e
                     else:
                         usbdev = _rescan(usbcontext, GARMIN_VID_PID)
