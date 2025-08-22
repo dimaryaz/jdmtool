@@ -20,10 +20,6 @@ class AlreadyUpdatedException(ProgrammingException):
 
 class GarminFirmwareWriter(BasicUsbDevice):
 
-    def __init__(self, handle: USBDeviceHandle) -> None:
-         # Initialize base device
-        super().__init__(handle, -1, -1) # force control_writes
-
     def write_firmware_0x300(self) -> None:
         print("Writing firmware for VID 0x300")
         with open(FIRMWARE_DIR / 'grmn0300.dat', 'rb') as fd:
