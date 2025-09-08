@@ -195,7 +195,7 @@ def update_feat_unlk(
     # JDM makes the file read-only, so make it writable again (if it exists)
     try:
         feat_unlk.chmod(0o644)
-    except FileNotFoundError:
+    except OSError:
         pass
 
     # Open the file in read+write mode - but make sure it exists first.
@@ -209,7 +209,10 @@ def update_feat_unlk(
         out.write(chk3.to_bytes(4, 'little'))
 
     # Make it read-only just to be consistent with JDM.
-    feat_unlk.chmod(0o444)
+    try:
+        feat_unlk.chmod(0o444)
+    except OSError:
+        pass
 
 
 def display_all_content_of_feat_unlk(featunlk: pathlib.Path, show_missing=False) -> None:
