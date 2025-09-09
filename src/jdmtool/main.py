@@ -1076,6 +1076,22 @@ def _parse_ids(ids: str) -> list[int] | IdPreset:
     except ValueError:
         return [int(s) for s in ids.split(',')]
 
+def cmd_extract_basemap(input_file: str) -> None:
+    input_file_path = pathlib.Path(input_file)
+    output_file_path = input_file_path.parent / 'basemap.img'
+
+    input_bytes = input_file_path.read_bytes()
+    basemap_signature_offset = input_bytes.find(b'DSKIMG')
+
+    if basemap_signature_offset == -1:
+        print('Could not find basemap in the input file!')
+        return
+
+    basemap_bytes = input_bytes[basemap_signature_offset - 16:basemap_signature_offset - 16 + 0x800000]
+    output_file_path.write_bytes(basemap_bytes)
+
+    print(f'Wrote basemap to {output_file_path.name}')
+
 
 def main():
     parser = argparse.ArgumentParser(description="Download and transfer Jeppesen databases")
@@ -1241,6 +1257,16 @@ def main():
         help="List databases without extracting",
     )
     extract_taw_p.set_defaults(func=cmd_extract_taw)
+
+    extract_basemap_p = subparsers.add_parser(
+        "extract-basemap",
+        help="Extract basemap for legacy devices from GADM binary",
+    )
+    extract_basemap_p.add_argument(
+        "input_file",
+        help="Binary file",
+    )
+    extract_basemap_p.set_defaults(func=cmd_extract_basemap)
 
     args = parser.parse_args()
 
