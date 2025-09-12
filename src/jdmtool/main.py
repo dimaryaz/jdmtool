@@ -1076,9 +1076,12 @@ def _parse_ids(ids: str) -> list[int] | IdPreset:
     except ValueError:
         return [int(s) for s in ids.split(',')]
 
-def cmd_extract_basemap(input_file: str) -> None:
+def cmd_extract_basemap(input_file: str, output_file: str) -> None:
     input_file_path = pathlib.Path(input_file)
-    output_file_path = input_file_path.parent / 'basemap.img'
+    output_file_path = pathlib.Path(output_file)
+
+    if output_file_path.is_dir():
+            output_file_path /=  'basemap.img'
 
     input_bytes = input_file_path.read_bytes()
     basemap_signature_offset = input_bytes.find(b'DSKIMG')
@@ -1088,6 +1091,11 @@ def cmd_extract_basemap(input_file: str) -> None:
         return
 
     basemap_bytes = input_bytes[basemap_signature_offset - 16:basemap_signature_offset - 16 + 0x800000]
+
+    if not basemap_bytes.endswith(b'\0' * (0x800000 - 0x007fe4a7)):
+        print('Unsupported basemap version (bigger than V 1.01)!')
+        return
+
     output_file_path.write_bytes(basemap_bytes)
 
     print(f'Wrote basemap to {output_file_path.name}')
@@ -1264,7 +1272,11 @@ def main():
     )
     extract_basemap_p.add_argument(
         "input_file",
-        help="Binary file",
+        help="Binary file like GADM.Core.Windows.exe or GADM.macos",
+    )
+    extract_basemap_p.add_argument(
+        "output_file",
+        help="Basemap file",
     )
     extract_basemap_p.set_defaults(func=cmd_extract_basemap)
 
