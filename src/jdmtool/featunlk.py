@@ -552,7 +552,7 @@ def display_content_of_dat_file(feature: Feature, dat_file: pathlib.Path):
             print(f'** Effective {cus_date1} to {cus_date2}')
     elif feature in (Feature.SECTIONALS,):
         print('** Cycle: ' + represent_bytes(header_bytes[101:101+4]))
-        cus_date1 = represent_bytes(datetime.datetime.strptime(header_bytes[171:171+10]), "%m/%d/%Y").date().strftime(format_date).upper()
+        cus_date1 = datetime.datetime.strptime(header_bytes[171:171+10].decode('ascii'), "%m/%d/%Y").date().strftime(format_date).upper()
         print(f'** Effective_date: {cus_date1}')
         print('** ' + represent_bytes(header_bytes[216:216+21]))
     elif feature in (Feature.AIR_SPORT,):
