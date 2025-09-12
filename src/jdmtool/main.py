@@ -934,7 +934,7 @@ def _write_database(dev: ProgrammingDevice, path: str, full_erase: bool) -> None
                             pass
                     t.update(dev.card_type.sector_size)
         else:
-            with tqdm.tqdm(desc="Erasing the database", total=size, unit='B', unit_scale=True) as t:
+            with tqdm.tqdm(desc="Erasing the database", total=total_erase_size, unit='B', unit_scale=True) as t:
                 for _ in dev.erase_sectors(0, sectors_to_erase):
                     t.update(dev.card_type.sector_size)
 
