@@ -504,8 +504,8 @@ def display_content_of_dat_file(feature: Feature, dat_file: pathlib.Path):
         if (dat_file.parent / 'charts.ini').is_file():
             with open(dat_file.parent / 'charts.ini', 'rb') as fd:
                 header_bytes = fd.read(0x200)
-            cus_date1 = represent_bytes(datetime.date.fromordinal(int(header_bytes[30:30+7]))- 1721424).strftime(format_date).upper()
-            cus_date2 = represent_bytes(datetime.date.fromordinal(int(header_bytes[59:59+7]))- 1721424).strftime(format_date).upper()
+            cus_date1 = datetime.date.fromordinal(int(header_bytes[30:30+7].decode('ascii'))- 1721424).strftime(format_date).upper()
+            cus_date2 = datetime.date.fromordinal(int(header_bytes[59:59+7].decode('ascii'))- 1721424).strftime(format_date).upper()
             print(f'** Effective {cus_date1} to {cus_date2}')
     elif feature in (Feature.SAFETAXI, Feature.BASEMAP, Feature.BASEMAP2):
         xor_byte = header_bytes[0x00]
