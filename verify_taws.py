@@ -146,7 +146,7 @@ def main(argv):
                 if idx == 0xffffffff:
                     continue
 
-                if idx != sector * blocks_per_sector + sector_block_idx:
+                if idx & 0x00ffffff != sector * blocks_per_sector + sector_block_idx:
                     raise ValueError(f"Unexpected idx: {idx}")
 
                 verifyBlockCrc(data, footer)
