@@ -73,13 +73,22 @@ def crc16_checksum(data: bytes, value: int = 0xffff) -> int:
 
 SECTOR_SIZE = 0x10800
 
+
+def translate_sector(bad_sectors: list[int], sector: int) -> int:
+    for bad_sector in bad_sectors:
+        if bad_sector > sector:
+            break
+        sector += 1
+    return sector
+
+
 def main(argv):
     if len(argv) != 4:
         print(f"Usage: {argv[0]} taws_image.bin sector database.bin")
         return 1
 
     _, taws_image, sector_str, database = argv
-    sector = int(sector_str)
+    starting_logical_sector = int(sector_str)
 
     taws_image_size = os.stat(taws_image).st_size
     taws_image_sectors = taws_image_size // SECTOR_SIZE
@@ -88,30 +97,53 @@ def main(argv):
         print("256MB")
         block_size = BLOCK_SIZE_256
         footer_size = FOOTER_SIZE_256
-    elif taws_image_sectors == 0x500:
+    elif taws_image_sectors == 0x7C1:
         print("128MB")
         from fastcrc import crc16
         block_size = BLOCK_SIZE_128
         footer_size = FOOTER_SIZE_128
     else:
-        assert False
+        assert False, taws_image_sectors
 
     assert SECTOR_SIZE % (block_size + footer_size) == 0
     blocks_per_sector = SECTOR_SIZE // (block_size + footer_size)
 
-    starting_idx = sector * blocks_per_sector
-
     with open(database, 'rb') as fd_in, open(taws_image, 'r+b') as fd_out:
-        fd_out.seek(sector * SECTOR_SIZE)
+        fd_out.seek(block_size + footer_size)
+        xblk = fd_out.read(block_size)
+        bb_count = int.from_bytes(xblk[6:8], 'little')
+
+        bad_sectors: list[int] = []
+        for i in range(8, 8 + bb_count * 2, 2):
+            blk_id = int.from_bytes(xblk[i:i+2], 'little')
+            if block_size == BLOCK_SIZE_256:
+                bad_sectors.append(blk_id * 2)
+                bad_sectors.append(blk_id * 2 + 1)
+            else:
+                assert blk_id % 4 == 0, blk_id
+                bad_sectors.append(blk_id // 4)
+
+        print("Bad sectors:", bad_sectors)
 
         file_size = os.fstat(fd_in.fileno()).st_size
         block_count = -(-file_size // (block_size))
 
-        for idx in range(starting_idx, starting_idx + block_count):
+        current_idx = -1
+
+        for input_block_idx in range(block_count):
+            if input_block_idx % blocks_per_sector == 0:
+                logical_sector = starting_logical_sector + input_block_idx // blocks_per_sector
+                physical_sector = translate_sector(bad_sectors, logical_sector)
+                if physical_sector > taws_image_sectors:
+                    raise ValueError("Ran out of space!")
+
+                current_idx = physical_sector * blocks_per_sector
+                fd_out.seek(physical_sector * SECTOR_SIZE)
+
             data = fd_in.read(block_size).ljust(block_size, b'\xff')
             fd_out.write(data)
 
-            footer = idx.to_bytes(4, 'little').ljust(footer_size - 4, b'\x00')
+            footer = current_idx.to_bytes(4, 'little').ljust(footer_size - 4, b'\x00')
             if block_size == BLOCK_SIZE_128:
                 footer += crc16.mcrf4xx(footer).to_bytes(2, 'little')
                 footer += datablock_checksum_pagesize512(data, footer).to_bytes(2, 'little')
@@ -120,6 +152,8 @@ def main(argv):
 
             assert len(footer) == footer_size, len(footer)
             fd_out.write(footer)
+
+            current_idx += 1
 
 
 if __name__ == "__main__":
