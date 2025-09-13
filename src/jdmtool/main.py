@@ -1081,7 +1081,7 @@ def cmd_extract_basemap(input_file: str, output_file: str) -> None:
     output_file_path = pathlib.Path(output_file)
 
     if output_file_path.is_dir():
-            output_file_path /=  'basemap.img'
+        output_file_path /= 'basemap.img'
 
     input_bytes = input_file_path.read_bytes()
     basemap_signature_offset = input_bytes.find(b'DSKIMG')
