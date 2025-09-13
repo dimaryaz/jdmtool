@@ -30,7 +30,7 @@ def truncate_system_id(system_id: int) -> int:
     return (system_id & 0xFFFFFFFF) + (system_id >> 32)
 
 def represent_bytes(bs: bytes) -> str:
-    return ''.join(chr(b) if 32 <= b < 128 else f' 0x{b:02X} ' for b in bs)
+    return ''.join(chr(b) if 32 <= b < 128 else f' 0x{b:02X} ' for b in bs.rstrip(b'\x00'))
 
 CONTENT1_LEN = 0x55   # 85
 CONTENT2_LEN = 0x338  # 824
