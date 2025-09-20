@@ -38,7 +38,7 @@ TAW_REGION_PATHS = {
     0x14: "fc_tpc/fc_tpc.dat",
     0x1A: "rasters/rasters.xml",
     0x21: "terrain.tdb",
-    0x22: "terrain.odb",
+    0x22: "terrain_9as.odb",
     0x23: "trn.dat",
     0x24: "FCharts.dat",
     0x25: "Fcharts.fca",
