@@ -3,6 +3,7 @@
 import os
 import sys
 
+OFFSET_SERIAL = 0x01f6
 
 BLOCK_SIZE_128 = 0x200
 FOOTER_SIZE_128 = 0x10
@@ -116,6 +117,10 @@ def main(argv):
     blocks_per_sector = SECTOR_SIZE // (block_size + footer_size)
 
     with open(taws_image, 'rb') as fd:
+        header = fd.read(block_size)
+        serial = int.from_bytes(header[OFFSET_SERIAL:OFFSET_SERIAL+4], 'little')
+        print(f'Serial: {serial:08x}')
+
         fd.seek(block_size + footer_size)
         xblk = fd.read(block_size)
         bb_count = int.from_bytes(xblk[6:8], 'little')
