@@ -1043,7 +1043,7 @@ def cmd_extract_taw(input_file: str, verbose: bool, list_only: bool) -> None:
             debug(f"Database size: {s.data_size}")
 
             if dest_path:
-                output_file = pathlib.PurePosixPath(dest_path).name
+                output_file = dest_path
             else:
                 output_file = f"region_{s.region:02x}.bin"
 
@@ -1053,6 +1053,7 @@ def cmd_extract_taw(input_file: str, verbose: bool, list_only: bool) -> None:
                 print(f"Extracting {output_file}... ", end='')
                 assert fd_in.tell() == s.data_start
                 block_size = 0x1000
+                pathlib.Path(output_file).parent.mkdir(parents=True, exist_ok=True)
                 with open(output_file, 'wb') as fd_out:
                     for offset in range(0, s.data_size, block_size):
                         block = fd_in.read(min(s.data_size - offset, block_size))
