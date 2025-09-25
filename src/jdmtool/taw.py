@@ -47,6 +47,7 @@ TAW_REGION_PATHS = {
     0x28: "terrain.adb",
     0x32: ".System/AVTN/avtn_db.bin",
     0x33: "Poi/air_sport.gpi",
+    0x34: ".System/AVTN/terrain.tdb",
     0x35: ".System/AVTN/Obstacle.odb",
     0x36: ".System/AVTN/safetaxi.img",
     0x39: ".System/AVTN/FliteCharts/fc_tpc.dat",
