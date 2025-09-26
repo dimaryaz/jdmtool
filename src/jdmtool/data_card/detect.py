@@ -148,8 +148,19 @@ def _rescan(usbcontext: USBContext, vid_pid: tuple[int, int]) -> USBDevice:
         time.sleep(0.2)  # wait for interface
         usbdev = usbcontext.getByVendorIDAndProductID(vid_pid[0], vid_pid[1])
         if usbdev is not None:
-            return usbdev
-    raise ProgrammingException("Could not find the new device!")
+            break
+    else:
+        raise ProgrammingException("Could not find the new device!")
+
+    # After the device reconnects, it can disconnect/reconnect *again* in the next 2s.
+    # Even if we can open it successfully and read its firmware version, it still doesn't
+    # guarantee anything - so just sleep and find the device again.
+    time.sleep(2.5)
+
+    usbdev = usbcontext.getByVendorIDAndProductID(vid_pid[0], vid_pid[1])
+    if usbdev is None:
+        raise ProgrammingException("The new device has disappeared!")
+    return usbdev
 
 
 @contextmanager
