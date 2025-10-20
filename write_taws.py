@@ -22,6 +22,16 @@ def main(argv):
     assert SECTOR_SIZE % (block_size + footer_size) == 0
     blocks_per_sector = SECTOR_SIZE // (block_size + footer_size)
 
+    logical_input_size = os.stat(logical_input).st_size
+    if logical_input_size % 0x10000 != 0:
+        print(f"Unexpected logical input size: {logical_input_size} (not a multiple of 0x10000)")
+        return 2
+
+    logical_sectors = logical_input_size // 0x10000
+    if not taws_image_sectors - 16 < logical_sectors <= taws_image_sectors:
+        print(f"Unexpected number of logical sectors: {logical_sectors}")
+        return 2
+
     with open(logical_input, 'rb') as fd_in, open(physical_output, 'r+b') as fd_out:
         old_header = fd_out.read(block_size)
         old_serial = parse_serial(old_header)
