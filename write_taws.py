@@ -4,7 +4,7 @@ import os
 import sys
 
 
-from taws_utils import OFFSET_SERIAL, SECTOR_SIZE, guess_block_footer_size, parse_bad_sectors, translate_sector, create_footer, parse_serial
+from taws_utils import SECTOR_SIZE, guess_block_footer_size, parse_bad_sectors, translate_sector, create_footer, parse_serial, write_serial
 
 
 def main(argv):
@@ -25,21 +25,21 @@ def main(argv):
     with open(logical_input, 'rb') as fd_in, open(physical_output, 'r+b') as fd_out:
         old_header = fd_out.read(block_size)
         old_serial = parse_serial(old_header)
-        print(f'Old serial: {old_serial:08x}')
+        print(f'Serial in physical image: {old_serial:08x}')
 
         new_header = fd_in.read(block_size)
         new_serial = parse_serial(new_header)
-        print(f'New serial: {new_serial:08x}')
+        print(f'Serial in logical input: {new_serial:08x}')
+
+        print(f"(Keeping the original serial {old_serial:08x})")
+        new_header = write_serial(new_header, old_serial)
 
         fd_out.seek(0)
         fd_out.write(new_header)
         new_header_footer = create_footer(new_header, 0, footer_size)
         fd_out.write(new_header_footer)
 
-        print(fd_out.tell())
-        print(block_size + footer_size)
         fd_out.seek(block_size + footer_size)
-        print(fd_out.tell())
         xblk = fd_out.read(block_size)
         bad_sectors = parse_bad_sectors(xblk, block_size)
 

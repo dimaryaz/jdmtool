@@ -100,6 +100,10 @@ def parse_serial(header: bytes) -> int:
     return int.from_bytes(header[OFFSET_SERIAL:OFFSET_SERIAL+4], 'little')
 
 
+def write_serial(header: bytes, serial: int) -> bytes:
+    return header[:OFFSET_SERIAL] + serial.to_bytes(4, 'little') + header[OFFSET_SERIAL+4:]
+
+
 def parse_bad_sectors(xblk: bytes, block_size: int) -> list[int]:
     bb_count = int.from_bytes(xblk[6:8], 'little')
 
