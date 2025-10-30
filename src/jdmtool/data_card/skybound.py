@@ -111,15 +111,15 @@ class SkyboundDevice(ProgrammingDevice):
 
         if self.sectors_per_chip == 0x10:  # 1MB chip
             self.bulk_write(b"\x2A\x03")
-            expected_byte = 0x80
         else:
             self.bulk_write(b"\x2A\x04")
-            expected_byte = data[-1]
 
         self.bulk_write(data)
         buf = self.bulk_read(0x0040)
 
-        if buf[0] != expected_byte or buf[1:] != b"\x00\x00\x00":
+        # buf[0] can have different values for different cards - even with the same IID -
+        # so only check the other three bytes.
+        if buf[1:] != b"\x00\x00\x00":
             raise ProgrammingException(f"Unexpected response: {buf}")
 
     def select_physical_sector(self, sector_id: int) -> None:
