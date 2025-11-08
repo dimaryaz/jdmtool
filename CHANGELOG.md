@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.5.1 (2025-11-07)
+- Add an `extract-basemap` command for extracting basemap from GADM binaries (thanks [@zyv](https://github.com/zyv))
+- Use full paths and fix some file names in the `extract-taw` command (thanks [@ryandrake08](https://github.com/ryandrake08))
+- Fix errors when initializing Garmin Programmer on OS X
+- (Hopefully) fix errors when writing to certain data cards
+- Add unit tests for Garmin Programmer (thanks [@alxwolf](https://github.com/alxwolf))
+
 ## 0.5 (2025-08-08)
 - Support for "older" Garmin USB Aviation Data Card Programmer devices (thanks [@alxwolf](https://github.com/alxwolf))
 - Improvements to the `featunlk` script (thanks [@ELD400](https://github.com/ELD400) and [sHorst](https://github.com/sHorst))
