@@ -71,7 +71,7 @@ class ChartRecord:
 
 class ChartView:
     FILES_TO_COPY = [
-        'ctypes.dbf',
+        # 'ctypes.dbf',
         'jeppesen.tfl',
         'jeppesen.tls',
         'lssdef.tcl',
@@ -81,9 +81,9 @@ class ChartView:
         ('airports.dbf', True),
         ('charts.dbf', True),
         ('charts.ini', True),
-        ('chrtlink.dbf', True),
+        # ('chrtlink.dbf', True),
         ('country.dbf', False),
-        # ('coverags.dbf', False),
+        ('coverags.dbf', True),
         ('ctypes.dbf', False),
         ('jeppesen.tfl', False),
         ('jeppesen.tls', False),
@@ -91,7 +91,7 @@ class ChartView:
         ('notams.dbf', True),
         ('notams.dbt', True),
         # ('regions.dat', False),
-        # ('sbscrips.dbf', False),
+        ('sbscrips.dbf', True),
         ('state.dbf', False),
     ]
 

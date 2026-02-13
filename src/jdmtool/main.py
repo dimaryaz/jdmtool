@@ -569,6 +569,14 @@ def _transfer_common_chartview(service: Service, path: pathlib.Path) -> ChartVie
 
     zip_files = [d.dest_path for d in service.get_databases()]
     with ChartView(zip_files) as cv:
+        print("*** Copying coverags.dbf from your current directory...")
+        shutil.copyfile('coverags.dbf', charts_path / 'coverags.dbf')
+        charts_files.append('coverags.dbf')
+
+        print("*** Copying sbscrips.dbf from your current directory...")
+        shutil.copyfile('sbscrips.dbf', charts_path / 'sbscrips.dbf')
+        charts_files.append('sbscrips.dbf')
+
         print("Processing charts.ini...")
         charts_files.append('charts.ini')
         db_begin_date = cv.process_charts_ini(charts_path)
@@ -616,8 +624,8 @@ def _transfer_common_chartview(service: Service, path: pathlib.Path) -> ChartVie
         charts_files.append('charts.dbf')
         charts = cv.process_charts(ifr_airports, vfr_airports, charts_path)
 
-        print("Processing chrtlink.dbf...")
-        charts_files.append('chrtlink.dbf')
+        print("Processing chrtlink.dbf... (will not actually add it!)")
+        # charts_files.append('chrtlink.dbf')
         chartlink = cv.process_chartlink(ifr_airports, vfr_airports, charts_path)
 
         print("Processing airports.dbf...")
