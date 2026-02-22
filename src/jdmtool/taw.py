@@ -21,9 +21,10 @@ TAW_DATABASE_TYPES = {
     0x02F0: "GPS175",
     0x0402: "GtnXi",
     0x0465: "GI275",
+    0x055E: "GTR225/GNC255",
     0x0618: "AERA 760",
     0x06BF: "G3X Touch",
-    0x0738: "GTR2X5",
+    0x0738: "GTR2X5/GNC215",
     0x07DC: "GTXi",
 }
 
