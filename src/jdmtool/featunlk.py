@@ -13,6 +13,7 @@ from io import BytesIO
 from typing import Any, IO
 
 from .checksum import feat_unlk_checksum
+from .common import JdmToolException
 from .taw import TAW_DATABASE_TYPES
 
 FEAT_UNLK = 'feat_unlk.dat'
@@ -568,14 +569,44 @@ def display_content_of_dat_file(feature: Feature, dat_file: pathlib.Path):
         print(header_bytes)
 
 
+def cmd_verify(featunlk: str, feature: str | None) -> None:
+    if feature is None:
+        display_all_content_of_feat_unlk(pathlib.Path(featunlk), True)
+    else:
+        try:
+            feature_typed = Feature[feature]
+        except KeyError as e:
+            feature_typed = FILENAME_TO_FEATURE.get(feature)
+
+            if feature_typed is None:
+                print(f"Unsupported feature: {feature}")
+                print()
+                print("Supported feature names and file paths:")
+                for f in Feature:
+                    print(f"  {f.name}: {', '.join(f.filenames)}")
+                raise ValueError from e
+
+        display_content_of_feat_unlk(pathlib.Path(featunlk), feature_typed, True)
+
+
 def main():
-    parser = argparse.ArgumentParser(description="Read the contents of a featunlk.dat/feat_unlk.dat file")
-    parser.add_argument(
+    parser = argparse.ArgumentParser(description="Process the contents of a featunlk.dat/feat_unlk.dat file")
+
+    subparsers = parser.add_subparsers(metavar="<command>")
+    subparsers.required = True
+
+    verify_p = subparsers.add_parser(
+        "verify",
+        help="Verify information",
+    )
+    verify_p.add_argument(
         '-f',
         '--feature',
         help="Only verify info for one specific Feature (by name or file path). "
              "CRC will be checked against file in same folder/subfolder of featunlk.dat/feat_unlk.dat file.",
     )
+    verify_p.set_defaults(func=cmd_verify)
+
     parser.add_argument(
         "featunlk",
         metavar="featunlk.dat",
@@ -584,22 +615,13 @@ def main():
 
     args = parser.parse_args()
 
-    if args.feature is None:
-        display_all_content_of_feat_unlk(pathlib.Path(args.featunlk), True)
-    else:
-        try:
-            feature = Feature[args.feature]
-        except KeyError:
-            feature = FILENAME_TO_FEATURE.get(args.feature)
+    kwargs = vars(args)
+    func = kwargs.pop('func')
 
-            if feature is None:
-                print(f"Unsupported feature: {args.feature}")
-                print()
-                print("Supported feature names and file paths:")
-                for f in Feature:
-                    print(f"  {f.name}: {', '.join(f.filenames)}")
-                return 1
-
-        display_content_of_feat_unlk(pathlib.Path(args.featunlk), feature, True)
+    try:
+        func(**kwargs)
+    except JdmToolException as ex:
+        print(ex)
+        return 1
 
     return 0
