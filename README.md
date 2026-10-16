@@ -33,7 +33,7 @@ pip3 install "git+https://github.com/dimaryaz/jdmtool.git#egg=jdmtool"
 
 For all avionics that use an SD card or USB drive, you should install a Just-in-Time compiler by running:
 ```
-pip3 install jdmtool[jit]
+pip3 install 'jdmtool[jit]'
 ```
 
 This should significantly improve transfer speeds.
@@ -42,7 +42,7 @@ This should significantly improve transfer speeds.
 
 You must install the USB library:
 ```
-pip3 install jdmtool[usb]
+pip3 install 'jdmtool[usb]'
 ```
 
 On Linux, make sure you have access to the USB device; see [Installing udev rules on Linux](udev/README.md).
