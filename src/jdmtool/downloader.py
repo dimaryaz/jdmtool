@@ -115,7 +115,7 @@ class Downloader:
             response_text = root.findtext('./response_text')
             raise DownloaderException(response_text)
 
-        get_services_path().write_text(resp.text)
+        get_services_path().write_text(resp.text, encoding='utf-8')
 
     def refresh_keychain(self) -> None:
         auth = self.get_auth()
