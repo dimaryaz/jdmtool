@@ -197,6 +197,9 @@ def update_feat_unlk(
 
     # JDM makes the file read-only, so make it writable again (if it exists)
     try:
+        if hasattr(os, 'chflags'):
+            # On MacOS, also clear the "IMMUTABLE" flag *before* the chmod.
+            os.chflags(feat_unlk, 0) # type: ignore
         feat_unlk.chmod(0o644)
     except OSError:
         pass
@@ -212,6 +215,7 @@ def update_feat_unlk(
         out.write(chk3.to_bytes(4, 'little'))
 
     # Make it read-only just to be consistent with JDM.
+    # (Don't bother with the "IMMUTABLE" flag on MacOS - not worth the potential problems with it.)
     try:
         feat_unlk.chmod(0o444)
     except OSError:
