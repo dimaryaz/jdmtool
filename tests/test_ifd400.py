@@ -31,8 +31,8 @@ def test_transfer(tmp_path: Path, test_data: Path):
 
     vol_id = "1234-5678"
 
-    PROMPT_CTX.set(lambda _: None)
-    cmd_transfer(ids=[0], device=dest, no_download=True, vol_id=vol_id, full_erase=False)
+    PROMPT_CTX.set(lambda prompt: None)
+    cmd_transfer(ids=[0], device=str(dest), no_download=True, vol_id=vol_id, full_erase=False)
 
     expected_debug = (test_data / "expected_debug.txt").read_text("utf-8")
     actual_debug = StringIO()

@@ -337,11 +337,8 @@ def update_dot_jdm(service: Service, path: pathlib.Path, config: DotJdmConfig) -
             sh = crc32q_checksum(fd.read(config.sh_size))
             if size <= DOT_JDM_MAX_FH_SIZE:
                 fh = sh
-                while True:
-                    chunk = fd.read(0x8000)
-                    if not chunk:
-                        break
-                    fh = crc32q_checksum(chunk, fh)
+                while block := fd.read(0x8000):
+                    fh = crc32q_checksum(block, fh)
             else:
                 fh = None
 
@@ -537,13 +534,22 @@ def _transfer_g1000_basic(service: Service, path: pathlib.Path, volume_id: int) 
         infolist = database_zip.infolist()
         for info in infolist:
             info.filename = info.filename.replace('\\', '/')  # 🤦‍
-            if info.filename not in FILENAME_TO_FEATURE:
-                raise UserException(f"Unexpected filename: {info.filename}! Please file a bug.")
 
             target = path / info.filename
+            if info.is_dir():
+                target.mkdir(parents=True, exist_ok=True)
+                continue
+
             with tqdm.tqdm(desc=f"Extracting {info.filename}...", total=info.file_size, unit='B', unit_scale=True) as t:
                 with database_zip.open(info) as src_fd:
-                    copy_with_feat_unlk(path, src_fd, info.filename, volume_id, security_id, system_id, t.update)
+                    if info.filename in FILENAME_TO_FEATURE:
+                        copy_with_feat_unlk(path, src_fd, info.filename, volume_id, security_id, system_id, t.update)
+                    else:
+                        target.parent.mkdir(parents=True, exist_ok=True)
+                        with open(target, 'wb') as dest:
+                            while block := src_fd.read(0x8000):
+                                dest.write(block)
+                                t.update(len(block))
 
             dot_jdm.files.append(target)
 

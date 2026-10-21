@@ -1,0 +1,55 @@
+{
+  "ss": [
+    {
+      "a": "Garmin G1000, G900X, G950, Perspective, Prodigy",
+      "c": "123",
+      "cd": "Antarctica",
+      "date_label_override": "Effective Date:",
+      "dv": "2401",
+      "f": [
+        {
+          "fh": "92e1a9a4",
+          "fp": "foo.txt",
+          "fs": 4,
+          "sh": "92e1a9a4"
+        },
+        {
+          "fh": "6a5eecb2",
+          "fp": "ldr_sys/nav_db2.bin",
+          "fs": 54,
+          "sh": "6a5eecb2"
+        },
+        {
+          "fh": "c4b4756a",
+          "fp": "ldr_sys/avtn_db.bin",
+          "fs": 225,
+          "sh": "c4b4756a"
+        },
+        {
+          "fh": "4edf4711",
+          "fp": "dir/bar.txt",
+          "fs": 4,
+          "sh": "4edf4711"
+        }
+      ],
+      "fid": "12345ABCD",
+      "filter_applied": "no",
+      "gsi": "0x12345ABCD",
+      "jvsn": "",
+      "ndv": "2402",
+      "nvad": "2024-02-01 00:00:00",
+      "nvsd": "2024-02-01 00:00:00",
+      "oatn": "N12345",
+      "pi": "TEST12345",
+      "s": "NavData",
+      "sc": "Antarctica",
+      "u": "123456",
+      "uv": "123456_2401",
+      "v": "2401",
+      "ved": "2024-01-01 00:00:00",
+      "vsd": "2024-01-01 00:00:00"
+    }
+  ],
+  "ver": "1.1",
+  "z": "2d799e75"
+}

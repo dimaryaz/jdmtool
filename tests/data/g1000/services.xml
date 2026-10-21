@@ -1,0 +1,68 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<getserviceslist>
+  <!-- Fake services.xml for testing G1000 -->
+  <customer_id>1</customer_id>
+  <customer_num>123</customer_num>
+  <email>test@example.com</email>
+  <customer_name>Test</customer_name>
+  <service>
+    <customer_number>123</customer_number>
+    <category>10</category>
+    <service_code>TEST12345</service_code>
+    <order_code>TEST123</order_code>
+    <unique_service_id>123456</unique_service_id>
+    <product_item>TEST12345</product_item>
+    <oracle_aircraft_tail_number>N12345</oracle_aircraft_tail_number>
+    <oracle_aircraft_manufacturer>Cessna</oracle_aircraft_manufacturer>
+    <oracle_aircraft_model>Skyhawk</oracle_aircraft_model>
+    <garmin_sec_id>191</garmin_sec_id>
+    <service_type>NavData</service_type>
+    <service_type_code>NavData</service_type_code>
+    <avionics>Garmin G1000, G900X, G950, Perspective, Prodigy</avionics>
+    <coverage_desc>Antarctica</coverage_desc>
+
+    <oem_garmin>1</oem_garmin>
+    <oem_no_decrement>1</oem_no_decrement>
+    <oem_metadata>1</oem_metadata>
+
+    <avionics_id>12345ABCD</avionics_id>
+    <garmin_system_ids>12345ABCD</garmin_system_ids>
+    <fleet_ids>12345ABCD</fleet_ids>
+
+    <data_revision>0</data_revision>
+    <filename>service.zip</filename>
+    <version>2401</version>
+    <display_version>2401</display_version>
+    <max_initial_counter>1</max_initial_counter>
+    <downloads>0</downloads>
+    <file_size>0</file_size>
+    <file_crc>0</file_crc>
+    <short_desc>NavData Coverage Garmin G1000 Antarctica</short_desc>
+    <long_desc>NavData Coverage Garmin G1000 Antarctica</long_desc>
+    <version_start_date>2024-01-01 00:00:00</version_start_date>
+    <version_end_date>2024-01-01 00:00:00</version_end_date>
+    <next_version>2402</next_version>
+    <next_display_version>2402</next_display_version>
+    <next_version_avail_date>2024-02-01 00:00:00</next_version_avail_date>
+    <next_version_start_date>2024-02-01 00:00:00</next_version_start_date>
+    <date_label_override>Effective Date:</date_label_override>
+    <media>
+      <card_type>2</card_type>
+      <card_format>0</card_format>
+      <required>1</required>
+    </media>
+    <media_exclude>
+      <card_type>0</card_type>
+      <card_format>7</card_format>
+      <required>1</required>
+    </media_exclude>
+    <media>
+      <card_type>2</card_type>
+      <install_dir>\\ldr_sys\</install_dir>
+      <filename>nav_db2.bin</filename>
+      <card_format>0</card_format>
+      <required>0</required>
+    </media>
+  </service>
+  <response_code>0x0</response_code>
+</getserviceslist>
