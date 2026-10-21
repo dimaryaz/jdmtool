@@ -1,9 +1,8 @@
 import filecmp
 import json
-import os
 import shutil
 from pathlib import Path
-from time import sleep
+import zipfile
 
 from jdmtool.common import get_data_dir
 from jdmtool.main import cmd_transfer, PROMPT_CTX
@@ -19,7 +18,17 @@ def test_transfer(tmp_path: Path):
     downloads_dir.mkdir()
 
     shutil.copy(test_data / 'services.xml', data_dir)
-    shutil.make_archive(str(downloads_dir / "service"), "zip", test_data / "zip")
+
+    expected_files = [
+        "ldr_sys/avtn_db.bin",
+        "ldr_sys/nav_db2.bin",
+        "foo.txt",
+        "dir/bar.txt",
+    ]
+
+    with zipfile.ZipFile(downloads_dir / "service.zip", 'w') as zf:
+        for file in expected_files:
+            zf.write(test_data / "zip" / file, file)
 
     dest = tmp_path / 'device'
     dest.mkdir()
@@ -29,12 +38,6 @@ def test_transfer(tmp_path: Path):
     PROMPT_CTX.set(lambda prompt: None)
     cmd_transfer(ids=[0], device=str(dest), no_download=True, vol_id=vol_id, full_erase=False)
 
-    expected_files = [
-        "ldr_sys/avtn_db.bin",
-        "ldr_sys/nav_db2.bin",
-        "foo.txt",
-        "dir/bar.txt",
-    ]
     assert filecmp.cmpfiles(test_data / "zip", dest, expected_files, shallow=False) == (expected_files, [], [])
 
     assert filecmp.cmp(test_data / "expected_feat_unlk.dat", dest / "feat_unlk.dat", shallow=False)
