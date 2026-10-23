@@ -25,7 +25,7 @@ class DownloaderException(JdmToolException):
 
 class Downloader:
     JSUM_URL = 'https://jsum.jeppesen.com/jsum'
-    JDAM_VERSION = '3.15.1.0'
+    JDAM_VERSION = '3.16.0.2'
     CLIENT_TYPE = 'jdmx_win'
     COV_CHECK_MAGIC = 'L15ak3y'  # Hard-coded in jdm.exe
 
