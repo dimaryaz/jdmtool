@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.6 (2026-10-23)
+- Fix a crash when a G1000 download contains extra files such as `rasters/...` (thanks [@robertbedichek](https://github.com/robertbedichek))
+- (Hopefully) fix a permission error when updating `feat_unlk.dat` on Mac OS
+- Fix a UTF-8 encoding error on Windows when the customer name has special characters (thanks [@sternflyer](https://github.com/sternflyer))
+- Fix a couple database type IDs for GTR/GNC (thanks [@zyv](https://github.com/zyv))
+
 ## 0.5.1 (2025-11-07)
 - Add an `extract-basemap` command for extracting basemap from GADM binaries (thanks [@zyv](https://github.com/zyv))
 - Use full paths and fix some file names in the `extract-taw` command (thanks [@ryandrake08](https://github.com/ryandrake08))
