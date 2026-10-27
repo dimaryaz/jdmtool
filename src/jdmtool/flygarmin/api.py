@@ -1,5 +1,6 @@
 import requests
 
+from ..common import JdmToolException
 
 API_PREFIX = "https://fly.garmin.com/fly-garmin/api"
 
@@ -20,6 +21,8 @@ def list_aircraft(access_token: str) -> list:
             "Authorization": f"Bearer {access_token}",
         },
     )
+    if resp.status_code == 401:
+        raise JdmToolException("Invalid access token")
     resp.raise_for_status()
     return resp.json()
 
