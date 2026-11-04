@@ -16,6 +16,7 @@ import pathlib
 import shutil
 import sys
 import time
+from tempfile import mkdtemp
 from typing import Any, TYPE_CHECKING
 import zipfile
 
@@ -27,7 +28,7 @@ from .config import get_config, get_config_file
 from .const import GRM_FEAT_KEY
 from .data_card.common import DataCardType, ProgrammingDevice, ProgrammingException
 from .service import Service, ServiceException, SimpleService, get_downloads_dir, load_services
-
+from .downloader import Downloader, DownloaderException, GRM_FEAT_KEY
 
 if TYPE_CHECKING:
     from .downloader import Downloader
@@ -276,7 +277,7 @@ def _download(downloader: Downloader, service: Service) -> None:
         with tqdm.tqdm(desc=f"Downloading {database.dest_path.name}", total=database.size, unit='B', unit_scale=True) as t:
             downloader.download_database(database.params, database.dest_path, database.crc32, t.update)
 
-        print(f"Downloaded to {database.dest_path}")
+        print(f"\nDownloaded to {database.dest_path}")
 
     for sff in sffs:
         if sff.dest_path.exists():
@@ -317,6 +318,14 @@ class DotJdmConfig:
     files: list[pathlib.Path]
 
 
+@dataclass
+class ChartViewMetadata:
+    charts_files: List[pathlib.Path]
+    fonts_files: List[pathlib.Path]
+    filenames_by_chart: Dict[Tuple[str, bool], List[str]]
+    db_begin_date: str
+
+
 def update_dot_jdm(service: Service, path: pathlib.Path, config: DotJdmConfig) -> None:
     from .checksum import crc32q_checksum
 
@@ -337,8 +346,11 @@ def update_dot_jdm(service: Service, path: pathlib.Path, config: DotJdmConfig) -
             sh = crc32q_checksum(fd.read(config.sh_size))
             if size <= DOT_JDM_MAX_FH_SIZE:
                 fh = sh
-                while block := fd.read(0x8000):
-                    fh = crc32q_checksum(block, fh)
+                while True:
+                    chunk = fd.read(0x8000)
+                    if not chunk:
+                        break
+                    fh = crc32q_checksum(chunk, fh)
             else:
                 fh = None
 
@@ -534,6 +546,8 @@ def _transfer_g1000_basic(service: Service, path: pathlib.Path, volume_id: int) 
         infolist = database_zip.infolist()
         for info in infolist:
             info.filename = info.filename.replace('\\', '/')  # 🤦‍
+            if info.filename not in FILENAME_TO_FEATURE:
+                raise UserException(f"Unexpected filename: {info.filename}! Please file a bug.")
 
             target = path / info.filename
             if info.is_dir():
@@ -556,9 +570,8 @@ def _transfer_g1000_basic(service: Service, path: pathlib.Path, volume_id: int) 
     return dot_jdm
 
 
-def _transfer_g1000_chartview(service: Service, path: pathlib.Path, volume_id: int) -> DotJdmConfig:
+def _transfer_common_chartview(service: Service, path: pathlib.Path) -> ChartViewMetadata:
     from .chartview import ChartView
-    from .featunlk import Feature, feat_unlk_checksum, update_feat_unlk
 
     charts_path = path / 'Charts'
     charts_path.mkdir(exist_ok=True)
@@ -567,6 +580,17 @@ def _transfer_g1000_chartview(service: Service, path: pathlib.Path, volume_id: i
 
     zip_files = [d.dest_path for d in service.get_databases()]
     with ChartView(zip_files) as cv:
+        for filename in ("coverags.dbf", "sbscrips.dbf"):
+            source = pathlib.Path(filename)
+            if source.is_file():
+                print("*** Copying coverags.dbf from your current directory...")
+                shutil.copyfile('coverags.dbf', charts_path / 'coverags.dbf')
+                charts_files.append('coverags.dbf')
+
+                print("*** Copying sbscrips.dbf from your current directory...")
+                shutil.copyfile('sbscrips.dbf', charts_path / 'sbscrips.dbf')
+                charts_files.append('sbscrips.dbf')
+
         print("Processing charts.ini...")
         charts_files.append('charts.ini')
         db_begin_date = cv.process_charts_ini(charts_path)
@@ -639,6 +663,19 @@ def _transfer_g1000_chartview(service: Service, path: pathlib.Path, volume_id: i
         charts_files.append('crcfiles.txt')
         cv.process_crcfiles(charts_path)
 
+        return ChartViewMetadata(
+            charts_files=[charts_path / f for f in charts_files],
+            fonts_files=[path / f for f in fonts_files],
+            db_begin_date=db_begin_date,
+            filenames_by_chart=filenames_by_chart,
+        )
+
+def _transfer_g1000_chartview(service: Service, path: pathlib.Path, volume_id: int) -> DotJdmConfig:
+    from .featunlk import Feature, feat_unlk_checksum, update_feat_unlk
+
+    metadata = _transfer_common_chartview(service, path)
+    charts_path = path / 'Charts'
+
     security_id = int(service.get_property('garmin_sec_id'))
     system_id = int(service.get_property('avionics_id'), 16)
 
@@ -653,15 +690,89 @@ def _transfer_g1000_chartview(service: Service, path: pathlib.Path, volume_id: i
                 print(f"Extracting {entry.filename}...")
                 oem_zip.extract(entry, charts_path)
 
-    fonts_files.sort()
-    charts_files.sort()
-    dot_jdm_files = [path / f for f in fonts_files] + [charts_path / f for f in charts_files]
+    metadata.fonts_files.sort()
+    metadata.charts_files.sort()
 
-    return DotJdmConfig(0x2000, dot_jdm_files)
+    return DotJdmConfig(0x2000, metadata.fonts_files + metadata.charts_files)
+
+
+def _check_oemdata() -> None:
+    from .aviutil import AVI_UTIL_SRC_NAME, JEPP_EXTRACTOR_SRC_NAME
+
+    oemdata_dir = get_data_dir() / 'oemdata'
+    oemdata_dir.mkdir(exist_ok=True)
+    avi_util_src = oemdata_dir / AVI_UTIL_SRC_NAME
+    jepp_extractor_src = oemdata_dir / JEPP_EXTRACTOR_SRC_NAME
+    if not (avi_util_src.exists() and jepp_extractor_src.exists()):
+        raise DownloaderException(
+            f"Please find oemdata/{AVI_UTIL_SRC_NAME} and oemdata/{JEPP_EXTRACTOR_SRC_NAME} "
+            f"in the JDM install directory\nand copy them to {oemdata_dir}/"
+        )
+
+
+def _transfer_avidyne_ex_chartview(service: Service, path: pathlib.Path, _: int) -> DotJdmConfig:
+    from .aviutil import (
+        AVI_UTIL_SRC_NAME, AVI_UTIL_DEST_NAME, JEPP_EXTRACTOR_SRC_NAME, JEPP_EXTRACTOR_DEST_NAME,
+        append_jepp_extractor_payload
+    )
+
+    oemdata_dir = get_data_dir() / 'oemdata'
+
+    staging_dir = pathlib.Path(mkdtemp(prefix="jdmtool_"))
+    print(f"Using a temporary staging directory: {staging_dir}")
+
+    try:
+        from .avidyne_ex5000 import prepare_ex5000
+        metadata = prepare_ex5000(service, staging_dir)
+
+        avi_util_src = oemdata_dir / AVI_UTIL_SRC_NAME
+        avi_util_dest = path / AVI_UTIL_DEST_NAME
+
+        print(f"Copying {AVI_UTIL_DEST_NAME}...")
+        shutil.copyfile(avi_util_src, avi_util_dest)
+
+        jepp_extractor_src = oemdata_dir / JEPP_EXTRACTOR_SRC_NAME
+        jepp_extractor_dest = path / JEPP_EXTRACTOR_DEST_NAME
+        total_size = sum(f.stat().st_size for f in metadata.charts_files + metadata.fonts_files + [jepp_extractor_src])
+
+        with tqdm.tqdm(desc=f"Creating {JEPP_EXTRACTOR_DEST_NAME}", total=total_size, unit='B', unit_scale=True) as t:
+            with open(jepp_extractor_dest, 'wb') as dest_fd:
+                with open(jepp_extractor_src, 'rb') as src_fd:
+                    shutil.copyfileobj(src_fd, dest_fd)
+                    t.update(dest_fd.tell())
+                append_jepp_extractor_payload(
+                    dest_fd,
+                    metadata.charts_files,
+                    metadata.fonts_files,
+                    metadata.subscriptions[0][0],
+                    metadata.db_begin_date,
+                    service.get_property("avidyne_key"),
+                    service.get_property("serial_number"),
+                    t.update,
+                    chart_product_code=service.get_property("chart_product_code"),
+                    subscriptions=metadata.subscriptions,
+                )
+
+        if metadata.airport_report is not None:
+            print("Copying AirportReport.html...")
+            shutil.copyfile(metadata.airport_report, path / 'AirportReport.html')
+
+        dot_jdm_files = [
+            jepp_extractor_dest,
+            avi_util_dest,
+        ]
+
+        return DotJdmConfig(0x2000, dot_jdm_files)
+
+    finally:
+        print(f"Deleting {staging_dir}...")
+        shutil.rmtree(staging_dir)
 
 
 def _transfer_sd_card(services: list[Service], path: pathlib.Path, vol_id_override: str | None) -> None:
     transfer_funcs: list[Callable[[Service, pathlib.Path, int], DotJdmConfig]] = []
+
+    need_oemdata = False
 
     for service in services:
         if isinstance(service, SimpleService):
@@ -675,15 +786,27 @@ def _transfer_sd_card(services: list[Service], path: pathlib.Path, vol_id_overri
                 raise UserException("This service is not yet supported")
         else:
             if service.get_optional_property("oem_garmin") == '1':
-                print()
-                print("WARNING: Electronic Charts support is very experimental!")
-                print("Transferred files may not completely match JDM, and may not even be correct.")
-                print("Please report your results at https://github.com/dimaryaz/jdmtool/issues.")
-                print()
+                print("WARNING: SimpleService")
+#                print()
+#                print("WARNING: Electronic Charts support is very experimental!")
+#                print("Transferred files may not completely match JDM, and may not even be correct.")
+#                print("Please report your results at https://github.com/dimaryaz/jdmtool/issues.")
+#                print()
                 transfer_func = _transfer_g1000_chartview
+            elif service.get_optional_property("oem_avidyne") == '1':
+                need_oemdata = True
+                transfer_func = _transfer_avidyne_ex_chartview
             else:
                 raise UserException("Unexpected service type")
+            print()
+            print("WARNING: Electronic Charts support is very experimental!")
+            print("Transferred files may not completely match JDM, and may not even be correct.")
+            print("Please report your results at https://github.com/dimaryaz/jdmtool/issues.")
+            print()
         transfer_funcs.append(transfer_func)
+
+    if need_oemdata:
+        _check_oemdata()
 
     if path.is_block_device():
         raise UserException(f"{path} is a device file; need the directory where the SD card is mounted")
@@ -1049,7 +1172,7 @@ def cmd_extract_taw(input_file: str, verbose: bool, list_only: bool) -> None:
             debug(f"Database size: {s.data_size}")
 
             if dest_path:
-                output_file = dest_path
+                output_file = pathlib.PurePosixPath(dest_path).name
             else:
                 output_file = f"region_{s.region:02x}.bin"
 
