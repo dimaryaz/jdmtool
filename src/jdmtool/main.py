@@ -574,41 +574,23 @@ def _transfer_g1000_chartview(service: Service, path: pathlib.Path, volume_id: i
         charts_bin_size = cv.get_charts_bin_size()
         charts_files.append('charts.bin')
         with tqdm.tqdm(desc="Processing charts.bin", total=charts_bin_size, unit='B', unit_scale=True) as t:
-            filenames_by_chart = cv.process_charts_bin(charts_path, db_begin_date, t.update)
+            codes = cv.process_charts_bin(charts_path, db_begin_date, t.update)
 
         print("Reading airports...")
-        ifr_charts_by_airport = cv.get_charts_by_airport(False)
-        vfr_charts_by_airport = cv.get_charts_by_airport(True)
-
         airports_by_key = cv.get_airports_by_key()
 
         ifr_airports: set[str] = set()
         vfr_airports: set[str] = set()
 
-        for (code, is_vfr), filenames in filenames_by_chart.items():
-            print(f"Guessing subscription for code {code}...")
+        for code, is_vfr in codes:
+            print(f"Code: {code}")
+            key = cv.code_to_key(code)
+            key_airports = airports_by_key.get(key, set())
+            print(f"  Subscription key: {key}; {len(key_airports)} airports")
+            if not key_airports:
+                print("  WARNING: No airports found for this subscription key!")
 
-            subscription_airports = vfr_airports if is_vfr else ifr_airports
-            charts_by_airport = vfr_charts_by_airport if is_vfr else ifr_charts_by_airport
-
-            subscription_charts = {filename.split('.')[0].upper() for filename in filenames}
-
-            airports = {
-                airport for airport, charts in charts_by_airport.items()
-                if subscription_charts.issuperset(charts)
-            }
-
-            matches = []
-            for key, key_airports in airports_by_key.items():
-                if key_airports.issuperset(airports):
-                    matches.append((key, key_airports))
-            if not matches:
-                raise ValueError("Failed to find any matching subscriptions!")
-
-            matches.sort(key=lambda match: len(match[1]))
-            best_subscription, best_airports = matches[0]
-            subscription_airports.update(best_airports)
-            print(f"Best match: {best_subscription}, {len(best_airports)} airports")
+            (vfr_airports if is_vfr else ifr_airports).update(key_airports)
 
         print("Processing charts.dbf...")
         charts_files.append('charts.dbf')

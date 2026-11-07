@@ -8,6 +8,7 @@ import configparser
 from dataclasses import dataclass
 import datetime
 import pathlib
+import re
 import struct
 from typing import Any, IO
 try:
@@ -95,8 +96,31 @@ class ChartView:
         ('state.dbf', False),
     ]
 
+    _CODE_RE = re.compile(r'[0-9]{3}[A-Z]{2}[0-9]{5}')
+
     _handles: list[zipfile.ZipFile]
     _entry_map: dict[str, tuple[zipfile.ZipFile, zipfile.ZipInfo]]
+
+    @classmethod
+    def code_to_key(cls, code: str) -> int:
+        if not cls._CODE_RE.fullmatch(code):
+            raise ValueError(f"Invalid subscription code: {code}")
+
+        end = int(code[5:])
+        value = (
+            (int(code[:3]) << 8) |
+            ((ord(code[3]) - 65) << 20) |
+            ((ord(code[4]) - 65) << 16) |
+            ((end & 0x0000ff00) << 16) |
+            (end & 0x000000ff)
+        )
+
+        key = 0
+        for i in range(8):
+            shift = 2 * (i + 1)
+            key |= ((value & (3 << (2 * i))) << shift) & 0xffffffff
+            key |= (value & (0xc0000000 >> (2 * i))) >> shift
+        return key
 
     def __init__(self, zip_list: list[pathlib.Path]) -> None:
         self._handles = [zipfile.ZipFile(path) for path in zip_list]
@@ -148,8 +172,8 @@ class ChartView:
 
     def process_charts_bin(
             self, dest_path: pathlib.Path, db_begin_date: str, progress_cb: Callable[[int], None]
-    ) -> dict[tuple[str, bool], list[str]]:
-        filenames: dict[tuple[str, bool], list[str]] = {}
+    ) -> list[tuple[str, bool]]:
+        codes: list[tuple[str, bool]] = []
 
         charts_bin_dest = dest_path / 'charts.bin'
         with open(charts_bin_dest, 'wb') as charts_bin_fd:
@@ -205,7 +229,7 @@ class ChartView:
                     else:
                         raise ValueError(f"Unexpected chart filename: {chart_fd.name}")
 
-                    filenames[(code, is_vfr)] = [record.name for record in records]
+                    codes.append((code, is_vfr))
 
                     for record in records:
                         assert 0 < record.size < 0x1000000, record.size
@@ -226,17 +250,7 @@ class ChartView:
                 for chart_fd in chart_fds:
                     chart_fd.close()
 
-        return filenames
-
-    def get_charts_by_airport(self, vfr: bool) -> dict[str, list[str]]:
-        charts: defaultdict[str, list[str]] = defaultdict(list)
-        chart_filename = 'vfrchrts.dbf' if vfr else 'charts.dbf'
-        with self._open(chart_filename) as fd:
-            header, fields = DbfFile.read_header(fd)
-            for _ in range(header.num_records):
-                record = DbfFile.read_record(fd, fields)
-                charts[record[0]].append(record[1])
-        return charts
+        return codes
 
     def get_airports_by_key(self) -> dict[int, set[str]]:
         result: defaultdict[int, set[str]] = defaultdict(set)
