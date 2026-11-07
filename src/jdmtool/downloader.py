@@ -31,7 +31,27 @@ class Downloader:
 
     def __init__(self) -> None:
         self.session = requests.Session()
-        self.session.headers['User-Agent'] = None  # type: ignore
+        #self.session.verify = False
+        import socket
+        import warnings
+        from urllib3.exceptions import InsecureRequestWarning
+
+        try:
+            local_mock = (
+                socket.gethostbyname('jsum.jeppesen.com') == '127.0.0.1'
+            )
+        except OSError:
+            local_mock = False
+
+        self.session.verify = not local_mock
+
+        if local_mock:
+            warnings.filterwarnings(
+                'ignore',
+                category=InsecureRequestWarning,
+                message=r".*host 'jsum\.jeppesen\.com'.*",
+            )
+            
 
     @classmethod
     def get_cov_check(cls) -> tuple[str, str]:
@@ -77,7 +97,7 @@ class Downloader:
         )
 
         if not resp.ok:
-            raise DownloaderException(f"Unexpected response: {resp}")
+            raise DownloaderException(f"Erreur HTTP {resp.status_code} {resp.reason}\nDétail serveur :\n{resp.text}")
 
         root = ET.fromstring(resp.text)
 
@@ -106,7 +126,7 @@ class Downloader:
         )
 
         if not resp.ok:
-            raise DownloaderException(f"Unexpected response: {resp}")
+            raise DownloaderException(f"Erreur HTTP {resp.status_code} {resp.reason}\nDétail serveur :\n{resp.text}")
 
         root = ET.fromstring(resp.text)
 
@@ -131,7 +151,7 @@ class Downloader:
         )
 
         if not resp.ok:
-            raise DownloaderException(f"Unexpected response: {resp}")
+            raise DownloaderException(f"Erreur HTTP {resp.status_code} {resp.reason}\nDétail serveur :\n{resp.text}")
 
         (get_data_dir() / GRM_FEAT_KEY).write_bytes(resp.content)
 
@@ -156,7 +176,7 @@ class Downloader:
             },
         ) as resp:
             if not resp.ok:
-                raise DownloaderException(f"Unexpected response: {resp}")
+                raise DownloaderException(f"Erreur HTTP {resp.status_code} {resp.reason}\nDétail serveur :\n{resp.text}")
 
             download_path = dest_path.with_name(dest_path.name + '.download')
 
@@ -186,7 +206,7 @@ class Downloader:
             },
         ) as resp:
             if not resp.ok:
-                raise DownloaderException(f"Unexpected response: {resp}")
+                raise DownloaderException(f"Erreur HTTP {resp.status_code} {resp.reason}\nDétail serveur :\n{resp.text}")
 
             download_path = dest_path.with_name(dest_path.name + '.download')
             download_path.write_bytes(resp.content)
@@ -205,7 +225,7 @@ class Downloader:
             },
         ) as resp:
             if not resp.ok:
-                raise DownloaderException(f"Unexpected response: {resp}")
+                raise DownloaderException(f"Erreur HTTP {resp.status_code} {resp.reason}\nDétail serveur :\n{resp.text}")
 
             download_path = dest_path.with_name(dest_path.name + '.download')
             download_path.write_bytes(resp.content)
