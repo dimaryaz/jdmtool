@@ -1069,6 +1069,9 @@ def cmd_extract_basemap(input_file: str, output_file: str) -> None:
     input_file_path = pathlib.Path(input_file)
     output_file_path = pathlib.Path(output_file)
 
+    if not input_file_path.is_file():
+        raise UserException(f"Input file not found: {input_file}")
+
     if output_file_path.is_dir():
         output_file_path /= 'basemap.img'
 
